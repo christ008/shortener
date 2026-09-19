@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: shortener
+  mvc:
+    problemdetails:
+      enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: update # placeholder until Flyway is introduced
