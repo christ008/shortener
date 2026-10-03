@@ -46,8 +46,8 @@ spec:
             - name: management
               containerPort: 8081
           envFrom:
-            - secretRef:
-                name: shortener-api-keys
+            - configMapRef:
+                name: shortener-idp
           env:
             - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
               value: ecs

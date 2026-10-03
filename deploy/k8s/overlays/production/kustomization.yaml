@@ -2,12 +2,27 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: shortener
 resources:
+  - namespace.yaml
   - ../../base
   - ingress.yaml
   - horizontalpodautoscaler.yaml
   - networkpolicy.yaml
   - externalsecrets.yaml
+configMapGenerator:
+  - name: shortener-idp
+    literals:
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI=https://auth.example.com/realms/shortener
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI=https://auth.example.com/realms/shortener/protocol/openid-connect/certs
+generatorOptions:
+  disableNameSuffixHash: true
 images:
   - name: shortener
     newName: registry.example.com/shortener
-    newTag: 0.10.0
+    newTag: 0.11.0
+patches:
+  - target:
+      kind: Deployment
+      name: shortener
+    patch: |-
+      - op: remove
+        path: /spec/replicas

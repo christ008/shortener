@@ -7,3 +7,14 @@ services:
       - 'POSTGRES_USER=myuser'
     ports:
       - '5432'
+  keycloak:
+    image: 'quay.io/keycloak/keycloak:26.7.5'
+    command: ['start-dev', '--import-realm']
+    environment:
+      - 'KC_BOOTSTRAP_ADMIN_USERNAME=admin'
+      - 'KC_BOOTSTRAP_ADMIN_PASSWORD=admin'
+      - 'KC_HOSTNAME=http://localhost:8180'
+    ports:
+      - '8180:8080'
+    volumes:
+      - './deploy/keycloak/shortener-realm.json:/opt/keycloak/data/import/shortener-realm.json:ro'

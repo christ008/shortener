@@ -9,6 +9,13 @@ spec:
   rules:
     - http:
         paths:
+          - path: /realms
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  name: http
           - path: /
             pathType: Prefix
             backend:
