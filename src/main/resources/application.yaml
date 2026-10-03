@@ -5,6 +5,9 @@ spring:
     exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  threads:
+    virtual:
+      enabled: true
   mvc:
     problemdetails:
       enabled: true
