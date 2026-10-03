@@ -4,7 +4,9 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.web.ErrorResponseException
 
-/** Server's fault (500), not the client's: the code space (62^7) shouldn't realistically exhaust this fast. */
+/**
+ * No unique short code could be allocated. Rendered as an HTTP 500 problem detail.
+ */
 class ShortCodeExhaustionException(attempts: Int) : ErrorResponseException(
     HttpStatus.INTERNAL_SERVER_ERROR,
     ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Could not allocate a unique short code after $attempts attempts"),

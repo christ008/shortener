@@ -6,9 +6,6 @@ spring:
   mvc:
     problemdetails:
       enabled: true
-  jpa:
-    hibernate:
-      ddl-auto: validate
 
 management:
   server:

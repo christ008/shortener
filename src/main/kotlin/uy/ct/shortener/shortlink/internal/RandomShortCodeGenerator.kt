@@ -5,14 +5,17 @@ import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import java.security.SecureRandom
 
-/** [SecureRandom], not [kotlin.random.Random]: codes shouldn't be predictable enough to enumerate links by guessing. */
+/**
+ * Generates uniformly random codes with [SecureRandom], so they can't be guessed to
+ * enumerate links.
+ */
 @Component
 class RandomShortCodeGenerator(
     private val random: SecureRandom = SecureRandom(),
 ) : ShortCodeGenerator {
 
     override fun generate(): ShortCode {
-        val code = CharArray(ShortCode.LENGTH) { ShortCode.ALPHABET[random.nextInt(ShortCode.ALPHABET.length)] }
+        val code = CharArray(ShortCode.GENERATED_LENGTH) { ShortCode.ALPHABET[random.nextInt(ShortCode.ALPHABET.length)] }
         return ShortCode(String(code))
     }
 }

@@ -3,6 +3,9 @@ package uy.ct.shortener.shortlink.internal.web
 import uy.ct.shortener.shortlink.ShortLink
 import java.time.Instant
 
+/**
+ * API representation of a [ShortLink].
+ */
 data class ShortLinkResponse(
     val shortCode: String,
     val targetUrl: String,

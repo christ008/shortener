@@ -1,11 +1,18 @@
 package uy.ct.shortener.shortlink
 
-import org.springframework.data.jpa.repository.JpaRepository
+import java.net.URI
 
-interface ShortLinkRepository : JpaRepository<ShortLink, Long> {
+/**
+ * Storage for [ShortLink]s, independent of how they are persisted. Short codes are unique.
+ */
+interface ShortLinkRepository {
 
     fun findByShortCode(shortCode: ShortCode): ShortLink?
 
-    /** For generate-and-retry code allocation: check before insert instead of catching the constraint violation. */
-    fun existsByShortCode(shortCode: ShortCode): Boolean
+    /**
+     * Stores a link under [shortCode] unless that code is already taken, and returns the stored
+     * link, or null if it was taken. The check and the insert are one atomic step, so of any
+     * number of concurrent calls for the same code exactly one succeeds.
+     */
+    fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): ShortLink?
 }

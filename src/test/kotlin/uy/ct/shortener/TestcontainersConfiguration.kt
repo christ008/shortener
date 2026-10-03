@@ -6,6 +6,10 @@ import org.springframework.context.annotation.Bean
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 
+/**
+ * Starts a throwaway Postgres (same version as `compose.yaml`) and wires it in as the
+ * datasource.
+ */
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
 

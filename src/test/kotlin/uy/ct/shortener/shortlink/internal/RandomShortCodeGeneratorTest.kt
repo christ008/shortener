@@ -14,7 +14,7 @@ class RandomShortCodeGeneratorTest {
         repeat(1_000) {
             val code = generator.generate().value
 
-            assertThat(code).hasSize(ShortCode.LENGTH)
+            assertThat(code).hasSize(ShortCode.GENERATED_LENGTH)
             assertThat(code.all { it in ShortCode.ALPHABET }).isTrue
         }
     }

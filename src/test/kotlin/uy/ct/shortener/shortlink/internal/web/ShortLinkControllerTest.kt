@@ -17,7 +17,12 @@ import org.springframework.http.ResponseEntity
 import uy.ct.shortener.TestApiKeys
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.shortlink.ShortCode
+import uy.ct.shortener.shortlink.ShortLinkRepository
 
+/**
+ * End-to-end tests of the HTTP API against a running server and real Postgres. Redirect
+ * following is disabled so the 302 itself can be asserted.
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [TestApiKeys.PROPERTY])
 @AutoConfigureTestRestTemplate
 @Import(TestcontainersConfiguration::class)
@@ -25,6 +30,9 @@ class ShortLinkControllerTest {
 
     @Autowired
     lateinit var restTemplate: TestRestTemplate
+
+    @Autowired
+    lateinit var repository: ShortLinkRepository
 
     private fun <T : Any> create(body: CreateShortLinkRequest, type: Class<T>): ResponseEntity<T> {
         val headers = HttpHeaders().apply { setBearerAuth(TestApiKeys.PLAINTEXT) }
@@ -37,8 +45,9 @@ class ShortLinkControllerTest {
 
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
         val shortCode = created.body!!.shortCode
-        assertThat(shortCode).hasSize(ShortCode.LENGTH)
+        assertThat(shortCode).hasSize(ShortCode.GENERATED_LENGTH)
         assertThat(created.headers.location.toString()).endsWith("/$shortCode")
+        assertThat(repository.findByShortCode(ShortCode(shortCode))?.createdBy).isEqualTo(TestApiKeys.CLIENT)
 
         val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/$shortCode", Void::class.java)
 
@@ -63,7 +72,46 @@ class ShortLinkControllerTest {
 
     @Test
     fun `rejects a malformed short code before it reaches the service`() {
-        val response = restTemplate.getForEntity("/too-long-to-be-a-code", ProblemDetail::class.java)
+        val response = restTemplate.getForEntity("/ab", ProblemDetail::class.java)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+    }
+
+    @Test
+    fun `creates a short link under a custom code and redirects through it`() {
+        val created = create(CreateShortLinkRequest("https://example.com/promo", "promo-2026"), ShortLinkResponse::class.java)
+
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(created.body!!.shortCode).isEqualTo("promo-2026")
+        assertThat(created.headers.location.toString()).endsWith("/promo-2026")
+
+        val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/promo-2026", Void::class.java)
+
+        assertThat(redirect.statusCode).isEqualTo(HttpStatus.FOUND)
+        assertThat(redirect.headers.location.toString()).isEqualTo("https://example.com/promo")
+    }
+
+    @Test
+    fun `409s when the custom code is already taken`() {
+        val request = CreateShortLinkRequest("https://example.com/first", "taken-code")
+        create(request, ShortLinkResponse::class.java)
+
+        val response = create(request, ProblemDetail::class.java)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(response.body?.detail).contains("taken-code")
+    }
+
+    @Test
+    fun `409s when the custom code is reserved`() {
+        val response = create(CreateShortLinkRequest("https://example.com", "actuator"), ProblemDetail::class.java)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
+    }
+
+    @Test
+    fun `rejects a malformed custom code with a 400`() {
+        val response = create(CreateShortLinkRequest("https://example.com", "no spaces!"), ProblemDetail::class.java)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }

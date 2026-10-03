@@ -1,24 +1,25 @@
 package uy.ct.shortener.shortlink
 
-/** The public-facing identifier of a [ShortLink]. Plain `data class`, not a `value class`, to avoid Hibernate/`AttributeConverter` interop issues. */
+/**
+ * Public identifier of a [ShortLink]: 3 to 32 letters, digits, `-` or `_` ([PATTERN]).
+ * Generated codes are [GENERATED_LENGTH] base62 characters; custom codes may be any valid value.
+ * The format is validated on construction, so an invalid code cannot exist.
+ */
 data class ShortCode(val value: String) {
 
     init {
-        require(value.length == LENGTH) {
-            "shortCode must be exactly $LENGTH characters, was ${value.length} ('$value')"
-        }
-        require(value.all { it in ALPHABET }) {
-            "shortCode must only contain [A-Za-z0-9], was '$value'"
-        }
+        require(REGEX.matches(value)) { "shortCode must match $PATTERN, was '$value'" }
     }
 
     override fun toString(): String = value
 
     companion object {
-        /** Base62: unambiguous and URL-safe without percent-encoding. */
+        const val PATTERN = "[A-Za-z0-9_-]{3,32}"
+
         const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
-        /** 62^7 (~3.5 trillion) possible codes - keeps generate-and-retry collisions rare. */
-        const val LENGTH = 7
+        const val GENERATED_LENGTH = 7
+
+        private val REGEX = PATTERN.toRegex()
     }
 }

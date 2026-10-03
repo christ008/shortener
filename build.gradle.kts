@@ -3,11 +3,10 @@ plugins {
     kotlin("plugin.spring") version "2.3.21"
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
-    kotlin("plugin.jpa") version "2.3.21"
 }
 
 group = "uy.ct"
-version = "0.3.0"
+version = "0.4.0"
 description = "shortener"
 
 java {
@@ -25,7 +24,7 @@ extra["testcontainersVersion"] = "2.0.5"
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.boot:spring-boot-starter-security")
@@ -35,13 +34,12 @@ dependencies {
     implementation("com.bucket4j:bucket4j_jdk17-core:8.21.0")
     implementation("com.github.ben-manes.caffeine:caffeine")
     implementation("org.springframework.modulith:spring-modulith-starter-core")
-    implementation("org.springframework.modulith:spring-modulith-starter-jpa")
     implementation("tools.jackson.module:jackson-module-kotlin")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
     runtimeOnly("org.postgresql:postgresql")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
-    testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-jdbc-test")
     testImplementation("org.springframework.boot:spring-boot-starter-security-test")
     testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
@@ -66,12 +64,6 @@ kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict", "-Xannotation-default-target=param-property")
     }
-}
-
-allOpen {
-    annotation("jakarta.persistence.Entity")
-    annotation("jakarta.persistence.MappedSuperclass")
-    annotation("jakarta.persistence.Embeddable")
 }
 
 tasks.withType<Test> {
