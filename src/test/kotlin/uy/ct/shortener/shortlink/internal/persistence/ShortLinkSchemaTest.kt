@@ -64,4 +64,26 @@ class ShortLinkSchemaTest {
 
         assertFailsWith<DataIntegrityViolationException> { insert("samecode", "https://example.com/2") }
     }
+
+    @Test
+    fun `records who disabled a link together with when, never one without the other`() {
+        insert("both-set", "https://example.com")
+
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbc.sql("UPDATE short_link SET disabled_at = now() WHERE short_code = 'both-set'").update()
+        }
+        assertFailsWith<DataIntegrityViolationException> {
+            jdbc.sql("UPDATE short_link SET disabled_by = 'someone' WHERE short_code = 'both-set'").update()
+        }
+        assertThat(
+            jdbc.sql("UPDATE short_link SET disabled_at = now(), disabled_by = 'someone' WHERE short_code = 'both-set'").update(),
+        ).isEqualTo(1)
+    }
+
+    @Test
+    fun `has the indexes the listings are served from`() {
+        val indexes = jdbc.sql("SELECT indexname FROM pg_indexes WHERE tablename = 'short_link'").query(String::class.java).list()
+
+        assertThat(indexes).contains("short_link_pkey", "short_link_created_at_idx", "short_link_created_by_idx")
+    }
 }

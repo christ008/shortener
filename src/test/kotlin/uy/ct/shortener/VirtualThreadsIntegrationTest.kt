@@ -25,7 +25,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  * separate server that a filter in this context never sees, so a test-only health indicator
  * records the thread it is evaluated on instead.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [TestApiKeys.PROPERTY])
+@WithTestIdp
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureTestRestTemplate
 @Import(TestcontainersConfiguration::class, VirtualThreadsIntegrationTest.ThreadRecorder::class)
 class VirtualThreadsIntegrationTest {

@@ -11,6 +11,21 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          audiences: shortener-api
+          issuer-uri: http://localhost:8180/realms/shortener
+          jwk-set-uri: http://localhost:8180/realms/shortener/protocol/openid-connect/certs
+  data:
+    web:
+      pageable:
+        default-page-size: 50
+        max-page-size: 200
+        one-indexed-parameters: false
+      sort:
+        sort-parameter: sort
   datasource:
     hikari:
       maximum-pool-size: 10
@@ -19,6 +34,15 @@ spring:
 server:
   shutdown: graceful
   forward-headers-strategy: native
+
+shortener:
+  shortlink:
+    scopes:
+      create: shortlinks:create
+      claim: shortlinks:claim
+      read: shortlinks:read
+      delete: shortlinks:delete
+      admin: shortlinks:admin
 
 management:
   server:

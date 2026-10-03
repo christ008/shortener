@@ -9,6 +9,7 @@ import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.ShortLinkRepository
+import uy.ct.shortener.shortlink.internal.authorization.ManageableLinks
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -41,7 +42,7 @@ class ShortCodeRaceIntegrationTest {
                 ShortCode("retry%02d".format(n))
             }
         }
-        val service = DefaultShortLinkService(repository, generator)
+        val service = DefaultShortLinkService(repository, generator, ManageableLinks(repository))
 
         val pool = Executors.newFixedThreadPool(threads)
         val results = try {

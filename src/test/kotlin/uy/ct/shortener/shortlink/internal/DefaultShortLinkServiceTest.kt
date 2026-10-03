@@ -7,25 +7,25 @@ import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeExhaustionException
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.ShortCodeUnavailableException
+import uy.ct.shortener.shortlink.ShortLinkDisabledException
 import uy.ct.shortener.shortlink.ShortLinkNotFoundException
+import uy.ct.shortener.shortlink.internal.authorization.ManageableLinks
 import java.net.URI
 import kotlin.test.assertFailsWith
 
 /**
- * Unit tests for [DefaultShortLinkService] using [InMemoryShortLinkRepository] and a scripted
- * generator that counts how many codes were requested.
+ * Unit tests of how [DefaultShortLinkService] allocates codes and resolves links, using
+ * [InMemoryShortLinkRepository] and a scripted generator that counts how many codes were
+ * requested. Method security does not apply to an object built directly, so who may do what is
+ * covered separately, by `ShortLinkAuthorizationTest`.
  */
 class DefaultShortLinkServiceTest {
-
-    private companion object {
-        const val CLIENT = "test-client"
-    }
 
     private val repository = InMemoryShortLinkRepository()
 
     private fun serviceWith(vararg codes: String): Pair<DefaultShortLinkService, GeneratorProbe> {
         val generator = GeneratorProbe(codes.map(::ShortCode))
-        return DefaultShortLinkService(repository, generator) to generator
+        return DefaultShortLinkService(repository, generator, ManageableLinks(repository)) to generator
     }
 
     private class GeneratorProbe(private val codes: List<ShortCode>) : ShortCodeGenerator {
@@ -36,14 +36,14 @@ class DefaultShortLinkServiceTest {
     }
 
     @Test
-    fun `shortens a url using the generated code and persists it`() {
+    fun `shortens a url using the generated code, owned by the given client`() {
         val (service, _) = serviceWith("aaaaaaa")
 
-        val link = service.shorten("https://example.com/some/path", CLIENT)
+        val link = service.shorten("https://example.com/some/path", "owner")
 
         assertThat(link.shortCode).isEqualTo(ShortCode("aaaaaaa"))
         assertThat(link.targetUrl).isEqualTo(URI.create("https://example.com/some/path"))
-        assertThat(link.createdBy).isEqualTo(CLIENT)
+        assertThat(link.createdBy).isEqualTo("owner")
         assertThat(repository.saved).containsExactly(link)
     }
 
@@ -52,7 +52,7 @@ class DefaultShortLinkServiceTest {
         repository.seed(ShortCode("takenAA"))
         val (service, generator) = serviceWith("takenAA", "freeBBB")
 
-        val link = service.shorten("https://example.com", CLIENT)
+        val link = service.shorten("https://example.com", "owner")
 
         assertThat(link.shortCode).isEqualTo(ShortCode("freeBBB"))
         assertThat(generator.calls).isEqualTo(2)
@@ -63,7 +63,7 @@ class DefaultShortLinkServiceTest {
         repository.seed(ShortCode("takenAA"))
         val (service, generator) = serviceWith("takenAA")
 
-        assertFailsWith<ShortCodeExhaustionException> { service.shorten("https://example.com", CLIENT) }
+        assertFailsWith<ShortCodeExhaustionException> { service.shorten("https://example.com", "owner") }
 
         assertThat(generator.calls).isEqualTo(5)
         assertThat(repository.saved).hasSize(1)
@@ -73,7 +73,7 @@ class DefaultShortLinkServiceTest {
     fun `claims a custom code without generating one`() {
         val (service, generator) = serviceWith("aaaaaaa")
 
-        val link = service.claim(ShortCode("my-promo"), "https://example.com/promo", CLIENT)
+        val link = service.claim(ShortCode("my-promo"), "https://example.com/promo", "owner")
 
         assertThat(link.shortCode).isEqualTo(ShortCode("my-promo"))
         assertThat(generator.calls).isZero()
@@ -85,7 +85,7 @@ class DefaultShortLinkServiceTest {
         repository.seed(ShortCode("my-promo"))
         val (service, _) = serviceWith("aaaaaaa")
 
-        assertFailsWith<ShortCodeUnavailableException> { service.claim(ShortCode("my-promo"), "https://example.com", CLIENT) }
+        assertFailsWith<ShortCodeUnavailableException> { service.claim(ShortCode("my-promo"), "https://example.com", "owner") }
 
         assertThat(repository.saved).hasSize(1)
     }
@@ -96,7 +96,7 @@ class DefaultShortLinkServiceTest {
 
         listOf("api", "actuator", "error").forEach {
             assertFailsWith<ShortCodeUnavailableException>("expected '$it' to be reserved") {
-                service.claim(ShortCode(it), "https://example.com", CLIENT)
+                service.claim(ShortCode(it), "https://example.com", "owner")
             }
         }
 
@@ -104,20 +104,12 @@ class DefaultShortLinkServiceTest {
     }
 
     @Test
-    fun `rejects an invalid url when claiming a custom code`() {
-        val (service, _) = serviceWith("aaaaaaa")
-
-        assertFailsWith<InvalidTargetUrlException> { service.claim(ShortCode("my-promo"), "ftp://example.com", CLIENT) }
-
-        assertThat(repository.saved).isEmpty()
-    }
-
-    @Test
-    fun `rejects unparseable and non-http urls before generating a code`() {
+    fun `rejects invalid urls before generating a code or storing anything`() {
         val (service, generator) = serviceWith("aaaaaaa")
 
         listOf("not a url", "/relative/path", "ftp://example.com/file", "mailto:someone@example.com").forEach {
-            assertFailsWith<InvalidTargetUrlException>("expected '$it' to be rejected") { service.shorten(it, CLIENT) }
+            assertFailsWith<InvalidTargetUrlException>("expected '$it' to be rejected") { service.shorten(it, "owner") }
+            assertFailsWith<InvalidTargetUrlException> { service.claim(ShortCode("my-promo"), it, "owner") }
         }
 
         assertThat(generator.calls).isZero()
@@ -125,11 +117,15 @@ class DefaultShortLinkServiceTest {
     }
 
     @Test
-    fun `resolves an existing short code`() {
+    fun `resolves an existing short code, but not a disabled one`() {
         val (service, _) = serviceWith("aaaaaaa")
-        val created = service.shorten("https://example.com", CLIENT)
+        service.shorten("https://example.com/target", "owner")
 
-        assertThat(service.resolve(ShortCode("aaaaaaa"))).isSameAs(created)
+        assertThat(service.resolve(ShortCode("aaaaaaa")).targetUrl).isEqualTo(URI.create("https://example.com/target"))
+
+        repository.disable(ShortCode("aaaaaaa"), "owner")
+
+        assertFailsWith<ShortLinkDisabledException> { service.resolve(ShortCode("aaaaaaa")) }
     }
 
     @Test
@@ -137,5 +133,14 @@ class DefaultShortLinkServiceTest {
         val (service, _) = serviceWith("aaaaaaa")
 
         assertFailsWith<ShortLinkNotFoundException> { service.resolve(ShortCode("zzzzzzz")) }
+    }
+
+    @Test
+    fun `a disabled link keeps its code taken, so nobody else can register it`() {
+        val (service, _) = serviceWith("aaaaaaa")
+        service.claim(ShortCode("my-promo"), "https://example.com", "owner")
+        repository.disable(ShortCode("my-promo"), "owner")
+
+        assertFailsWith<ShortCodeUnavailableException> { service.claim(ShortCode("my-promo"), "https://evil.example.com", "owner") }
     }
 }

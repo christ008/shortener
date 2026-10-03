@@ -12,8 +12,9 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import uy.ct.shortener.TestApiKeys
+import uy.ct.shortener.TestIdp
 import uy.ct.shortener.TestcontainersConfiguration
+import uy.ct.shortener.WithTestIdp
 import javax.sql.DataSource
 
 /**
@@ -21,10 +22,10 @@ import javax.sql.DataSource
  * `Retry-After` instead of a 500, and the service recovers on its own once a connection is free.
  * The pool is shrunk to one connection with a short timeout, and the test holds that connection.
  */
+@WithTestIdp
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
-        TestApiKeys.PROPERTY,
         "spring.datasource.hikari.maximum-pool-size=1",
         "spring.datasource.hikari.connection-timeout=250",
     ],
@@ -46,7 +47,7 @@ class StorageUnavailableIntegrationTest {
             """{"targetUrl":"https://example.com/unavailable"}""",
             HttpHeaders().apply {
                 contentType = MediaType.APPLICATION_JSON
-                setBearerAuth(TestApiKeys.PLAINTEXT)
+                setBearerAuth(TestIdp.token())
             },
         ),
         String::class.java,

@@ -9,9 +9,9 @@ import kotlin.math.max
 /**
  * Applies a [RateLimiter] to every request, rejecting excess ones with a 429 problem detail.
  * [keyOf] chooses what is limited and may return null to skip a request. It is used twice in the
- * filter chain: per client IP before authentication, so key guessing is throttled, and per API
- * key after it. Actuator endpoints are never limited, so probes from the kubelet cannot be
- * throttled.
+ * filter chain: per client IP before authentication, so token guessing is throttled, and per
+ * authenticated client after it. Actuator endpoints are never limited, so probes from the
+ * kubelet cannot be throttled.
  *
  * Each instance needs a distinct [name]. `OncePerRequestFilter` remembers that a request was
  * already filtered by filter name, so two instances of this class sharing one would skip each

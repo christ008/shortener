@@ -7,7 +7,7 @@ import java.time.Duration
 
 /**
  * In-memory token-bucket rate limiter keyed by an arbitrary string, such as a client IP or an
- * API key name. Buckets live in a size-bounded Caffeine cache and expire once idle for a full
+ * OAuth client id. Buckets live in a size-bounded Caffeine cache and expire once idle for a full
  * refill period, so a flood of distinct keys cannot exhaust memory and a forgotten key costs
  * nothing. State is per process: with several replicas the effective limit is the limit times
  * the replica count. [tryAcquire] returns null if the request is allowed, otherwise how long to

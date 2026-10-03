@@ -12,9 +12,11 @@ import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
-import uy.ct.shortener.TestApiKeys
+import uy.ct.shortener.TestIdp
+import uy.ct.shortener.WithTestIdp
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkRepository
@@ -23,7 +25,8 @@ import uy.ct.shortener.shortlink.ShortLinkRepository
  * End-to-end tests of the HTTP API against a running server and real Postgres. Redirect
  * following is disabled so the 302 itself can be asserted.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [TestApiKeys.PROPERTY])
+@WithTestIdp
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureTestRestTemplate
 @Import(TestcontainersConfiguration::class)
 class ShortLinkControllerTest {
@@ -35,7 +38,7 @@ class ShortLinkControllerTest {
     lateinit var repository: ShortLinkRepository
 
     private fun <T : Any> create(body: CreateShortLinkRequest, type: Class<T>): ResponseEntity<T> {
-        val headers = HttpHeaders().apply { setBearerAuth(TestApiKeys.PLAINTEXT) }
+        val headers = HttpHeaders().apply { setBearerAuth(TestIdp.token()) }
         return restTemplate.exchange("/api/short-links", HttpMethod.POST, HttpEntity(body, headers), type)
     }
 
@@ -47,12 +50,26 @@ class ShortLinkControllerTest {
         val shortCode = created.body!!.shortCode
         assertThat(shortCode).hasSize(ShortCode.GENERATED_LENGTH)
         assertThat(created.headers.location.toString()).endsWith("/$shortCode")
-        assertThat(repository.findByShortCode(ShortCode(shortCode))?.createdBy).isEqualTo(TestApiKeys.CLIENT)
+        assertThat(repository.findByShortCode(ShortCode(shortCode))?.createdBy).isEqualTo(TestIdp.CLIENT)
 
         val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/$shortCode", Void::class.java)
 
         assertThat(redirect.statusCode).isEqualTo(HttpStatus.FOUND)
         assertThat(redirect.headers.location.toString()).isEqualTo("https://example.com/some/long/path")
+    }
+
+    @Test
+    fun `answers a body without a target url, or with a null one, with a 400 rather than a 500`() {
+        val headers = HttpHeaders().apply {
+            setBearerAuth(TestIdp.token())
+            contentType = MediaType.APPLICATION_JSON
+        }
+
+        listOf("{}", """{"targetUrl":null}""", """{"customCode":"my-promo"}""").forEach { body ->
+            val response = restTemplate.exchange("/api/short-links", HttpMethod.POST, HttpEntity(body, headers), ProblemDetail::class.java)
+
+            assertThat(response.statusCode).describedAs(body).isEqualTo(HttpStatus.BAD_REQUEST)
+        }
     }
 
     @Test
