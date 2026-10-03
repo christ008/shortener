@@ -3,10 +3,11 @@ plugins {
     kotlin("plugin.spring") version "2.3.21"
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
+    id("org.graalvm.buildtools.native") version "1.1.13"
 }
 
 group = "uy.ct"
-version = "0.5.0"
+version = "0.6.0"
 description = "shortener"
 
 java {
@@ -68,4 +69,9 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+tasks.bootBuildImage {
+    imageName = "shortener:${project.version}"
+    environment = mapOf("BP_NATIVE_IMAGE_BUILD_ARGUMENTS" to "-march=compatibility -J-Xmx7g")
 }

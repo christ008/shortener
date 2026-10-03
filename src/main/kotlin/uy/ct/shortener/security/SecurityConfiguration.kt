@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.ImportRuntimeHints
 import org.springframework.http.HttpMethod
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -15,6 +16,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy
 import uy.ct.shortener.security.internal.ApiKeyAuthenticator
 import uy.ct.shortener.security.internal.BearerApiKeyAuthenticationFilter
+import uy.ct.shortener.security.internal.CaffeineRuntimeHints
 import uy.ct.shortener.security.internal.ProblemDetailResponder
 import uy.ct.shortener.security.internal.RateLimitFilter
 import uy.ct.shortener.security.internal.RateLimiter
@@ -31,6 +33,7 @@ import uy.ct.shortener.security.internal.SecurityProperties
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(SecurityProperties::class)
+@ImportRuntimeHints(CaffeineRuntimeHints::class)
 class SecurityConfiguration {
 
     @Bean

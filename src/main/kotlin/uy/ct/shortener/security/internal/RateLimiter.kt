@@ -11,7 +11,7 @@ import java.time.Duration
  * refill period, so a flood of distinct keys cannot exhaust memory and a forgotten key costs
  * nothing. State is per process: with several replicas the effective limit is the limit times
  * the replica count. [tryAcquire] returns null if the request is allowed, otherwise how long to
- * wait before retrying.
+ * wait before retrying. See [CaffeineRuntimeHints] for what Caffeine needs in a native image.
  */
 class RateLimiter(private val limit: SecurityProperties.Limit, maxKeys: Long = 100_000) {
 
