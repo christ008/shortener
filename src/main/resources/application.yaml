@@ -6,4 +6,4 @@ spring:
       enabled: true
   jpa:
     hibernate:
-      ddl-auto: update # placeholder until Flyway is introduced
+      ddl-auto: validate
