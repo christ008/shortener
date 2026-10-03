@@ -3,9 +3,19 @@ spring:
     name: shortener
   autoconfigure:
     exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   mvc:
     problemdetails:
       enabled: true
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 3000
+
+server:
+  shutdown: graceful
+  forward-headers-strategy: native
 
 management:
   server:
