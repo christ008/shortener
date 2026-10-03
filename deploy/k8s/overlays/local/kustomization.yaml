@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Local demo on kind only. The Postgres here is throwaway (emptyDir) and the credentials and API key below
+# are public on purpose: the dev API key is shk_local_dev_only_not_a_secret_0123456789ab
+resources:
+  - ../../base
+  - ingress.yaml
+  - postgres.yaml
+generatorOptions:
+  disableNameSuffixHash: true
+secretGenerator:
+  - name: shortener-db
+    literals:
+      - url=jdbc:postgresql://postgres:5432/shortener
+      - username=shortener
+      - password=shortener
+  - name: shortener-api-keys
+    literals:
+      - SHORTENER_SECURITY_APIKEYS_LOCAL=e108c73bc27891cd0f9cc3c3857f70d868d8ed4720ec23682898ceb6147c0ed3
+patches:
+  - target:
+      kind: Deployment
+      name: shortener
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: add
+        path: /spec/template/spec/initContainers
+        value:
+          - name: wait-for-db
+            image: postgres:18.6
+            command: ["sh", "-c", "until pg_isready -h postgres -p 5432 -U shortener; do sleep 1; done"]
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]

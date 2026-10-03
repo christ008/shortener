@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: shortener
+resources:
+  - ../../base
+  - ingress.yaml
+  - horizontalpodautoscaler.yaml
+  - networkpolicy.yaml
+  - externalsecrets.yaml
+images:
+  - name: shortener
+    newName: registry.example.com/shortener
+    newTag: 0.7.0
