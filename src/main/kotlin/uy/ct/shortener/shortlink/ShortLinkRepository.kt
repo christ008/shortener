@@ -3,7 +3,8 @@ package uy.ct.shortener.shortlink
 import java.net.URI
 
 /**
- * Storage for [ShortLink]s, independent of how they are persisted. Short codes are unique.
+ * Storage for [ShortLink]s, independent of how they are persisted. Short codes are unique. Both
+ * operations throw [StorageUnavailableException] when storage cannot serve them right now.
  */
 interface ShortLinkRepository {
 

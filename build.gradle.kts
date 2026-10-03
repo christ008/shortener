@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "uy.ct"
-version = "0.8.0"
+version = "0.9.0"
 description = "shortener"
 
 java {

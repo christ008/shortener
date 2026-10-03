@@ -1,11 +1,13 @@
 package uy.ct.shortener.shortlink.internal.persistence
 
+import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLink
 import uy.ct.shortener.shortlink.ShortLinkRepository
+import uy.ct.shortener.shortlink.StorageUnavailableException
 import java.net.URI
 import java.sql.ResultSet
 import java.time.OffsetDateTime
@@ -16,19 +18,22 @@ import kotlin.jvm.optionals.getOrNull
  * rather than generated. It leans on Postgres: `INSERT ... ON CONFLICT DO NOTHING RETURNING`
  * claims a code and reads the stored row back in one atomic statement, and the database assigns
  * `created_at`. The schema, including the constraints that mirror [ShortCode] and [ShortLink],
- * lives in the Flyway migrations.
+ * lives in the Flyway migrations. Failing to get a connection, whether the pool is exhausted or
+ * the database is down, is reported as [StorageUnavailableException] so Spring's data-access
+ * types do not leak out of this adapter.
  */
 @Repository
 class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepository {
 
-    override fun findByShortCode(shortCode: ShortCode): ShortLink? =
+    override fun findByShortCode(shortCode: ShortCode): ShortLink? = reportingUnavailability {
         jdbc.sql(FIND)
             .param("shortCode", shortCode.value)
             .query(TO_SHORT_LINK)
             .optional()
             .getOrNull()
+    }
 
-    override fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): ShortLink? =
+    override fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): ShortLink? = reportingUnavailability {
         jdbc.sql(INSERT_IF_ABSENT)
             .param("shortCode", shortCode.value)
             .param("targetUrl", targetUrl.toString())
@@ -36,6 +41,14 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
             .query(TO_SHORT_LINK)
             .optional()
             .getOrNull()
+    }
+
+    private inline fun <T> reportingUnavailability(statement: () -> T): T =
+        try {
+            statement()
+        } catch (ex: DataAccessResourceFailureException) {
+            throw StorageUnavailableException(ex)
+        }
 
     private companion object {
         const val COLUMNS = "short_code, target_url, created_by, created_at"

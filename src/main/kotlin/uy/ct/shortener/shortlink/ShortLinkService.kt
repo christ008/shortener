@@ -12,6 +12,7 @@ interface ShortLinkService {
      *
      * @throws InvalidTargetUrlException if [targetUrl] isn't an absolute http(s) URL
      * @throws ShortCodeExhaustionException if no unique code could be allocated
+     * @throws StorageUnavailableException if storage cannot be reached right now
      */
     fun shorten(targetUrl: String, createdBy: String): ShortLink
 
@@ -21,6 +22,7 @@ interface ShortLinkService {
      *
      * @throws InvalidTargetUrlException if [targetUrl] isn't an absolute http(s) URL
      * @throws ShortCodeUnavailableException if [shortCode] is already taken or reserved
+     * @throws StorageUnavailableException if storage cannot be reached right now
      */
     fun claim(shortCode: ShortCode, targetUrl: String, createdBy: String): ShortLink
 
@@ -28,6 +30,7 @@ interface ShortLinkService {
      * Returns the short link stored under [shortCode].
      *
      * @throws ShortLinkNotFoundException if none exists
+     * @throws StorageUnavailableException if storage cannot be reached right now
      */
     fun resolve(shortCode: ShortCode): ShortLink
 }
