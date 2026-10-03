@@ -8,12 +8,17 @@ import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRe
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.http.client.HttpRedirects
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.ResponseEntity
+import uy.ct.shortener.TestApiKeys
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.shortlink.ShortCode
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [TestApiKeys.PROPERTY])
 @AutoConfigureTestRestTemplate
 @Import(TestcontainersConfiguration::class)
 class ShortLinkControllerTest {
@@ -21,13 +26,14 @@ class ShortLinkControllerTest {
     @Autowired
     lateinit var restTemplate: TestRestTemplate
 
+    private fun <T : Any> create(body: CreateShortLinkRequest, type: Class<T>): ResponseEntity<T> {
+        val headers = HttpHeaders().apply { setBearerAuth(TestApiKeys.PLAINTEXT) }
+        return restTemplate.exchange("/api/short-links", HttpMethod.POST, HttpEntity(body, headers), type)
+    }
+
     @Test
     fun `creates a short link and redirects through it`() {
-        val created = restTemplate.postForEntity(
-            "/api/short-links",
-            CreateShortLinkRequest("https://example.com/some/long/path"),
-            ShortLinkResponse::class.java,
-        )
+        val created = create(CreateShortLinkRequest("https://example.com/some/long/path"), ShortLinkResponse::class.java)
 
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
         val shortCode = created.body!!.shortCode
@@ -42,11 +48,7 @@ class ShortLinkControllerTest {
 
     @Test
     fun `rejects a blank target url with a 400 problem detail`() {
-        val response = restTemplate.postForEntity(
-            "/api/short-links",
-            CreateShortLinkRequest(""),
-            ProblemDetail::class.java,
-        )
+        val response = create(CreateShortLinkRequest(""), ProblemDetail::class.java)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
