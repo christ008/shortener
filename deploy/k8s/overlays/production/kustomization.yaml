@@ -1,10 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+# Cluster-wide pieces are applied once per cluster, not through this overlay: Envoy Gateway itself, the GatewayClass
+# in deploy/k8s/gatewayclass and a ClusterIssuer like cluster-issuer.example.yaml.
 namespace: shortener
 resources:
   - namespace.yaml
   - ../../base
-  - ingress.yaml
+  - ../../gateway
+  - gateway.yaml
   - horizontalpodautoscaler.yaml
   - networkpolicy.yaml
   - externalsecrets.yaml
@@ -18,7 +21,7 @@ generatorOptions:
 images:
   - name: shortener
     newName: registry.example.com/shortener
-    newTag: 0.11.0
+    newTag: 0.12.0
 patches:
   - target:
       kind: Deployment

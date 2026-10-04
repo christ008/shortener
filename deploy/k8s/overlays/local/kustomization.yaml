@@ -1,13 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # Local demo on kind only. The Postgres and Keycloak here are throwaway and their credentials are public on
-# purpose. Keycloak runs in dev mode with the realm from deploy/keycloak; get a token for the demo client with
+# purpose. Envoy Gateway must be installed first:
+#   kubectl apply --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.2/install.yaml
+# Keycloak runs in dev mode with the realm from deploy/keycloak; get a token for the demo client with
 #   curl -s localhost:8088/realms/shortener/protocol/openid-connect/token -d grant_type=client_credentials \
 #     -d client_id=demo-client -d client_secret=demo-client-secret-dev-only
 resources:
   - ../../base
   - ../../../keycloak
-  - ingress.yaml
+  - ../../gatewayclass
+  - ../../gateway
+  - gateway.yaml
   - postgres.yaml
 generatorOptions:
   disableNameSuffixHash: true
@@ -23,6 +27,26 @@ secretGenerator:
       - username=shortener
       - password=shortener
 patches:
+  - target:
+      kind: EnvoyProxy
+      name: shortener
+    patch: |-
+      - op: replace
+        path: /spec/provider/kubernetes/envoyDeployment/replicas
+        value: 1
+      - op: add
+        path: /spec/provider/kubernetes/envoyService/type
+        value: NodePort
+      - op: add
+        path: /spec/provider/kubernetes/envoyService/patch
+        value:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - name: http-80
+                  port: 80
+                  nodePort: 30080
   - target:
       kind: Deployment
       name: shortener

@@ -10,5 +10,8 @@ spec:
       name: letsencrypt-prod-account-key
     solvers:
       - http01:
-          ingress:
-            ingressClassName: nginx
+          gatewayHTTPRoute:
+            parentRefs:
+              - kind: Gateway
+                name: shortener
+                namespace: shortener
