@@ -116,6 +116,7 @@ deploy/                 Kubernetes, Keycloak realm and dev keys, Prometheus, Gra
 perf/                   k6 workload, benchmark and profiling scripts, results
 docs/INTERNALS.md       how it works and why
 docs/openapi.yaml       the API contract
+docs/UI.md              the plan for a web UI (TanStack Start and Mantine)
 ```
 
 Releases are tagged `v0.x.0`, one minor version per change.
