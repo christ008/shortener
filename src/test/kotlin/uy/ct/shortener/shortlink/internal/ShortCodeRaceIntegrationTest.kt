@@ -1,5 +1,6 @@
 package uy.ct.shortener.shortlink.internal
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -42,7 +43,7 @@ class ShortCodeRaceIntegrationTest {
                 ShortCode("retry%02d".format(n))
             }
         }
-        val service = DefaultShortLinkService(repository, generator, ManageableLinks(repository))
+        val service = DefaultShortLinkService(repository, generator, ManageableLinks(repository), RedirectCache(RedirectCacheProperties(), SimpleMeterRegistry()))
 
         val pool = Executors.newFixedThreadPool(threads)
         val results = try {

@@ -1,0 +1,13 @@
+{"variant":"jvm-cache","image":"eclipse-temurin:25-jre","ready_ms":5640,"idle_mem":"250.4MiB","started":"Started ShortenerApplicationKt in 4.638 seconds","runs":[
+{"name":"r1500","rate":1500,"duration":"60s","create_share":0.01,"start":1791081668,"end":1791081729,
+ "server":{"redirect_p50":0.0005008236747661352,"redirect_p95":0.000951564982055657,"redirect_p99":0.0009916308760369477,
+ "create_p50":0.0023385779006962564,"create_p99":0.008874447097499967,
+ "hikari_acquire_max":0.417320511,"hikari_timeouts":0,
+ "gc_pause_seconds":0.24480000000000002,"process_cpu_avg":0.14216483516483516}}
+,
+{"name":"r5000","rate":5000,"duration":"60s","create_share":0.003,"start":1791081739,"end":1791081800,
+ "server":{"redirect_p50":0.0005010112477294955,"redirect_p95":0.0009519213706860415,"redirect_p99":0.000992002270504401,
+ "create_p50":0.0021835789999999997,"create_p99":0.008321498152000015,
+ "hikari_acquire_max":0.417320511,"hikari_timeouts":0,
+ "gc_pause_seconds":0.7786,"process_cpu_avg":0.32009801488833745}}
+]}

@@ -11,7 +11,8 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · Envoy 
 - Creates short links with a generated code (7 base62 characters) or a custom one, and redirects with a `302`.
 - Each client owns the links it creates. It can list, read and disable its own links; an administrator can act on any.
   A link that belongs to someone else looks like it does not exist.
-- Disabled links answer `410 Gone` and keep their code taken, so nobody can re-register it.
+- Disabled links answer `410 Gone` and keep their code taken, so nobody can re-register it. Redirects are served from an
+  in-memory cache, so a takedown reaches every instance within 30 seconds.
 - Every authentication, authorization and rate-limit failure is an RFC 9457 problem detail.
 
 ## Run it locally
@@ -64,6 +65,7 @@ Everything has a default for local development. In a cluster the main settings a
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
+| `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES` | how long (30s) and how many (100,000) links the redirect cache keeps; `..._ENABLED=false` turns it off |
 
 ## Build, test, package
 

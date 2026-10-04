@@ -7,6 +7,7 @@ what is inside.
 - [Request flows](#request-flows)
 - [Persistence](#persistence)
 - [Concurrency](#concurrency)
+- [Redirect cache](#redirect-cache)
 - [Security](#security)
 - [Observability](#observability)
 - [Native image](#native-image)
@@ -50,8 +51,9 @@ JDBC types never leave `persistence`.
    conflict is `409`. Codes `api`, `actuator` and `error` are reserved so they cannot shadow routes.
 5. `201` with the link and a `Location` header holding the short URL, built from the forwarded host and scheme.
 
-**Redirect** (`GET /{code}`) is public. It loads the link by primary key and answers `302`, `404` when unknown or
-`410` when disabled. It is the hot path: one indexed read per request.
+**Redirect** (`GET /{code}`) is public. It looks the link up in the [redirect cache](#redirect-cache) and, on a miss,
+loads it by primary key, then answers `302`, `404` when unknown or `410` when disabled. It is the hot path: a memory
+hit, or one indexed read.
 
 **Disable** (`DELETE /api/short-links/{code}`) loads the link through `ManageableLinks`, whose `@PostAuthorize` lets
 only the owner or an administrator see it. Anyone else gets `404`, so the existence of a link is not revealed. The
@@ -89,12 +91,36 @@ Requests run on virtual threads (`spring.threads.virtual.enabled`), so blocking 
 threads. Concurrency against the database is bounded by the Hikari pool (10 connections, 3 s wait). Two things follow:
 
 - Throughput is capped by how fast 10 connections can serve queries, not by threads. The benchmark confirms the pool is
-  what saturates first on the JVM.
+  what saturates first on the JVM, which is why redirects are cached.
 - Virtual threads make it easy to accept far more concurrent requests than the pool can serve. Each waiting request holds
   memory (see [Performance](#performance)), so concurrency should be bounded at the edge rather than left unlimited.
 
 Shutdown is graceful: a 5 s `preStop` sleep lets the endpoint be removed from the Service, then Spring waits up to 20 s
 for in-flight requests, inside the 30 s termination grace period.
+
+## Redirect cache
+
+Redirects were the hot path and each cost a database read, so `DefaultShortLinkService.resolve` goes through a
+`RedirectCache`: an in-process Caffeine cache, one per instance.
+
+- **What is cached.** Only active links. An unknown code is never cached, so a link works the moment it is created, and
+  a disabled link is never cached, so a takedown is not extended by the cache. The cache sits on `resolve` alone: `get`,
+  `list` and `disable` read the repository, so the checks that decide who may see or change a link never see a stale
+  link.
+- **How long.** Entries live for `shortener.shortlink.redirect-cache.ttl` (30 seconds by default). The instance that
+  disables a link evicts it at once. Other instances keep serving it until their entry expires, so a takedown reaches
+  every instance within the TTL. Shorten the TTL to tighten that window; nothing else synchronises instances.
+- **How many.** At most `max-entries` (100,000 by default), evicted by Caffeine's admission policy. A link is a few
+  hundred bytes, so that is tens of megabytes at most. `enabled: false` sends every redirect to the database.
+- **Misses.** Concurrent misses for one code run a single load and share the result, so a popular new link costs one
+  query, not one per waiting request. A miss for an unknown or disabled code does a second lookup to tell the two apart,
+  because only active links are stored.
+- **Metrics.** `cache_gets_total` (hit and miss), `cache_size` and `cache_evictions_total` for the cache
+  `shortlink.redirect`, charted in the dashboard.
+
+Rejected alternatives: Redis or another shared cache (an operational dependency and a network hop for a problem one
+process can solve), cross-instance invalidation with Postgres `LISTEN/NOTIFY` (more machinery and a new failure mode for
+a bounded staleness that is acceptable), and caching 404s or 410s (it delays new links or takedowns).
 
 ## Security
 
@@ -252,8 +278,13 @@ shape, not as capacity.
 | 5,000 req/s, redirect p99 | 2.4 ms | 3,018 ms |
 | 10,000 req/s | overload: 713 served | overload: 318 served |
 
+With the [redirect cache](#redirect-cache) (JVM, same method, but only 1,500 and 5,000 requests a second because
+saturation runs can take the development machine's network down): redirect p99 of 1.0 ms at both rates, where it was 2.4
+ms at 5,000 before, no failures, and the 5,000 req/s run used 32% of the two cores. The ceiling was not probed, and the
+native image was not benchmarked with the cache. Results are in `perf/results/2026-10-03-cache`.
+
 On the JVM, a database read per redirect and the pool of 10 are the limit: at 10,000 requests a second the pool times
-out while CPU stays low. A cache removes that read (see [Decisions](#decisions)).
+out while CPU stays low. These figures predate the [redirect cache](#redirect-cache), which removes that read.
 
 ### Native image under overload: diagnosis
 
@@ -298,22 +329,25 @@ the only place that knows SQL.
 `Pageable` and `Slice`; the resource server, DPoP and RFC 9728 metadata are Spring Security's. Custom code is limited to
 what Spring does not offer: the Bearer refusal, the problem-detail responder, rate limiting and the hints.
 
+**Virtual threads, not coroutines or structured concurrency.** Each request does one blocking query, so there is nothing
+to fan out for structured concurrency to scope, and coroutines would still need a thread or a continuation per in-flight
+request, plus a dispatcher to run the blocking JDBC call on. The native image's problem was never scheduling: it was
+about 150 KB of Tomcat buffers per open connection and the collector (see Performance), which neither changes. Bounding
+concurrency (connection limits) and removing the database read (the cache) address the measured causes. Revisit if a
+request ever calls several things in parallel.
+
 **Ownership is the client id.** There are no end users, only service clients, so the token's `azp` is the owner and
 scopes are the only permission model.
 
 **Sender-constrained tokens by default.** A leaked bearer token is the main risk for a token-based API; DPoP removes it
 at the cost of a client that can sign. A JDK-only client is provided.
 
-**Redirect cache (decided, not built).** To remove the database read from the hot path: an in-process Caffeine cache
-in front of the repository, caching found links only, with a short TTL (30 to 60 seconds) plus eviction on the pod that
-disables a link, bounded at about 100,000 entries, with single-flight loads so concurrent misses for one code run one
-query, and hit ratio, size and load time exported to Prometheus. Other pods see a disable when their entry expires, so a
-takedown can take up to the TTL to reach every pod. Redis and cross-pod invalidation were rejected as more machinery
-than the evidence justifies; unknown codes are not cached so a new link works at once.
+**Redirect cache.** In-process Caffeine rather than Redis, caching active links only, with a short TTL and local
+eviction on disable. See [Redirect cache](#redirect-cache) for the behaviour and what was rejected.
 
 ## Limitations
 
-- No redirect cache yet, so redirects cost a database read.
+- A link disabled on one instance can still redirect on the others for up to the cache TTL (30 seconds by default).
 - Rate limits and the DPoP replay cache are per pod; one DPoP key is capped at about 30 requests a second.
 - The native image degrades badly under overload (see above); concurrency is not bounded.
 - The Envoy Gateway, cert-manager and Prometheus operator parts are untested on a real cluster.

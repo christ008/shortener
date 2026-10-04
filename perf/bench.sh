@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Benchmarks one image of the application against the compose Postgres and Keycloak and records what it did.
-#   [DOCKER_ARGS="..."] perf/bench.sh VARIANT IMAGE OUT_DIR [COMMAND...]
+#   [RUNS="name rate duration create_share|..."] [DOCKER_ARGS="..."] perf/bench.sh VARIANT IMAGE OUT_DIR [COMMAND...]
 # The app gets cores 0-1 and the production memory limit, Postgres cores 2-5 and k6 cores 6-9, so that the three
 # do not compete. Needs Postgres, Keycloak and Prometheus (profile observability) running: the compose services, or
 # containers of your own with PGPORT and PG_CONTAINER set.
@@ -51,7 +51,9 @@ say "warming up for 30s"
 k6 warmup 2000 30s 0.005
 echo "{\"variant\":\"$VARIANT\",\"image\":\"$IMAGE\",\"ready_ms\":$ready,\"idle_mem\":\"$idle_mem\",\"started\":\"$started\",\"runs\":[" >"$OUT/summary.json"
 first=1
-for run in "r1500 1500 60s 0.01" "r5000 5000 60s 0.003" "r10000 10000 30s 0.0015"; do
+RUNS=${RUNS:-"r1500 1500 60s 0.01|r5000 5000 60s 0.003|r10000 10000 30s 0.0015"}
+IFS='|' read -ra RUN_LIST <<<"$RUNS"
+for run in "${RUN_LIST[@]}"; do
   set -- $run
   start=$(date +%s)
   k6 "$1" "$2" "$3" "$4"

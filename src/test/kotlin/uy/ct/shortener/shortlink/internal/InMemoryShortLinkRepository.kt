@@ -12,11 +12,15 @@ import java.time.Instant
 /**
  * In-memory [ShortLinkRepository] for service unit tests, with the same semantics as the real one:
  * insert-if-absent, newest-first paging by offset and idempotent disabling. Each stored link gets a
- * later creation time than the last, so ordering is deterministic. [seed] pre-populates a taken code.
+ * later creation time than the last, so ordering is deterministic. [seed] pre-populates a taken code,
+ * and [lookups] counts how often a link was read by its code.
  */
 class InMemoryShortLinkRepository : ShortLinkRepository {
 
     val saved = mutableListOf<ShortLink>()
+
+    var lookups = 0
+        private set
 
     private var now = Instant.parse("2026-01-01T00:00:00Z")
 
@@ -24,10 +28,13 @@ class InMemoryShortLinkRepository : ShortLinkRepository {
         insertIfAbsent(shortCode, URI.create("https://seed.example.com"), createdBy)
     }
 
-    override fun findByShortCode(shortCode: ShortCode): ShortLink? = saved.find { it.shortCode == shortCode }
+    override fun findByShortCode(shortCode: ShortCode): ShortLink? {
+        lookups++
+        return saved.find { it.shortCode == shortCode }
+    }
 
     override fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): ShortLink? {
-        if (findByShortCode(shortCode) != null) return null
+        if (saved.any { it.shortCode == shortCode }) return null
         now = now.plusSeconds(1)
         return ShortLink(shortCode, targetUrl, createdBy, now).also { saved += it }
     }

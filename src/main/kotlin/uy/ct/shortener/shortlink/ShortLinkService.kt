@@ -31,7 +31,9 @@ interface ShortLinkService {
     fun claim(shortCode: ShortCode, targetUrl: String, createdBy: String): ShortLink
 
     /**
-     * Returns the target of the short link under [shortCode]. Public: no caller is involved.
+     * Returns the target of the short link under [shortCode]. Public: no caller is involved. An active
+     * link may be served from an in-memory cache, so one disabled through another instance can still
+     * resolve there for up to the cache's time to live.
      *
      * @throws ShortLinkNotFoundException if none exists
      * @throws ShortLinkDisabledException if it has been disabled

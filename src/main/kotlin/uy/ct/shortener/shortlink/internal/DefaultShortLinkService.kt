@@ -28,12 +28,15 @@ import java.net.URI
  * atomic insert-if-absent, so the repository settles concurrent requests and a taken code simply
  * costs another attempt. Custom codes that would shadow an application route (`api`, `actuator`,
  * `error`) are reserved. A disabled link keeps its code, so it cannot be registered again.
+ * Redirects go through the [RedirectCache]; every other read, including the ones that decide who
+ * may see or disable a link, reads the repository so they never see a stale link.
  */
 @Service
 class DefaultShortLinkService(
     private val repository: ShortLinkRepository,
     private val codeGenerator: ShortCodeGenerator,
     private val manageableLinks: ManageableLinks,
+    private val redirectCache: RedirectCache,
 ) : ShortLinkService {
 
     @MayCreate
@@ -53,7 +56,14 @@ class DefaultShortLinkService(
     }
 
     override fun resolve(shortCode: ShortCode): ShortLink {
-        val link = repository.findByShortCode(shortCode) ?: throw ShortLinkNotFoundException(shortCode)
+        var loaded = false
+        var found: ShortLink? = null
+        redirectCache.find(shortCode) {
+            loaded = true
+            found = repository.findByShortCode(it)
+            found?.takeUnless { link -> link.isDisabled }
+        }?.let { return it }
+        val link = (if (loaded) found else repository.findByShortCode(shortCode)) ?: throw ShortLinkNotFoundException(shortCode)
         if (link.isDisabled) throw ShortLinkDisabledException(shortCode)
         return link
     }
@@ -69,6 +79,7 @@ class DefaultShortLinkService(
     override fun disable(shortCode: ShortCode, disabledBy: String) {
         manageableLinks.find(shortCode) ?: throw ShortLinkNotFoundException(shortCode)
         repository.disable(shortCode, disabledBy)
+        redirectCache.evict(shortCode)
     }
 
     private fun parseTargetUrl(raw: String): URI {

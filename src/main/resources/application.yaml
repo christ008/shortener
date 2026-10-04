@@ -43,6 +43,9 @@ shortener:
       read: shortlinks:read
       delete: shortlinks:delete
       admin: shortlinks:admin
+    redirect-cache:
+      ttl: 30s
+      max-entries: 100000
 
 management:
   server:
