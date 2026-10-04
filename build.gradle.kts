@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "uy.ct"
-version = "0.12.0"
+version = "0.13.0"
 description = "shortener"
 
 java {
@@ -41,6 +41,7 @@ dependencies {
     implementation("tools.jackson.module:jackson-module-kotlin")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     runtimeOnly("org.postgresql:postgresql")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
     testImplementation("org.springframework.boot:spring-boot-starter-jdbc-test")

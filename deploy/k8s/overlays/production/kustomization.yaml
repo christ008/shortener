@@ -10,6 +10,7 @@ resources:
   - gateway.yaml
   - horizontalpodautoscaler.yaml
   - networkpolicy.yaml
+  - podmonitor.yaml
   - externalsecrets.yaml
 configMapGenerator:
   - name: shortener-idp
@@ -21,7 +22,7 @@ generatorOptions:
 images:
   - name: shortener
     newName: registry.example.com/shortener
-    newTag: 0.12.0
+    newTag: 0.13.0
 patches:
   - target:
       kind: Deployment

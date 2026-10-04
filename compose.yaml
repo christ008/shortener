@@ -18,3 +18,20 @@ services:
       - '8180:8080'
     volumes:
       - './deploy/keycloak/shortener-realm.json:/opt/keycloak/data/import/shortener-realm.json:ro'
+  prometheus:
+    image: 'prom/prometheus:v3.5.0'
+    profiles: ['observability']
+    command: ['--config.file=/etc/prometheus/prometheus.yml']
+    network_mode: host
+    volumes:
+      - './deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+  grafana:
+    image: 'grafana/grafana:12.1.0'
+    profiles: ['observability']
+    environment:
+      - 'GF_AUTH_ANONYMOUS_ENABLED=true'
+      - 'GF_AUTH_ANONYMOUS_ORG_ROLE=Admin'
+    network_mode: host
+    volumes:
+      - './deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro'
+      - './deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro'

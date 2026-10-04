@@ -52,7 +52,7 @@ management:
       discovery:
         enabled: false
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       probes:
@@ -60,3 +60,11 @@ management:
       group:
         readiness:
           include: readinessState,db
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s

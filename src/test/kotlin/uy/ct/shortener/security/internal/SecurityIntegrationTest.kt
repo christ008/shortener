@@ -131,6 +131,22 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    fun `accepts a token only in the authorization header, never in the query string or a form body`() {
+        val token = TestIdp.token()
+
+        assertThat(get("/api/short-links?access_token=$token").statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat(get("/api/short-links", bearer(token)).statusCode).isEqualTo(HttpStatus.OK)
+
+        val form = restTemplate.exchange(
+            "/api/short-links",
+            HttpMethod.POST,
+            HttpEntity("access_token=$token", HttpHeaders().apply { contentType = MediaType.APPLICATION_FORM_URLENCODED }),
+            String::class.java,
+        )
+        assertThat(form.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+    }
+
+    @Test
     fun `following a short link needs no token`() {
         val code = Regex(""""shortCode":"([^"]+)"""").find(create(bearer(TestIdp.token())).body!!)!!.groupValues[1]
 
@@ -140,9 +156,10 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    fun `health probes are public on the management port but other actuator endpoints are not`() {
+    fun `health probes and metrics are public on the management port but other actuator endpoints are not`() {
         assertThat(get("http://localhost:$managementPort/actuator/health").statusCode).isEqualTo(HttpStatus.OK)
         assertThat(get("http://localhost:$managementPort/actuator/health/liveness").statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(get("http://localhost:$managementPort/actuator/prometheus").statusCode).isEqualTo(HttpStatus.OK)
         assertThat(get("http://localhost:$managementPort/actuator/env").statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
     }
 

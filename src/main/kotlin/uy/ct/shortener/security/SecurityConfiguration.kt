@@ -66,7 +66,7 @@ class SecurityConfiguration {
                     .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                     .requestMatchers(HttpMethod.GET, "/{shortCode}").permitAll()
                     .requestMatchers(HttpMethod.HEAD, "/{shortCode}").permitAll()
-                    .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                    .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
                     .requestMatchers("/api/**").authenticated()
                     .anyRequest().denyAll()
             }
