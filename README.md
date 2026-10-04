@@ -4,7 +4,7 @@ A URL shortener built to production standards: OAuth2 with sender-constrained (D
 plain JDBC on Postgres, virtual threads, Prometheus metrics, a GraalVM native image and Kubernetes manifests with the
 Gateway API.
 
-Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · Envoy Gateway · AGPL-3.0
+Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · Envoy Gateway · Apache-2.0
 
 ## What it does
 
@@ -105,3 +105,7 @@ docs/INTERNALS.md       how it works and why
 ```
 
 Releases are tagged `v0.x.0`, one minor version per change.
+
+## License
+
+Copyright 2026 Christian Tejeda. Licensed under the [Apache License, Version 2.0](LICENSE).
