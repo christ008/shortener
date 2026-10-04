@@ -1,5 +1,7 @@
 # shortener
 
+[![CI](https://github.com/christ008/shortener/actions/workflows/ci.yml/badge.svg)](https://github.com/christ008/shortener/actions/workflows/ci.yml)
+
 A URL shortener built to production standards: OAuth2 with sender-constrained (DPoP) tokens, per-client ownership,
 plain JDBC on Postgres, virtual threads, Prometheus metrics, a GraalVM native image and Kubernetes manifests with the
 Gateway API.
@@ -113,6 +115,7 @@ src/main/kotlin/uy/ct/shortener
     internal/           service, web, persistence and authorization adapters
   security/             resource server, DPoP, rate limiting, problem details
 deploy/                 Kubernetes, Keycloak realm and dev keys, Prometheus, Grafana and Tempo
+.github/workflows/      CI: tests and manifest checks on every push, a manual native image build
 perf/                   k6 workload, benchmark and profiling scripts, results
 docs/INTERNALS.md       how it works and why
 docs/openapi.yaml       the API contract
