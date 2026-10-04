@@ -42,6 +42,18 @@ Prometheus, Grafana and Tempo (for traces) are behind a profile: `docker compose
 `MANAGEMENT_TRACING_SAMPLING_PROBABILITY=1.0`; it exports to `http://localhost:4318/v1/traces` by default. The dev clients, keys and secrets in this repository are public on
 purpose and must never be used anywhere real.
 
+## What it looks like
+
+The Grafana dashboard that ships in `deploy/observability`, during a 1,500 requests a second run with a 1% share of
+creates (JVM, 2 cores, 512 MB). The redirect cache answers about 99% of redirects, so the connection pool stays idle:
+
+![Grafana dashboard](docs/images/dashboard.png)
+
+A create request as a trace in Tempo: the HTTP span and, under it, the `shortlink.insert` span for the database write.
+A redirect that hits the cache is a single span; a miss adds `shortlink.load`:
+
+![A trace in Tempo](docs/images/trace.png)
+
 ## API
 
 | Request | Needs | Answers |
@@ -54,7 +66,8 @@ purpose and must never be used anywhere real.
 
 `shortlinks:admin` reads and disables any client's links. Errors are `401` with a `DPoP` challenge, `403` with
 `insufficient_scope`, `429` with `Retry-After`, and `503` with `Retry-After` when the database cannot be reached.
-Scope names are configuration (`shortener.shortlink.scopes.*`).
+Scope names are configuration (`shortener.shortlink.scopes.*`). The full contract, with schemas and examples, is
+[docs/openapi.yaml](docs/openapi.yaml); a test fails if it drifts from the code.
 
 ## Configuration
 
@@ -99,9 +112,10 @@ src/main/kotlin/uy/ct/shortener
   shortlink/            public contract: ShortLink, ShortCode, service and repository interfaces, exceptions
     internal/           service, web, persistence and authorization adapters
   security/             resource server, DPoP, rate limiting, problem details
-deploy/                 Kubernetes, Keycloak realm and dev keys, Prometheus and Grafana
+deploy/                 Kubernetes, Keycloak realm and dev keys, Prometheus, Grafana and Tempo
 perf/                   k6 workload, benchmark and profiling scripts, results
 docs/INTERNALS.md       how it works and why
+docs/openapi.yaml       the API contract
 ```
 
 Releases are tagged `v0.x.0`, one minor version per change.

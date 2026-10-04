@@ -1,7 +1,7 @@
 # Internals
 
-How the service works and why it is built this way. The [README](../README.md) covers running it; this covers
-what is inside.
+How the service works and why it is built this way. The [README](../README.md) covers running it, [openapi.yaml](openapi.yaml) is the API contract (a test keeps it in
+step with the code), and this covers what is inside.
 
 - [Structure](#structure)
 - [Request flows](#request-flows)
@@ -203,9 +203,10 @@ rather than conformance.
 - **Metrics**: `/actuator/prometheus` on the management port 8081, which is cluster-internal. The key series is
   `http_server_requests_seconds` as a histogram tagged by route template and status, so short codes never become label
   values (tested). Hikari, JVM and process metrics come with it.
-- **Dashboard**: `deploy/observability/grafana/dashboards/shortener.json` has ten panels: request rate by status,
+- **Dashboard**: `deploy/observability/grafana/dashboards/shortener.json` has twelve panels: request rate by status,
   redirect and create percentiles, rejected requests, the pool, acquire time, heap, GC, CPU and threads. A request panel
-  stays empty until traffic arrives, because Prometheus has no series for an event that has not happened.
+  stays empty until traffic arrives, because Prometheus has no series for an event that has not happened. The native image
+  has no garbage-collector beans, so its GC panel is empty and its heap maximum reads zero; the JVM fills both.
 - **Logs**: structured ECS JSON in Kubernetes.
 - **Health**: liveness, and readiness that includes the database, on the management port.
 - **Traces**: Micrometer Tracing with the OpenTelemetry bridge, exported over OTLP/HTTP. Every request has a server span

@@ -1,0 +1,393 @@
+openapi: 3.1.0
+
+info:
+  title: Shortener API
+  version: 0.18.0
+  summary: Create, list and disable short links, and follow them.
+  description: |
+    Every operation under `/api` needs an access token from the identity provider, and tokens are **bound to the
+    client's key** (DPoP, RFC 9449): send `Authorization: DPoP <token>` together with a `DPoP` header holding a proof
+    made for that exact request. A plain `Bearer` token is refused, even a valid one. `deploy/keycloak/DpopClient.java`
+    does the whole flow with only the JDK:
+
+    ```
+    java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+      POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
+    ```
+
+    A client owns the links it creates. A link that belongs to another client answers `404`, as if it did not exist.
+    Following a short link (`GET /{shortCode}`) needs no token.
+
+    Every error is an RFC 9457 problem detail (`application/problem+json`).
+
+    This file is checked against the controller routes and the configured scope names by a test, so it cannot drift
+    quietly. Scope names are configuration (`shortener.shortlink.scopes.*`); the defaults are shown here.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Links
+    description: Managing short links. Needs a DPoP-bound access token.
+  - name: Redirect
+    description: Following a short link. Public.
+
+paths:
+  /api/short-links:
+    post:
+      tags: [Links]
+      operationId: createShortLink
+      summary: Create a short link
+      description: |
+        Without `customCode` the service picks a random 7-character code. With one, the client also needs the `claim`
+        scope. Codes `api`, `actuator` and `error` are reserved.
+      security:
+        - dpop: ['shortlinks:create']
+      parameters:
+        - $ref: '#/components/parameters/DPoP'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShortLinkRequest'
+            examples:
+              generated:
+                summary: A generated code
+                value:
+                  targetUrl: https://example.com/some/long/path
+              custom:
+                summary: A custom code (needs the claim scope)
+                value:
+                  targetUrl: https://example.com/spring-sale
+                  customCode: spring-sale
+      responses:
+        '201':
+          description: Created. `Location` is the short URL.
+          headers:
+            Location:
+              description: The short URL to share.
+              schema:
+                type: string
+                format: uri
+                examples: ['http://localhost:8080/aB3dE9x']
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShortLink'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: The custom code is taken or reserved.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      tags: [Links]
+      operationId: listShortLinks
+      summary: List short links
+      description: |
+        A client sees its own links, newest first. An administrator sees every client's links, or one client's with
+        `createdBy`. The page says whether another follows (`hasNext`) without counting every link.
+      security:
+        - dpop: ['shortlinks:read']
+        - dpop: ['shortlinks:admin']
+      parameters:
+        - $ref: '#/components/parameters/DPoP'
+        - name: page
+          in: query
+          description: Zero-based page number.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          description: Links per page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: sort
+          in: query
+          description: 'Property and direction, `createdAt` or `shortCode`, for example `shortCode,asc`.'
+          schema:
+            type: string
+            default: createdAt,desc
+        - name: createdBy
+          in: query
+          description: Only links created by this client. A client may only name itself.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A page of links.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShortLinkPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/short-links/{shortCode}:
+    parameters:
+      - $ref: '#/components/parameters/ShortCode'
+      - $ref: '#/components/parameters/DPoP'
+    get:
+      tags: [Links]
+      operationId: getShortLink
+      summary: Read a short link
+      description: Includes a disabled link. Another client's link answers `404`.
+      security:
+        - dpop: ['shortlinks:read']
+        - dpop: ['shortlinks:admin']
+      responses:
+        '200':
+          description: The link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShortLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      tags: [Links]
+      operationId: disableShortLink
+      summary: Disable a short link
+      description: |
+        The link stops redirecting (`410`) and keeps its code, so nobody can register it again. Disabling twice is
+        harmless and keeps the first actor and time. Other instances can keep redirecting for up to the redirect
+        cache's time to live, 30 seconds by default.
+      security:
+        - dpop: ['shortlinks:delete']
+        - dpop: ['shortlinks:admin']
+      responses:
+        '204':
+          description: Disabled.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /{shortCode}:
+    get:
+      tags: [Redirect]
+      operationId: followShortLink
+      summary: Follow a short link
+      description: Public. Served from an in-memory cache when the link is active.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ShortCode'
+      responses:
+        '302':
+          description: Redirects to the target URL.
+          headers:
+            Location:
+              description: The target URL.
+              schema:
+                type: string
+                format: uri
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: The link was disabled.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+components:
+  securitySchemes:
+    dpop:
+      type: oauth2
+      description: |
+        Client credentials with `private_key_jwt` client authentication, and an access token bound to the client's
+        key (DPoP). Present it as `Authorization: DPoP <token>` with a `DPoP` proof header. The token must carry the
+        JOSE type `at+jwt`, the audience `shortener-api` and the scopes listed on each operation.
+      flows:
+        clientCredentials:
+          tokenUrl: http://localhost:8180/realms/shortener/protocol/openid-connect/token
+          scopes:
+            'shortlinks:create': Create links with a generated code.
+            'shortlinks:claim': Also choose the code (needs `shortlinks:create` too).
+            'shortlinks:read': Read and list the client's own links.
+            'shortlinks:delete': Disable the client's own links.
+            'shortlinks:admin': Read and disable any client's links.
+
+  parameters:
+    ShortCode:
+      name: shortCode
+      in: path
+      required: true
+      description: 3 to 32 letters, digits, `-` or `_`.
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{3,32}$'
+        examples: [aB3dE9x]
+    DPoP:
+      name: DPoP
+      in: header
+      required: true
+      description: |
+        A proof JWT (`typ` `dpop+jwt`) made for this request: its method (`htm`), URL without the query (`htu`), the
+        hash of the access token (`ath`), a unique `jti` and the time. A proof can be used once, within 30 seconds.
+      schema:
+        type: string
+
+  schemas:
+    CreateShortLinkRequest:
+      type: object
+      required: [targetUrl]
+      properties:
+        targetUrl:
+          type: string
+          format: uri
+          description: An absolute http or https URL.
+          examples: ['https://example.com/some/long/path']
+        customCode:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{3,32}$'
+          description: Ask for this code instead of a generated one.
+    ShortLink:
+      type: object
+      required: [shortCode, targetUrl, createdBy, createdAt]
+      properties:
+        shortCode:
+          type: string
+          examples: [aB3dE9x]
+        targetUrl:
+          type: string
+          format: uri
+        createdBy:
+          type: [string, 'null']
+          description: The client that created the link.
+        createdAt:
+          type: string
+          format: date-time
+        disabledAt:
+          type: [string, 'null']
+          format: date-time
+          description: Null while the link is active.
+    ShortLinkPage:
+      type: object
+      required: [items, page, size, hasNext]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShortLink'
+        page:
+          type: integer
+        size:
+          type: integer
+        hasNext:
+          type: boolean
+          description: Whether another page follows.
+    Problem:
+      type: object
+      description: An RFC 9457 problem detail.
+      required: [title, status]
+      properties:
+        type:
+          type: string
+          examples: ['about:blank']
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid body, parameter or sort property.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: |
+        No credentials, a bad token or proof, or the `Bearer` scheme. `WWW-Authenticate` names the `DPoP` scheme and the
+        error (`invalid_token`, `invalid_request` or `invalid_dpop_proof`).
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            examples: ['DPoP realm="shortener", error="invalid_dpop_proof", algs="ES256 ..."']
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: The token lacks the scope (`WWW-Authenticate` carries `error="insufficient_scope"`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No such link, or it belongs to another client.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Rate limit exceeded (300 a minute per IP, 60 per client).
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unavailable:
+      description: The database cannot be reached; retry after the delay in `Retry-After`.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

@@ -30,7 +30,8 @@ import java.util.regex.Pattern;
  *   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
  *   java DpopClient.java token KEY_FILE CLIENT_ID         prints a DPoP-bound access token and the key it is bound to
  *
- * The token endpoint comes from TOKEN_URL, by default the local realm.
+ * The token endpoint comes from TOKEN_URL, by default the local realm. TRACEPARENT, if set, is sent as the W3C trace
+ * context of the request, so a sampled trace can be forced for a call.
  */
 public class DpopClient {
 
@@ -57,6 +58,7 @@ public class DpopClient {
                         .header("Authorization", "DPoP " + token.accessToken)
                         .header("DPoP", proof(dpopKey, method, url, token.accessToken))
                         .header("Content-Type", "application/json")
+                        .headers(System.getenv("TRACEPARENT") == null ? new String[0] : new String[] {"traceparent", System.getenv("TRACEPARENT")})
                         .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
                 HttpResponse<String> response = HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
                 System.out.println(response.statusCode());
