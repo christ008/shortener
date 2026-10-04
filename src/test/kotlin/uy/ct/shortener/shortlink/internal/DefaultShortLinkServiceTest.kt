@@ -1,6 +1,9 @@
 package uy.ct.shortener.shortlink.internal
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.micrometer.observation.ObservationRegistry
+import io.micrometer.observation.tck.TestObservationRegistry
+import io.micrometer.observation.tck.TestObservationRegistryAssert
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import uy.ct.shortener.shortlink.InvalidTargetUrlException
@@ -29,10 +32,10 @@ class DefaultShortLinkServiceTest {
 
     private val ttl = Duration.ofSeconds(30)
 
-    private fun serviceWith(vararg codes: String): Pair<DefaultShortLinkService, GeneratorProbe> {
+    private fun serviceWith(vararg codes: String, observations: ObservationRegistry = ObservationRegistry.NOOP): Pair<DefaultShortLinkService, GeneratorProbe> {
         val generator = GeneratorProbe(codes.map(::ShortCode))
         val cache = RedirectCache(RedirectCacheProperties(ttl = ttl), SimpleMeterRegistry(), ticker, Runnable::run)
-        return DefaultShortLinkService(repository, generator, ManageableLinks(repository), cache) to generator
+        return DefaultShortLinkService(repository, generator, ManageableLinks(repository), cache, observations) to generator
     }
 
     private class GeneratorProbe(private val codes: List<ShortCode>) : ShortCodeGenerator {
@@ -222,4 +225,26 @@ class DefaultShortLinkServiceTest {
     }
 
     private fun manageable(service: DefaultShortLinkService) = ManageableLinks(repository).find(ShortCode("aaaaaaa"))!!
+
+    @Test
+    fun `observes the database read of a cache miss but not of a hit`() {
+        val observations = TestObservationRegistry.create()
+        val (service, _) = serviceWith("aaaaaaa", observations = observations)
+        service.shorten("https://example.com/target", "owner")
+
+        repeat(3) { service.resolve(ShortCode("aaaaaaa")) }
+
+        TestObservationRegistryAssert.assertThat(observations).hasNumberOfObservationsWithNameEqualTo("shortlink.load", 1)
+    }
+
+    @Test
+    fun `observes each attempt to insert a link`() {
+        repository.seed(ShortCode("takenAA"))
+        val observations = TestObservationRegistry.create()
+        val (service, _) = serviceWith("takenAA", "freeBBB", observations = observations)
+
+        service.shorten("https://example.com", "owner")
+
+        TestObservationRegistryAssert.assertThat(observations).hasNumberOfObservationsWithNameEqualTo("shortlink.insert", 2)
+    }
 }

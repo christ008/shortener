@@ -17,12 +17,16 @@ configMapGenerator:
     literals:
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI=https://auth.example.com/realms/shortener
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI=https://auth.example.com/realms/shortener/protocol/openid-connect/certs
+  - name: shortener-telemetry
+    literals:
+      - MANAGEMENT_TRACING_SAMPLING_PROBABILITY=0.05
+      - MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT=http://otel-collector.monitoring.svc.cluster.local:4318/v1/traces
 generatorOptions:
   disableNameSuffixHash: true
 images:
   - name: shortener
     newName: registry.example.com/shortener
-    newTag: 0.16.0
+    newTag: 0.17.0
 patches:
   - target:
       kind: Deployment

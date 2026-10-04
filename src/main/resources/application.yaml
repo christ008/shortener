@@ -33,6 +33,9 @@ spring:
 
 server:
   shutdown: graceful
+  tomcat:
+    max-connections: 500
+    accept-count: 100
   forward-headers-strategy: native
 
 shortener:
@@ -71,3 +74,23 @@ management:
         http.server.requests: true
       slo:
         http.server.requests: 5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s
+  observations:
+    enable:
+      spring:
+        security: false
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  logging:
+    export:
+      otlp:
+        enabled: false
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+  tracing:
+    sampling:
+      probability: 0.0

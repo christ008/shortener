@@ -37,8 +37,9 @@ The response carries the short URL in `Location`. Following it needs no token:
 curl -i http://localhost:8080/<shortCode>
 ```
 
-Prometheus and Grafana are behind a profile: `docker compose --profile observability up -d`, then open
-<http://localhost:3000/d/shortener/shortener>. The dev clients, keys and secrets in this repository are public on
+Prometheus, Grafana and Tempo (for traces) are behind a profile: `docker compose --profile observability up -d`, then open
+<http://localhost:3000/d/shortener/shortener>. To see traces locally, start the app with
+`MANAGEMENT_TRACING_SAMPLING_PROBABILITY=1.0`; it exports to `http://localhost:4318/v1/traces` by default. The dev clients, keys and secrets in this repository are public on
 purpose and must never be used anywhere real.
 
 ## API
@@ -65,6 +66,7 @@ Everything has a default for local development. In a cluster the main settings a
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
+| `SERVER_TOMCAT_MAXCONNECTIONS` | connections Tomcat accepts before refusing (500); each costs about 150 KB of heap |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES` | how long (30s) and how many (100,000) links the redirect cache keeps; `..._ENABLED=false` turns it off |
 
 ## Build, test, package
@@ -85,10 +87,10 @@ Envoy Gateway and the `gatewayclass` once per cluster. See [docs/INTERNALS.md](d
 
 ## Performance
 
-Measured on one laptop, with the app limited to 2 cores and 512 MB: 1,500 requests a second at a redirect p99 of 1 ms
-on the JVM (4 ms native), and 4,900 a second on the JVM before the connection pool saturates. The native image has a
-known weakness under overload. The methodology, the numbers and the investigation are in
-[docs/INTERNALS.md](docs/INTERNALS.md#performance). Read the warning there before running load tests.
+Measured on one laptop, with the app limited to 2 cores and 512 MB: the JVM and the native image both serve about
+5,000 requests a second at a redirect p99 of 1 ms (the load generator was the limit), and the native image starts in
+0.4 seconds. The redirect cache and a connection limit keep the native image stable under overload. The methodology,
+the numbers and the investigation are in [docs/INTERNALS.md](docs/INTERNALS.md#performance). Read the warning there before running load tests.
 
 ## Layout
 

@@ -33,6 +33,12 @@ spec:
           protocol: UDP
         - port: 53
           protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 4318
     - ports:
         - port: 5432
     - ports:

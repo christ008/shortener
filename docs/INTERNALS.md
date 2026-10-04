@@ -92,8 +92,11 @@ threads. Concurrency against the database is bounded by the Hikari pool (10 conn
 
 - Throughput is capped by how fast 10 connections can serve queries, not by threads. The benchmark confirms the pool is
   what saturates first on the JVM, which is why redirects are cached.
-- Virtual threads make it easy to accept far more concurrent requests than the pool can serve. Each waiting request holds
-  memory (see [Performance](#performance)), so concurrency should be bounded at the edge rather than left unlimited.
+- Virtual threads make it easy to accept far more concurrent requests than the pool can serve. Each open connection
+  holds about 150 KB of Tomcat buffers on the heap, so concurrency is bounded where it enters: Tomcat accepts at most
+  `server.tomcat.max-connections` (500) connections and queues `accept-count` (100) more, and the rest are refused. That
+  sheds load instead of exhausting memory (see [Performance](#performance)). Size it so that connections times 150 KB
+  stays well inside the heap, and change it with `SERVER_TOMCAT_MAXCONNECTIONS`.
 
 Shutdown is graceful: a 5 s `preStop` sleep lets the endpoint be removed from the Service, then Spring waits up to 20 s
 for in-flight requests, inside the 30 s termination grace period.
@@ -205,8 +208,23 @@ rather than conformance.
   stays empty until traffic arrives, because Prometheus has no series for an event that has not happened.
 - **Logs**: structured ECS JSON in Kubernetes.
 - **Health**: liveness, and readiness that includes the database, on the management port.
+- **Traces**: Micrometer Tracing with the OpenTelemetry bridge, exported over OTLP/HTTP. Every request has a server span
+  named by its route (`http get /{shortCode}`), joined to the caller's trace through the W3C `traceparent` header. Two
+  child spans mark the database calls: `shortlink.load` for a redirect that missed the cache, so its absence on a
+  redirect means a cache hit, and `shortlink.insert` for each attempt to store a link, so a collision shows as a second
+  insert. They are also timers (`shortlink_load_seconds`, `shortlink_insert_seconds`). Trace and span ids are in the
+  logs. Spring Security's per-filter observations are switched off, because they would add a span per filter per request.
+  Nothing is sampled by default (`management.tracing.sampling.probability: 0.0`), so running without a collector logs no
+  export errors; set the rate, and optionally `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT` (default
+  `http://localhost:4318/v1/traces`), to turn it on. The exporter is always built in, and the endpoint has a default in
+  `application.yaml`, because in a native image Spring decides at build time which beans exist: the exporter needs the
+  endpoint property to be present when the image is built. Switching the exporter off with a property, or supplying the
+  endpoint only at run time, compiles it out and the image exports nothing without any error. Environment variables
+  still override the value at run time. The OTLP exporters for logs and metrics are off. Locally, the compose `observability` profile runs Tempo, wired to Grafana as a
+  data source; start the app with `MANAGEMENT_TRACING_SAMPLING_PROBABILITY=1.0` to see every request. The production
+  overlay samples 5% and exports to `otel-collector.monitoring:4318` through the optional `shortener-telemetry` config map.
 
-Not done: tracing, alert rules, and metrics from the Envoy proxies.
+Not done: alert rules, metrics from the Envoy proxies, and Envoy's own spans, so a trace starts at the application.
 
 ## Native image
 
@@ -286,7 +304,7 @@ native image was not benchmarked with the cache. Results are in `perf/results/20
 On the JVM, a database read per redirect and the pool of 10 are the limit: at 10,000 requests a second the pool times
 out while CPU stays low. These figures predate the [redirect cache](#redirect-cache), which removes that read.
 
-### Native image under overload: diagnosis
+### Native image under overload: diagnosis and fix
 
 The native image loses its heap at 5,000 requests a second. It was profiled with JFR, GC logging and a heap dump.
 
@@ -306,10 +324,30 @@ The native image loses its heap at 5,000 requests a second. It was profiled with
   observation plumbing, including one observation per Spring Security filter, is another visible share of allocation and
   CPU.
 
-Not yet verified: that bounding connections fixes it (`server.tomcat.max-connections`, or the same cap at the gateway),
-and the effect of turning off Spring Security observations
-(`management.observations.enable.spring.security=false`). Both are cheap to test. Tooling: `perf/profile.sh`,
-`perf/gc-summary.py` and `perf/hprof-histogram.py`.
+Two changes closed it, each measured on the native image with the same limits:
+
+- **The redirect cache.** Without the database read the native image holds its latency, so clients do not pile up. At
+  5,000 requests a second it now serves 4,936 a second with no failures, a redirect p99 of 1.0 ms and a peak of 142 MiB,
+  where it failed. The connection limit made no difference at that load: limits of 8192, 1000, 500 and 250 all gave the
+  same throughput and latency.
+- **The connection limit.** It matters beyond capacity. At 12,000 requests a second, about 2.4 times what two cores
+  sustain:
+
+  | | no limit (8192) | `max-connections: 500` |
+  |---|---|---|
+  | peak memory | 514 MiB (the limit) | 208 MiB |
+  | time in GC, longest pause | 14.3%, 2.6 s | 3.9%, 60 ms |
+  | `OutOfMemoryError` | 3 | 0 |
+  | redirect p99 (server) | 4,144 ms | 1.0 ms |
+  | requests served, failed | 5,837 a second, 0.08% | 4,605 a second, 1.08% |
+
+  The limit gives up some throughput and fails about 1% of requests, which is the load it sheds, and in return memory and
+  latency stay flat. Creates still queue for seconds at that load because the CPU is saturated, so a limit is protection,
+  not extra capacity.
+
+Not yet tested: turning off Spring Security observations (`management.observations.enable.spring.security=false`), which
+profiling showed as a visible share of allocation. Tooling: `perf/profile.sh`, `perf/gc-summary.py`,
+`perf/hprof-histogram.py` and `perf/tune-connections.sh`.
 
 ### Running load tests safely
 
@@ -349,7 +387,8 @@ eviction on disable. See [Redirect cache](#redirect-cache) for the behaviour and
 
 - A link disabled on one instance can still redirect on the others for up to the cache TTL (30 seconds by default).
 - Rate limits and the DPoP replay cache are per pod; one DPoP key is capped at about 30 requests a second.
-- The native image degrades badly under overload (see above); concurrency is not bounded.
+- Beyond capacity (about 5,800 requests a second on two cores) the service sheds load rather than slowing everything
+  down, but creates still queue for seconds; the Envoy proxies do not yet limit connections to match Tomcat's.
 - The Envoy Gateway, cert-manager and Prometheus operator parts are untested on a real cluster.
-- No tracing, alert rules or Envoy metrics; no CI.
+- No alert rules, Envoy metrics or Envoy spans; no CI.
 - The dev keys and secrets are committed deliberately and are public.

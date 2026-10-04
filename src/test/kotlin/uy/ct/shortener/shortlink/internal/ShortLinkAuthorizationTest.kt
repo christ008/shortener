@@ -1,6 +1,7 @@
 package uy.ct.shortener.shortlink.internal
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.micrometer.observation.ObservationRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -50,6 +51,9 @@ class ShortLinkAuthorizationTest {
 
         @Bean
         fun redirectCache() = RedirectCache(RedirectCacheProperties(), SimpleMeterRegistry())
+
+        @Bean
+        fun observations(): ObservationRegistry = ObservationRegistry.NOOP
 
         @Bean
         fun generator(): ShortCodeGenerator {

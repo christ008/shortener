@@ -1,0 +1,7 @@
+{"variant":"maxconn-8192","image":"shortener:0.15.0","ready_ms":373,"idle_mem":"92.11MiB","started":"Started ShortenerApplicationKt in 0.258 seconds","runs":[
+{"name":"r12000","rate":12000,"duration":"45s","create_share":0.0015,"start":1791082590,"end":1791082636,
+ "server":{"redirect_p50":0.0005089880524192287,"redirect_p95":0.0009670772995965344,"redirect_p99":4.143589459807614,
+ "create_p50":1.6796401532231247,"create_p99":10.30608034566146,
+ "hikari_acquire_max":10.894029349,"hikari_timeouts":204.0402,
+ "gc_pause_seconds":null,"process_cpu_avg":0.7514807981234453}}
+]}

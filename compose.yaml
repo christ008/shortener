@@ -35,3 +35,12 @@ services:
     volumes:
       - './deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro'
       - './deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro'
+  tempo:
+    image: 'grafana/tempo:2.8.2'
+    profiles: ['observability']
+    command: ['-config.file=/etc/tempo/tempo.yaml']
+    network_mode: host
+    tmpfs:
+      - '/var/tempo:mode=1777'
+    volumes:
+      - './deploy/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro'

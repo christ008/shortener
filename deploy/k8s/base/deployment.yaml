@@ -48,6 +48,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: shortener-idp
+            - configMapRef:
+                name: shortener-telemetry
+                optional: true
           env:
             - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
               value: ecs

@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "uy.ct"
-version = "0.16.0"
+version = "0.17.0"
 description = "shortener"
 
 java {
@@ -25,6 +25,7 @@ extra["testcontainersVersion"] = "2.0.5"
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-opentelemetry")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-data-commons")
     implementation("org.springframework.data:spring-data-commons")
@@ -45,6 +46,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
     testImplementation("org.springframework.boot:spring-boot-starter-jdbc-test")
+    testImplementation("io.micrometer:micrometer-observation-test")
     testImplementation("org.springframework.boot:spring-boot-starter-security-test")
     testImplementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server-test")
     testImplementation("org.springframework.boot:spring-boot-starter-validation-test")

@@ -1,0 +1,7 @@
+{"variant":"maxconn-250","image":"shortener:0.15.0","ready_ms":435,"idle_mem":"108.4MiB","started":"Started ShortenerApplicationKt in 0.269 seconds","runs":[
+{"name":"r5000","rate":5000,"duration":"60s","create_share":0.003,"start":1791082446,"end":1791082507,
+ "server":{"redirect_p50":0.000502737906450345,"redirect_p95":0.0009552020222556556,"redirect_p99":0.0009954210547716833,
+ "create_p50":0.0032640434689440996,"create_p99":0.046694489761666576,
+ "hikari_acquire_max":0.124156159,"hikari_timeouts":0,
+ "gc_pause_seconds":null,"process_cpu_avg":0.5400320699708455}}
+]}

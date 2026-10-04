@@ -1,5 +1,7 @@
 package uy.ct.shortener.shortlink.internal
 
+import io.micrometer.observation.Observation
+import io.micrometer.observation.ObservationRegistry
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Slice
 import org.springframework.stereotype.Service
@@ -37,13 +39,14 @@ class DefaultShortLinkService(
     private val codeGenerator: ShortCodeGenerator,
     private val manageableLinks: ManageableLinks,
     private val redirectCache: RedirectCache,
+    private val observations: ObservationRegistry,
 ) : ShortLinkService {
 
     @MayCreate
     override fun shorten(targetUrl: String, createdBy: String): ShortLink {
         val uri = parseTargetUrl(targetUrl)
         repeat(MAX_GENERATION_ATTEMPTS) {
-            repository.insertIfAbsent(codeGenerator.generate(), uri, createdBy)?.let { return it }
+            insert(codeGenerator.generate(), uri, createdBy)?.let { return it }
         }
         throw ShortCodeExhaustionException(MAX_GENERATION_ATTEMPTS)
     }
@@ -52,7 +55,7 @@ class DefaultShortLinkService(
     override fun claim(shortCode: ShortCode, targetUrl: String, createdBy: String): ShortLink {
         val uri = parseTargetUrl(targetUrl)
         if (shortCode.value in RESERVED_CODES) throw ShortCodeUnavailableException(shortCode)
-        return repository.insertIfAbsent(shortCode, uri, createdBy) ?: throw ShortCodeUnavailableException(shortCode)
+        return insert(shortCode, uri, createdBy) ?: throw ShortCodeUnavailableException(shortCode)
     }
 
     override fun resolve(shortCode: ShortCode): ShortLink {
@@ -60,7 +63,7 @@ class DefaultShortLinkService(
         var found: ShortLink? = null
         redirectCache.find(shortCode) {
             loaded = true
-            found = repository.findByShortCode(it)
+            found = observed("shortlink.load") { repository.findByShortCode(it) }
             found?.takeUnless { link -> link.isDisabled }
         }?.let { return it }
         val link = (if (loaded) found else repository.findByShortCode(shortCode)) ?: throw ShortLinkNotFoundException(shortCode)
@@ -81,6 +84,12 @@ class DefaultShortLinkService(
         repository.disable(shortCode, disabledBy)
         redirectCache.evict(shortCode)
     }
+
+    private fun insert(shortCode: ShortCode, uri: URI, createdBy: String): ShortLink? =
+        observed("shortlink.insert") { repository.insertIfAbsent(shortCode, uri, createdBy) }
+
+    private fun <T> observed(name: String, block: () -> T): T =
+        Observation.createNotStarted(name, observations).observe(block)
 
     private fun parseTargetUrl(raw: String): URI {
         val uri = try {
