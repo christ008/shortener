@@ -4,6 +4,7 @@ import org.springframework.beans.factory.config.BeanDefinition
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.ImportRuntimeHints
 import org.springframework.context.annotation.Role
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler
 import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler
@@ -14,6 +15,7 @@ import org.springframework.security.access.expression.method.MethodSecurityExpre
  * Security asks for it so it does not force other beans to initialise early.
  */
 @Configuration(proxyBeanMethods = false)
+@ImportRuntimeHints(AuthorizationRuntimeHints::class)
 class ShortLinkMethodSecurityConfiguration {
 
     companion object {

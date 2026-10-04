@@ -3,9 +3,12 @@ kind: Kustomization
 # Local demo on kind only. The Postgres and Keycloak here are throwaway and their credentials are public on
 # purpose. Envoy Gateway must be installed first:
 #   kubectl apply --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.2/install.yaml
-# Keycloak runs in dev mode with the realm from deploy/keycloak; get a token for the demo client with
-#   curl -s localhost:8088/realms/shortener/protocol/openid-connect/token -d grant_type=client_credentials \
-#     -d client_id=demo-client -d client_secret=demo-client-secret-dev-only
+# Keycloak runs in dev mode with the realm from deploy/keycloak. Its clients authenticate with signed assertions
+# and get DPoP-bound tokens, so the API takes the DPoP scheme only; the dev keys are in deploy/keycloak/dev-keys.
+# Call the API as the demo client with
+#   TOKEN_URL=http://localhost:8088/realms/shortener/protocol/openid-connect/token \
+#     java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+#     GET http://localhost:8088/api/short-links
 resources:
   - ../../base
   - ../../../keycloak

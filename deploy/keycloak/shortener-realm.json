@@ -127,8 +127,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "demo-client-secret-dev-only",
+      "clientAuthenticatorType": "client-jwt",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -139,7 +138,14 @@
         "shortlinks:read",
         "shortlinks:delete"
       ],
-      "optionalClientScopes": []
+      "optionalClientScopes": [],
+      "attributes": {
+        "token.endpoint.auth.signing.alg": "ES256",
+        "use.jwks.string": "true",
+        "jwks.string": "{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"demo-client-key-1\",\"alg\":\"ES256\",\"use\":\"sig\",\"x\":\"2GPIejG3fDsmZVRgfG3gUiD2ENfJ4qdcpwsREdjAtqI\",\"y\":\"cpjP0BxNBLcnQaz2dvXYd6oTzrQgVaI4nfAeMGmSncs\"}]}",
+        "dpop.bound.access.tokens": "true",
+        "access.token.header.type.rfc9068": "true"
+      }
     },
     {
       "clientId": "other-client",
@@ -147,8 +153,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "other-client-secret-dev-only",
+      "clientAuthenticatorType": "client-jwt",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -158,7 +163,14 @@
         "shortlinks:read",
         "shortlinks:delete"
       ],
-      "optionalClientScopes": []
+      "optionalClientScopes": [],
+      "attributes": {
+        "token.endpoint.auth.signing.alg": "ES256",
+        "use.jwks.string": "true",
+        "jwks.string": "{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"other-client-key-1\",\"alg\":\"ES256\",\"use\":\"sig\",\"x\":\"MrQtnRcdKyysEjQxzgff11BwgCQo4w9kJ1nAn5mrIcE\",\"y\":\"dec5ZiLjSWjEuf04F65F2yvK-mxY0yQ4EoDwcCVulJ0\"}]}",
+        "dpop.bound.access.tokens": "true",
+        "access.token.header.type.rfc9068": "true"
+      }
     },
     {
       "clientId": "admin-client",
@@ -166,8 +178,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "admin-client-secret-dev-only",
+      "clientAuthenticatorType": "client-jwt",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -175,7 +186,14 @@
       "defaultClientScopes": [
         "shortlinks:admin"
       ],
-      "optionalClientScopes": []
+      "optionalClientScopes": [],
+      "attributes": {
+        "token.endpoint.auth.signing.alg": "ES256",
+        "use.jwks.string": "true",
+        "jwks.string": "{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"admin-client-key-1\",\"alg\":\"ES256\",\"use\":\"sig\",\"x\":\"q81zszivr-_6C1oHXwRr0VaGQe7ypmBmO5OLjtjlOCY\",\"y\":\"0ckqiOQJKPN9RPI1rgNtPvW3aPpw_kqFGIP6pxAHaIc\"}]}",
+        "dpop.bound.access.tokens": "true",
+        "access.token.header.type.rfc9068": "true"
+      }
     },
     {
       "clientId": "no-scope-client",
@@ -183,8 +201,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "no-scope-client-secret-dev-only",
+      "clientAuthenticatorType": "client-jwt",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -204,7 +221,14 @@
             "introspection.token.claim": "true"
           }
         }
-      ]
+      ],
+      "attributes": {
+        "token.endpoint.auth.signing.alg": "ES256",
+        "use.jwks.string": "true",
+        "jwks.string": "{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"no-scope-client-key-1\",\"alg\":\"ES256\",\"use\":\"sig\",\"x\":\"IMT-2XRIvTP1YRubfHx_aCVpeEFwW9VkbJDCXxUqcFg\",\"y\":\"NTJW816ca7c5jy0bx6_W67wPFBTH3aylhR-8k2yM-bw\"}]}",
+        "dpop.bound.access.tokens": "true",
+        "access.token.header.type.rfc9068": "true"
+      }
     }
   ]
 }

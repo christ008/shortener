@@ -22,7 +22,7 @@ generatorOptions:
 images:
   - name: shortener
     newName: registry.example.com/shortener
-    newTag: 0.13.0
+    newTag: 0.14.0
 patches:
   - target:
       kind: Deployment

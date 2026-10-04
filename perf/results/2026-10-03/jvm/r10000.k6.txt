@@ -1,0 +1,49 @@
+time="2026-10-03T23:47:11Z" level=warning msg="Insufficient VUs, reached 3000 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=mixed
+
+
+  █ THRESHOLDS 
+
+    create_latency
+    ✗ 'p(99)<250' p(99)=330.17ms
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.33%
+
+    redirect_latency
+    ✗ 'p(99)<100' p(99)=3.37s
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 50557  832.38847/s
+    checks_succeeded...: 99.65% 50385 out of 50557
+    checks_failed......: 0.34%  172 out of 50557
+
+    ✗ redirected
+      ↳  99% — ✓ 50315 / ✗ 172
+    ✓ created
+
+    CUSTOM
+    create_latency.................: avg=32.31ms  min=1.8ms    med=10.54ms max=734.06ms p(90)=65.51ms  p(95)=93.57ms 
+    redirect_latency...............: avg=121.7ms  min=170.3µs  med=6.13ms  max=9.16s    p(90)=136.92ms p(95)=664.76ms
+
+    HTTP
+    http_req_duration..............: avg=120.87ms min=170.3µs  med=6ms     max=9.16s    p(90)=136.46ms p(95)=661.49ms
+      { expected_response:true }...: avg=104.69ms min=170.3µs  med=5.94ms  max=4.82s    p(90)=134.2ms  p(95)=637.01ms
+    http_req_failed................: 0.33%  172 out of 50858
+    http_reqs......................: 50858  837.344241/s
+
+    EXECUTION
+    dropped_iterations.............: 246441 4057.492473/s
+    iteration_duration.............: avg=126.29ms min=208.03µs med=6.35ms  max=10.18s   p(90)=138.97ms p(95)=676.51ms
+    iterations.....................: 50557  832.38847/s
+    vus............................: 3000   min=3            max=3000
+    vus_max........................: 3000   min=274          max=3000
+
+    NETWORK
+    data_received..................: 20 MB  321 kB/s
+    data_sent......................: 4.8 MB 79 kB/s
+
+
+
+time="2026-10-03T23:48:03Z" level=error msg="thresholds on metrics 'create_latency, redirect_latency' have been crossed"

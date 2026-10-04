@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "uy.ct"
-version = "0.13.0"
+version = "0.14.0"
 description = "shortener"
 
 java {
@@ -81,8 +81,10 @@ tasks.withType<Test> {
 }
 
 tasks.bootBuildImage {
-    imageName = "shortener:${project.version}"
+    val jvmImage = providers.gradleProperty("jvmImage").isPresent
+    imageName = "shortener:${project.version}${if (jvmImage) "-jvm" else ""}"
     environment = mapOf(
+        "BP_NATIVE_IMAGE" to (!jvmImage).toString(),
         "BP_NATIVE_IMAGE_BUILD_ARGUMENTS" to "-march=compatibility -J-Xmx7g",
         "BP_OCI_VERSION" to project.version.toString(),
     )

@@ -1,0 +1,45 @@
+
+
+  █ THRESHOLDS 
+
+    create_latency
+    ✓ 'p(99)<250' p(99)=7.8ms
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+    redirect_latency
+    ✓ 'p(99)<100' p(99)=2.15ms
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 90000   1476.170332/s
+    checks_succeeded...: 100.00% 90000 out of 90000
+    checks_failed......: 0.00%   0 out of 90000
+
+    ✓ redirected
+    ✓ created
+
+    CUSTOM
+    create_latency.................: avg=2.7ms    min=1.91ms   med=2.39ms   max=23.08ms p(90)=3.38ms   p(95)=4.18ms  
+    redirect_latency...............: avg=397.09µs min=180.1µs  med=312.83µs max=24.79ms p(90)=531.81µs p(95)=671.67µs
+
+    HTTP
+    http_req_duration..............: avg=427.51µs min=180.1µs  med=314.39µs max=24.79ms p(90)=552.6µs  p(95)=781.29µs
+      { expected_response:true }...: avg=427.51µs min=180.1µs  med=314.39µs max=24.79ms p(90)=552.6µs  p(95)=781.29µs
+    http_req_failed................: 0.00%  0 out of 90301
+    http_reqs......................: 90301  1481.107302/s
+
+    EXECUTION
+    iteration_duration.............: avg=572.53µs min=217.35µs med=371.26µs max=53.79ms p(90)=637.35µs p(95)=904.64µs
+    iterations.....................: 90000  1476.170332/s
+    vus............................: 1      min=0          max=7  
+    vus_max........................: 200    min=200        max=200
+
+    NETWORK
+    data_received..................: 35 MB  569 kB/s
+    data_sent......................: 8.9 MB 146 kB/s
+
+
+

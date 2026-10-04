@@ -1,0 +1,47 @@
+
+
+  █ THRESHOLDS 
+
+    create_latency
+    ✗ 'p(99)<250' p(99)=1.08s
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+    redirect_latency
+    ✗ 'p(99)<100' p(99)=1.09s
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 57663   1783.021178/s
+    checks_succeeded...: 100.00% 57663 out of 57663
+    checks_failed......: 0.00%   0 out of 57663
+
+    ✓ redirected
+    ✓ created
+
+    CUSTOM
+    create_latency.................: avg=50.72ms min=2.35ms   med=3.55ms   max=1.92s p(90)=61.8ms   p(95)=299.18ms
+    redirect_latency...............: avg=63.55ms min=179.31µs med=390.06µs max=3.11s p(90)=158.9ms  p(95)=424.59ms
+
+    HTTP
+    http_req_duration..............: avg=63.2ms  min=179.31µs med=393.28µs max=3.11s p(90)=157.15ms p(95)=421.35ms
+      { expected_response:true }...: avg=63.2ms  min=179.31µs med=393.28µs max=3.11s p(90)=157.15ms p(95)=421.35ms
+    http_req_failed................: 0.00%  0 out of 57964
+    http_reqs......................: 57964  1792.328522/s
+
+    EXECUTION
+    dropped_iterations.............: 2337   72.263332/s
+    iteration_duration.............: avg=65.71ms min=219.48µs med=459.61µs max=3.15s p(90)=171.35ms p(95)=439.98ms
+    iterations.....................: 57663  1783.021178/s
+    vus............................: 0      min=0          max=1023
+    vus_max........................: 1285   min=200        max=1285
+
+    NETWORK
+    data_received..................: 22 MB  687 kB/s
+    data_sent......................: 5.4 MB 168 kB/s
+
+
+
+time="2026-10-03T23:44:44Z" level=error msg="thresholds on metrics 'create_latency, redirect_latency' have been crossed"

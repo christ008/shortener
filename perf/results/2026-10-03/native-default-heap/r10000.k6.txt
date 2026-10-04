@@ -1,0 +1,38 @@
+time="2026-10-04T00:01:29Z" level=warning msg="Request Failed" error="Post \"http://localhost:8080/api/short-links\": dial: i/o timeout"
+
+
+  █ THRESHOLDS 
+
+    create_latency
+    ✓ 'p(99)<250' p(99)=0s
+
+    http_req_failed
+    ✗ 'rate<0.01' rate=50.00%
+
+    redirect_latency
+    ✓ 'p(99)<100' p(99)=0s
+
+
+  █ TOTAL RESULTS 
+
+    CUSTOM
+    create_latency.................: avg=0s      min=0s      med=0s      max=0s      p(90)=0s      p(95)=0s      p(99)=0s     
+    redirect_latency...............: avg=0s      min=0s      med=0s      max=0s      p(90)=0s      p(95)=0s      p(99)=0s     
+
+    HTTP
+    http_req_duration..............: avg=6.42ms  min=0s      med=6.42ms  max=12.85ms p(90)=11.57ms p(95)=12.21ms p(99)=12.72ms
+      { expected_response:true }...: avg=12.85ms min=12.85ms med=12.85ms max=12.85ms p(90)=12.85ms p(95)=12.85ms p(99)=12.85ms
+    http_req_failed................: 50.00% 1 out of 2
+    http_reqs......................: 2      0.033333/s
+
+    EXECUTION
+    vus............................: 0      min=0      max=0  
+    vus_max........................: 200    min=200    max=200
+
+    NETWORK
+    data_received..................: 1.5 kB 24 B/s
+    data_sent......................: 1.2 kB 21 B/s
+
+
+
+time="2026-10-04T00:01:59Z" level=error msg="setup() execution timed out after 60 seconds" hint="You can increase the time limit via the setupTimeout option"

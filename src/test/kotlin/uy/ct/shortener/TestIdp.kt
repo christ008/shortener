@@ -1,5 +1,6 @@
 package uy.ct.shortener
 
+import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.RSASSASigner
@@ -26,7 +27,8 @@ import java.util.Date
  * RSA key at a JWKS endpoint, so the application's real token validation runs against it, and
  * signs access tokens with the private half. [token] can produce valid tokens and each kind of
  * invalid one: another signing key, the wrong issuer or audience, an expired token, or one
- * missing its client or scope. The JDK HTTP server behind it uses a non-daemon thread, so [stop]
+ * missing its client or scope, with the wrong JOSE type, or bound to a client key by thumbprint
+ * ([jkt]). The JDK HTTP server behind it uses a non-daemon thread, so [stop]
  * must run when the test session ends or the test JVM never exits; [TestIdpShutdown] does that.
  */
 object TestIdp {
@@ -60,6 +62,8 @@ object TestIdp {
         issuer: String = ISSUER,
         expiresIn: Duration = Duration.ofMinutes(5),
         key: RSAKey = signingKey,
+        type: String? = "at+jwt",
+        jkt: String? = null,
     ): String {
         val now = Instant.now()
         val claims = JWTClaimsSet.Builder()
@@ -71,9 +75,10 @@ object TestIdp {
             .apply {
                 client?.let { claim("azp", it) }
                 scope?.let { claim("scope", it) }
+                jkt?.let { claim("cnf", mapOf("jkt" to it)) }
             }
             .build()
-        return SignedJWT(JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.keyID).build(), claims)
+        return SignedJWT(JWSHeader.Builder(JWSAlgorithm.RS256).type(type?.let(::JOSEObjectType)).keyID(key.keyID).build(), claims)
             .apply { sign(RSASSASigner(key)) }
             .serialize()
     }

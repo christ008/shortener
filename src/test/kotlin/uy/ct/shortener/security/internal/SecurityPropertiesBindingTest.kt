@@ -70,4 +70,15 @@ class SecurityPropertiesBindingTest {
         assertThat(properties.rateLimit.perClient.period.toMinutes()).isEqualTo(1)
         assertThat(properties.rateLimit.perIp.capacity).isEqualTo(300)
     }
+
+    @Test
+    fun `requires sender-constrained tokens of type at+jwt by default, and binds changes from the environment`() {
+        val defaults = bindSecurity()
+        val relaxed = bindSecurity("SHORTENER_SECURITY_DPOP_REQUIRED" to "false", "SHORTENER_SECURITY_ACCESSTOKENTYPE" to "")
+
+        assertThat(defaults.dpop.required).isTrue
+        assertThat(defaults.accessTokenType).isEqualTo("at+jwt")
+        assertThat(relaxed.dpop.required).isFalse
+        assertThat(relaxed.accessTokenType).isEmpty()
+    }
 }

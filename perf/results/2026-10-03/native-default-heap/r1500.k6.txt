@@ -1,0 +1,45 @@
+
+
+  █ THRESHOLDS 
+
+    create_latency
+    ✓ 'p(99)<250' p(99)=24.76ms
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+    redirect_latency
+    ✓ 'p(99)<100' p(99)=15.42ms
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 90001   1482.247621/s
+    checks_succeeded...: 100.00% 90001 out of 90001
+    checks_failed......: 0.00%   0 out of 90001
+
+    ✓ redirected
+    ✓ created
+
+    CUSTOM
+    create_latency.................: avg=3.71ms   min=1.94ms   med=2.48ms   max=49.92ms p(90)=5.13ms   p(95)=8.77ms p(99)=24.76ms
+    redirect_latency...............: avg=840.9µs  min=300.67µs med=417.19µs max=48.39ms p(90)=763.28µs p(95)=1.66ms p(99)=15.42ms
+
+    HTTP
+    http_req_duration..............: avg=873.3µs  min=300.67µs med=418.57µs max=49.92ms p(90)=846.73µs p(95)=1.84ms p(99)=15.49ms
+      { expected_response:true }...: avg=873.3µs  min=300.67µs med=418.57µs max=49.92ms p(90)=846.73µs p(95)=1.84ms p(99)=15.49ms
+    http_req_failed................: 0.00%  0 out of 90302
+    http_reqs......................: 90302  1487.204861/s
+
+    EXECUTION
+    iteration_duration.............: avg=948.47µs min=339.23µs med=472.15µs max=54.55ms p(90)=951.45µs p(95)=1.91ms p(99)=15.84ms
+    iterations.....................: 90001  1482.247621/s
+    vus............................: 0      min=0          max=5  
+    vus_max........................: 200    min=200        max=200
+
+    NETWORK
+    data_received..................: 35 MB  571 kB/s
+    data_sent......................: 8.9 MB 147 kB/s
+
+
+
