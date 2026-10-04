@@ -1,0 +1,19 @@
+{"variant":"native","image":"shortener:0.11.0","ready_ms":732,"idle_mem":"209.9MiB","started":"Started ShortenerApplicationKt in 0.429 seconds","runs":[
+{"name":"r1500","rate":1500,"duration":"60s","create_share":0.01,"start":1791077232,"end":1791077293,
+ "server":{"redirect_p50":0.0005255850783037129,"redirect_p95":0.0009986116487770542,"redirect_p99":0.004580715801599979,
+ "create_p50":0.0022330391643700788,"create_p99":0.010114531536666586,
+ "hikari_acquire_max":0.046346008,"hikari_timeouts":0,
+ "gc_pause_seconds":null,"process_cpu_avg":0.3005546218487395}}
+,
+{"name":"r5000","rate":5000,"duration":"60s","create_share":0.003,"start":1791077302,"end":1791077367,
+ "server":{"redirect_p50":0.0009347884892020304,"redirect_p95":0.09621347090427053,"redirect_p99":3.0180830726231096,
+ "create_p50":0.002806364260589241,"create_p99":0.19385503519928704,
+ "hikari_acquire_max":21.489753583,"hikari_timeouts":3424.0201142857145,
+ "gc_pause_seconds":null,"process_cpu_avg":0.5857773181736463}}
+,
+{"name":"r10000","rate":10000,"duration":"30s","create_share":0.0015,"start":1791077376,"end":1791077411,
+ "server":{"redirect_p50":9.886427824149068,"redirect_p95":14.730464264040643,"redirect_p99":15.569256445374998,
+ "create_p50":11.739577274,"create_p99":15.6050478395,
+ "hikari_acquire_max":22.069272737,"hikari_timeouts":6016.5,
+ "gc_pause_seconds":null,"process_cpu_avg":0.18384920634920637}}
+]}

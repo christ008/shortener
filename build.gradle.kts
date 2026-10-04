@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "uy.ct"
-version = "0.14.0"
+version = "0.15.0"
 description = "shortener"
 
 java {
@@ -81,11 +81,10 @@ tasks.withType<Test> {
 }
 
 tasks.bootBuildImage {
-    val jvmImage = providers.gradleProperty("jvmImage").isPresent
-    imageName = "shortener:${project.version}${if (jvmImage) "-jvm" else ""}"
+    val profiling = providers.gradleProperty("nativeProfiling").isPresent
+    imageName = "shortener:${project.version}${if (profiling) "-profiling" else ""}"
     environment = mapOf(
-        "BP_NATIVE_IMAGE" to (!jvmImage).toString(),
-        "BP_NATIVE_IMAGE_BUILD_ARGUMENTS" to "-march=compatibility -J-Xmx7g",
+        "BP_NATIVE_IMAGE_BUILD_ARGUMENTS" to "-march=compatibility -J-Xmx7g${if (profiling) " --enable-monitoring=jfr,heapdump" else ""}",
         "BP_OCI_VERSION" to project.version.toString(),
     )
 }
