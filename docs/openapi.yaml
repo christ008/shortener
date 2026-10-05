@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Shortener API
-  version: 0.19.0
+  version: 0.18.1
   summary: Create, list and disable short links, and follow them.
   description: |
     Every operation under `/api` needs an access token from the identity provider, and tokens are **bound to the
@@ -101,25 +101,22 @@ paths:
       summary: List short links
       description: |
         A client sees its own links, newest first. An administrator sees every client's links, or one client's with
-        `createdBy`. Pages are read by position and not by number: each response says where the next one starts in
-        `nextCursor`, which is passed back unchanged as `cursor`, and is `null` on the last page. A page costs the same
-        however far into the list it is, and links created while paging do not shift the pages that follow. The `page`
-        parameter of earlier versions, and sorting by anything but creation time, are refused with `400`.
+        `createdBy`. The page says whether another follows (`hasNext`) without counting every link.
       security:
         - dpop: ['shortlinks:read']
         - dpop: ['shortlinks:admin']
       parameters:
         - $ref: '#/components/parameters/DPoP'
-        - name: cursor
+        - name: page
           in: query
-          description: >-
-            Where to start, as returned in `nextCursor` of the previous page. Opaque. It belongs to the `sort` it was
-            issued for, and carries no authority: what the caller may see does not depend on it.
+          description: Zero-based page number.
           schema:
-            type: string
+            type: integer
+            minimum: 0
+            default: 0
         - name: size
           in: query
-          description: Links per page. A larger value is lowered to the maximum, and one that is not a number is ignored.
+          description: Links per page.
           schema:
             type: integer
             minimum: 1
@@ -127,12 +124,9 @@ paths:
             default: 50
         - name: sort
           in: query
-          description: >-
-            Links are listed by creation time, the short code breaking ties. `createdAt,desc` is newest first and
-            `createdAt,asc` oldest first; `createdAt` alone means ascending.
+          description: 'Property and direction, `createdAt` or `shortCode`, for example `shortCode,asc`.'
           schema:
             type: string
-            enum: ['createdAt,desc', 'createdAt,asc']
             default: createdAt,desc
         - name: createdBy
           in: query
@@ -316,18 +310,19 @@ components:
           description: Null while the link is active.
     ShortLinkPage:
       type: object
-      required: [items, size, nextCursor]
+      required: [items, page, size, hasNext]
       properties:
         items:
           type: array
           items:
             $ref: '#/components/schemas/ShortLink'
+        page:
+          type: integer
         size:
           type: integer
-          description: The page size that applied, after the maximum was enforced.
-        nextCursor:
-          type: [string, 'null']
-          description: Where the next page starts, to pass back as `cursor`. `null` on the last page.
+        hasNext:
+          type: boolean
+          description: Whether another page follows.
     Problem:
       type: object
       description: An RFC 9457 problem detail.
@@ -345,7 +340,7 @@ components:
 
   responses:
     BadRequest:
-      description: Invalid body, parameter, sort or cursor.
+      description: Invalid body, parameter or sort property.
       content:
         application/problem+json:
           schema:

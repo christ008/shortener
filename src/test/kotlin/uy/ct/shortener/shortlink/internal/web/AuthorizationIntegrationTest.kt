@@ -55,8 +55,6 @@ class AuthorizationIntegrationTest {
     private fun redirectStatus(code: String) =
         restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/$code", String::class.java)
 
-    private fun nextCursorOf(response: ResponseEntity<String>) = Regex(""""nextCursor":"([^"]+)"""").find(response.body!!)?.groupValues?.get(1)
-
     private fun codesIn(response: ResponseEntity<String>) = Regex(""""shortCode":"([^"]+)"""").findAll(response.body!!).map { it.groupValues[1] }.toList()
 
     @Test
@@ -167,87 +165,33 @@ class AuthorizationIntegrationTest {
     }
 
     @Test
-    fun `lists a page at a time by following the cursor, to the end without repeats`() {
+    fun `lists in pages, as Spring's page and size parameters ask, to the end without repeats`() {
         val alice = client()
         val created = (1..5).map { codeOf(create(alice)) }
 
         val seen = mutableListOf<String>()
-        var cursor: String? = null
-        var requests = 0
+        var page = 0
         do {
-            val response = call(HttpMethod.GET, "/api/short-links?size=2" + (cursor?.let { "&cursor=$it" } ?: ""), alice)
+            val response = call(HttpMethod.GET, "/api/short-links?page=${page++}&size=2", alice)
             seen += codesIn(response)
-            cursor = nextCursorOf(response)
-            requests++
-        } while (cursor != null)
+            val hasNext = response.body!!.contains(""""hasNext":true""")
+        } while (hasNext)
 
-        assertThat(seen).containsExactlyElementsOf(created.reversed())
-        assertThat(requests).isEqualTo(3)
+        assertThat(seen).containsExactlyInAnyOrderElementsOf(created).doesNotHaveDuplicates()
+        assertThat(page).isEqualTo(3)
     }
 
     @Test
-    fun `lists oldest first when asked, from the same positions`() {
+    fun `sorts when asked and refuses to sort by a property links cannot be listed by`() {
         val alice = client()
-        val created = (1..3).map { codeOf(create(alice)) }
+        val codes = (1..3).map { codeOf(create(alice)) }.sorted()
 
-        val first = call(HttpMethod.GET, "/api/short-links?size=2&sort=createdAt,asc", alice)
-        val second = call(HttpMethod.GET, "/api/short-links?size=2&sort=createdAt,asc&cursor=${nextCursorOf(first)}", alice)
+        val ascending = codesIn(call(HttpMethod.GET, "/api/short-links?sort=shortCode,asc", alice))
+        val rejected = call(HttpMethod.GET, "/api/short-links?sort=targetUrl,asc", alice)
 
-        assertThat(codesIn(first) + codesIn(second)).containsExactlyElementsOf(created)
-        assertThat(nextCursorOf(second)).isNull()
-    }
-
-    @Test
-    fun `refuses to sort by anything but creation time, and says what it can do`() {
-        val alice = client()
-        create(alice)
-
-        listOf("shortCode,asc", "targetUrl,asc", "createdAt,desc&sort=shortCode,asc").forEach { sort ->
-            val rejected = call(HttpMethod.GET, "/api/short-links?sort=$sort", alice)
-
-            assertThat(rejected.statusCode).describedAs(sort).isEqualTo(HttpStatus.BAD_REQUEST)
-            assertThat(rejected.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
-            assertThat(rejected.body).contains("createdAt,desc", "createdAt,asc")
-        }
-    }
-
-    @Test
-    fun `refuses the page parameter, instead of ignoring it and answering the first page again`() {
-        val alice = client()
-        create(alice)
-
-        val rejected = call(HttpMethod.GET, "/api/short-links?page=1", alice)
-
+        assertThat(ascending).containsExactlyElementsOf(codes)
         assertThat(rejected.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
         assertThat(rejected.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
-        assertThat(rejected.body).contains("nextCursor")
-    }
-
-    @Test
-    fun `refuses a cursor that is not one it issued, or that belongs to the other sort`() {
-        val alice = client()
-        create(alice)
-        create(alice)
-        val issued = nextCursorOf(call(HttpMethod.GET, "/api/short-links?size=1", alice))!!
-
-        assertThat(call(HttpMethod.GET, "/api/short-links?cursor=not-a-cursor", alice).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(call(HttpMethod.GET, "/api/short-links?sort=createdAt,asc&cursor=$issued", alice).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(call(HttpMethod.GET, "/api/short-links?cursor=$issued", alice).statusCode).isEqualTo(HttpStatus.OK)
-    }
-
-    @Test
-    fun `a cursor is only a position, so one client's gives another no access to its links`() {
-        val alice = client()
-        val bob = client()
-        create(alice)
-        create(alice)
-        val bobs = codeOf(create(bob))
-        val alices = nextCursorOf(call(HttpMethod.GET, "/api/short-links?size=1", alice))!!
-
-        val response = call(HttpMethod.GET, "/api/short-links?cursor=$alices", bob)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(codesIn(response)).isSubsetOf(bobs)
     }
 
     @Test
@@ -256,7 +200,7 @@ class AuthorizationIntegrationTest {
         create(alice)
 
         val huge = call(HttpMethod.GET, "/api/short-links?size=100000", alice)
-        val nonsense = call(HttpMethod.GET, "/api/short-links?size=abc", alice)
+        val nonsense = call(HttpMethod.GET, "/api/short-links?size=abc&page=-3", alice)
 
         assertThat(huge.body).contains(""""size":200""")
         assertThat(nonsense.statusCode).isEqualTo(HttpStatus.OK)

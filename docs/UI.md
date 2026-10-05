@@ -20,7 +20,7 @@ here is built yet.
 People sign in, create short links (optionally with a custom code), see their links, and disable them. An administrator
 sees every user's links. The UI is a client of the existing API and adds no server-side logic of its own.
 
-In scope: sign-in and sign-out, create, list with paging and ordering, copy and QR code, disable, error and rate-limit
+In scope: sign-in and sign-out, create, list with paging and sorting, copy and QR code, disable, error and rate-limit
 handling, light and dark themes, a keyboard-usable and responsive layout. Out of scope for now: analytics (the service
 records none), link editing or expiry (the service has neither), teams or shared ownership.
 
@@ -125,9 +125,8 @@ Browser                                   Keycloak                     Envoy -> 
 ## Screens
 
 - **Shell**: header with the signed-in user, theme switch and sign-out; routes under `/app`.
-- **Links** (`/app/links`): a table of short code, target, created, status; paging by following `nextCursor` (next and
-  back-to-start, with no page numbers or jump to the end, because the API pages by position); newest or oldest first; an
-  owner filter for administrators; empty and loading states.
+- **Links** (`/app/links`): a table of short code, target, created, status; paging from `page`, `size`, `hasNext`; sort by
+  created or code; an owner filter for administrators; empty and loading states.
 - **Create**: a modal with a form (target URL, optional custom code shown only when the user holds the `claim` scope),
   validated with the same rules as the API, showing the new short URL with a copy button and a QR code.
 - **Disable**: a confirmation, then the row shows the disabled state; the same action repeated is harmless.

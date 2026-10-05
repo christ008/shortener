@@ -15,9 +15,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.util.UriComponentsBuilder
-import uy.ct.shortener.shortlink.InvalidPagingException
-import uy.ct.shortener.shortlink.InvalidSortException
-import uy.ct.shortener.shortlink.LinkOrder
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkService
 import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
@@ -25,7 +22,7 @@ import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
 /**
  * `POST /api/short-links` creates a link for the authenticated client, under a generated or a
  * custom code (201 with a `Location` header). `GET /api/short-links` lists the client's own links,
- * a page at a time (`size`, `sort` by creation time, and the `cursor` of the previous page), `GET /api/short-links/{shortCode}` reads one, and `DELETE`
+ * a page at a time (`page`, `size` and `sort`), `GET /api/short-links/{shortCode}` reads one, and `DELETE`
  * disables one (204). An administrator reaches every client's links. `GET /{shortCode}` is public
  * and redirects to the target with a 302, so clients don't cache the redirect, or answers 410 once
  * the link is disabled. Errors are returned as problem details.
@@ -55,24 +52,10 @@ class ShortLinkController(
     fun list(
         authentication: Authentication,
         @RequestParam(required = false) createdBy: String?,
-        @RequestParam(required = false) cursor: String?,
-        @RequestParam(required = false) page: String?,
         @SortDefault(sort = ["createdAt"], direction = Sort.Direction.DESC) pageable: Pageable,
     ): ShortLinkPageResponse {
-        if (page != null) throw InvalidPagingException("The page parameter is not supported; follow the nextCursor of each response with the cursor parameter")
-        val order = orderOf(pageable.sort)
-        val after = cursor?.let { ListCursorCodec.decode(it, order) }
         val owner = createdBy ?: authentication.name.takeUnless { authentication.isAdmin() }
-        return ShortLinkPageResponse.from(service.list(owner, order, pageable.pageSize, after), order, pageable.pageSize)
-    }
-
-    private fun orderOf(sort: Sort): LinkOrder {
-        val requested = sort.toList()
-        val only = requested.singleOrNull()
-        if (only == null || only.property != "createdAt") {
-            throw InvalidSortException(requested.joinToString("&") { "${it.property},${it.direction.name.lowercase()}" })
-        }
-        return if (only.isAscending) LinkOrder.OLDEST_FIRST else LinkOrder.NEWEST_FIRST
+        return ShortLinkPageResponse.from(service.list(owner, pageable))
     }
 
     @GetMapping("/api/short-links/{shortCode}")

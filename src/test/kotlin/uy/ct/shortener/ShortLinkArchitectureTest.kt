@@ -50,13 +50,6 @@ class ShortLinkArchitectureTest {
     }
 
     @Test
-    fun `only the web adapter knows Spring Data, whose page size and sort it parses`() {
-        noClasses().that().resideOutsideOfPackage("..internal.web..")
-            .should().dependOnClassesThat().resideInAPackage("org.springframework.data..")
-            .check(classes)
-    }
-
-    @Test
     fun `public api is free of the security framework`() {
         noClasses().that().resideInAPackage("uy.ct.shortener.shortlink")
             .should().dependOnClassesThat().resideInAPackage("org.springframework.security..")

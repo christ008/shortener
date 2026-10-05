@@ -7,13 +7,13 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace
 import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest
 import org.springframework.context.annotation.Import
-import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
 import uy.ct.shortener.TestcontainersConfiguration
-import uy.ct.shortener.shortlink.LinkCursor
-import uy.ct.shortener.shortlink.LinkOrder
-import uy.ct.shortener.shortlink.LinkPage
+import uy.ct.shortener.shortlink.InvalidSortException
 import uy.ct.shortener.shortlink.ShortCode
-import uy.ct.shortener.shortlink.ShortLinkRepository
+import uy.ct.shortener.shortlink.ShortLink
 import java.net.URI
 import java.time.Duration
 import java.time.Instant
@@ -30,27 +30,6 @@ class JdbcShortLinkRepositoryTest {
 
     @Autowired
     lateinit var repository: JdbcShortLinkRepository
-
-    @Autowired
-    lateinit var jdbc: JdbcClient
-
-    /** Inserts with a creation time of the test's choosing; in a test transaction `now()` is the same for every link. */
-    private fun insertAt(code: String, createdAt: String, createdBy: String = "pager") {
-        jdbc.sql("INSERT INTO short_link (short_code, target_url, created_by, created_at) VALUES (:code, 'https://example.com', :by, CAST(:at AS timestamptz))")
-            .param("code", code).param("by", createdBy).param("at", createdAt).update()
-    }
-
-    private fun pages(createdBy: String?, order: LinkOrder, size: Int): List<LinkPage> {
-        val pages = mutableListOf<LinkPage>()
-        var after: LinkCursor? = null
-        do {
-            val page = repository.list(createdBy, order, size, after)
-            pages += page
-            after = page.next
-            check(pages.size < 100) { "the listing does not end" }
-        } while (after != null)
-        return pages
-    }
 
     @Test
     fun `stores a link and finds it by its code`() {
@@ -87,85 +66,56 @@ class JdbcShortLinkRepositoryTest {
     }
 
     @Test
-    fun `lists newest first, a page at a time, without repeating or skipping a link, and only one creator's if asked`() {
-        val times = listOf("2026-03-01 10:00:00+00", "2026-03-01 10:00:07+00", "2026-03-02 00:00:00+00", "2026-02-27 23:59:59+00", "2026-03-05 12:00:00+00", "2026-01-01 00:00:00+00", "2026-03-03 08:30:00+00")
-        times.forEachIndexed { i, at -> insertAt("pg0000$i", at) }
-        insertAt("pgother1", "2026-03-04 00:00:00+00", "someone-else")
+    fun `lists newest first in pages that neither overlap nor skip, optionally only one creator's links`() {
+        val mine = (1..5).map { repository.insertIfAbsent(ShortCode("pg0000$it"), URI.create("https://example.com/$it"), "pager")!! }
+        repository.insertIfAbsent(ShortCode("pgother1"), URI.create("https://example.com/other"), "someone-else")
+        val newestFirst = compareByDescending<ShortLink> { it.createdAt }.thenByDescending { it.shortCode.value }
 
-        val pages = pages("pager", LinkOrder.NEWEST_FIRST, 3)
+        val seen = mutableListOf<ShortLink>()
+        var page = 0
+        do {
+            val slice = repository.list("pager", PageRequest.of(page++, 2))
+            assertThat(slice.content.size).isLessThanOrEqualTo(2)
+            seen += slice.content
+        } while (slice.hasNext())
 
-        assertThat(pages.map { it.items.size }).containsExactly(3, 3, 1)
-        assertThat(pages.flatMap { it.items }.map { it.shortCode.value })
-            .containsExactly("pg00004", "pg00006", "pg00002", "pg00001", "pg00000", "pg00003", "pg00005")
-        assertThat(repository.list(null, LinkOrder.NEWEST_FIRST, 100, null).items.map { it.shortCode }).contains(ShortCode("pgother1"))
+        assertThat(seen).containsExactlyElementsOf(mine.sortedWith(newestFirst))
+        assertThat(repository.list(null, PageRequest.of(0, 100)).content.map { it.shortCode }).contains(ShortCode("pgother1"))
     }
 
     @Test
-    fun `lists oldest first from the other end by the same means`() {
-        listOf("2026-03-01 10:00:00+00", "2026-03-05 12:00:00+00", "2026-01-01 00:00:00+00", "2026-03-03 08:30:00+00", "2026-02-02 02:02:02+00")
-            .forEachIndexed { i, at -> insertAt("ol0000$i", at) }
-
-        val pages = pages("pager", LinkOrder.OLDEST_FIRST, 2)
-
-        assertThat(pages.map { it.items.size }).containsExactly(2, 2, 1)
-        assertThat(pages.flatMap { it.items }.map { it.shortCode.value }).containsExactly("ol00002", "ol00004", "ol00000", "ol00003", "ol00001")
-    }
-
-    @Test
-    fun `breaks ties between links created at the same instant by short code in byte order, so pages never overlap`() {
-        val codes = listOf("aa00001", "Zz00001", "mm00001", "Aa00001", "zz00001", "00000aa")
-        codes.forEach { insertAt(it, "2026-04-01 00:00:00+00") }
-        val inBytes = codes.sorted()
-
-        assertThat(pages("pager", LinkOrder.NEWEST_FIRST, 2).flatMap { it.items }.map { it.shortCode.value }).containsExactlyElementsOf(inBytes.reversed())
-        assertThat(pages("pager", LinkOrder.OLDEST_FIRST, 2).flatMap { it.items }.map { it.shortCode.value }).containsExactlyElementsOf(inBytes)
-    }
-
-    @Test
-    fun `says another page follows only when one does, and never leads to an empty page`() {
+    fun `says another page follows only when one does, without counting`() {
         listOf("ex00001", "ex00002").forEach { repository.insertIfAbsent(ShortCode(it), URI.create("https://example.com"), "exact") }
 
-        val whole = repository.list("exact", LinkOrder.NEWEST_FIRST, 2, null)
-        val half = repository.list("exact", LinkOrder.NEWEST_FIRST, 1, null)
-
-        assertThat(whole.items).hasSize(2)
-        assertThat(whole.next).isNull()
-        assertThat(half.next).isEqualTo(LinkCursor(half.items.single().createdAt, half.items.single().shortCode))
-        val last = repository.list("exact", LinkOrder.NEWEST_FIRST, 1, half.next)
-        assertThat(last.items).hasSize(1)
-        assertThat(last.next).isNull()
-        assertThat(repository.list("exact", LinkOrder.NEWEST_FIRST, 5, last.items.single().let { LinkCursor(it.createdAt, it.shortCode) }).items).isEmpty()
+        assertThat(repository.list("exact", PageRequest.of(0, 2)).hasNext()).isFalse
+        assertThat(repository.list("exact", PageRequest.of(0, 1)).hasNext()).isTrue
+        assertThat(repository.list("exact", PageRequest.of(5, 2)).content).isEmpty()
     }
 
     @Test
-    fun `is not shifted by a link created between two pages, which an offset would be`() {
-        listOf("2026-05-01 00:00:00+00", "2026-05-02 00:00:00+00", "2026-05-03 00:00:00+00", "2026-05-04 00:00:00+00")
-            .forEachIndexed { i, at -> insertAt("st0000$i", at) }
-        val first = repository.list("pager", LinkOrder.NEWEST_FIRST, 2, null)
+    fun `sorts by an allowed property in the requested direction, breaking ties by short code`() {
+        listOf("so00003", "so00001", "so00002").forEach { repository.insertIfAbsent(ShortCode(it), URI.create("https://example.com"), "sorter") }
 
-        insertAt("stnewer", "2026-06-01 00:00:00+00")
-        val second = repository.list("pager", LinkOrder.NEWEST_FIRST, 2, first.next)
+        val ascending = repository.list("sorter", PageRequest.of(0, 10, Sort.by(Sort.Direction.ASC, "shortCode")))
+        val descending = repository.list("sorter", PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "shortCode")))
 
-        assertThat(first.items.map { it.shortCode.value }).containsExactly("st00003", "st00002")
-        assertThat(second.items.map { it.shortCode.value }).containsExactly("st00001", "st00000")
-        assertThat(repository.list("pager", LinkOrder.NEWEST_FIRST, 1, null).items.single().shortCode.value).isEqualTo("stnewer")
+        assertThat(ascending.content.map { it.shortCode.value }).containsExactly("so00001", "so00002", "so00003")
+        assertThat(descending.content.map { it.shortCode.value }).containsExactly("so00003", "so00002", "so00001")
     }
 
     @Test
-    fun `keeps the microsecond a link was created in when it is the last of a page`() {
-        insertAt("us00001", "2026-07-01 00:00:00.000001+00")
-        insertAt("us00002", "2026-07-01 00:00:00.000002+00")
-        insertAt("us00003", "2026-07-01 00:00:00.000003+00")
+    fun `refuses to sort by a property links cannot be listed by, instead of passing it to the database`() {
+        val failure = assertFailsWith<InvalidSortException> {
+            repository.list(null, PageRequest.of(0, 10, Sort.by("targetUrl; DROP TABLE short_link")))
+        }
 
-        assertThat(pages("pager", LinkOrder.NEWEST_FIRST, 1).flatMap { it.items }.map { it.shortCode.value }).containsExactly("us00003", "us00002", "us00001")
-        assertThat(pages("pager", LinkOrder.OLDEST_FIRST, 1).flatMap { it.items }.map { it.shortCode.value }).containsExactly("us00001", "us00002", "us00003")
+        assertThat(failure.body.detail).contains("createdAt", "shortCode")
+        assertThat(repository.list(null, PageRequest.of(0, 1)).content).isNotNull
     }
 
     @Test
-    fun `refuses a page of no links, or of more than the maximum, which would load every link`() {
-        assertFailsWith<IllegalArgumentException> { repository.list(null, LinkOrder.NEWEST_FIRST, 0, null) }
-        assertFailsWith<IllegalArgumentException> { repository.list(null, LinkOrder.NEWEST_FIRST, ShortLinkRepository.MAX_PAGE_SIZE + 1, null) }
-        assertThat(repository.list(null, LinkOrder.NEWEST_FIRST, ShortLinkRepository.MAX_PAGE_SIZE, null).items).isNotNull
+    fun `refuses an unpaged request, which would load every link`() {
+        assertFailsWith<IllegalArgumentException> { repository.list(null, Pageable.unpaged()) }
     }
 
     @Test
