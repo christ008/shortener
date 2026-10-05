@@ -9,13 +9,13 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 /**
  * Native-image hints that let Caffeine build its caches.
  *
- * Caffeine generates one cache class and one entry class per feature combination (`SSMSA` is
- * strong keys, strong values, size bound, expire-after-access) and picks one by name at runtime,
- * instantiating it reflectively and reading its fields through `VarHandle`. Nothing registers
- * these for a native image, and the community metadata only covers the combinations in
- * Caffeine's own tests. Rather than guess which one a configuration needs, every generated class
- * found on the classpath is registered when the application is processed, so the hints follow
- * the Caffeine version in use.
+ * - Caffeine generates one cache class and one entry class per feature combination (`SSMSA` is
+ *   strong keys, strong values, size bound, expire-after-access), picks one by name at runtime and
+ *   instantiates it reflectively.
+ * - Nothing registers these for a native image, and the community metadata covers only the
+ *   combinations in Caffeine's own tests.
+ * - Rather than guess which combination a configuration needs, every generated class found on the
+ *   classpath is registered at processing time, so the hints follow the Caffeine version in use.
  */
 class CaffeineRuntimeHints : RuntimeHintsRegistrar {
 

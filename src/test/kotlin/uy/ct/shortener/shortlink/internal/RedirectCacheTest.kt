@@ -3,6 +3,9 @@ package uy.ct.shortener.shortlink.internal
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import uy.ct.shortener.shortlink.Actor
+import uy.ct.shortener.shortlink.LinkLookup
+import uy.ct.shortener.shortlink.LinkStatus
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLink
 import java.net.URI
@@ -25,9 +28,10 @@ class RedirectCacheTest {
     private val registry = SimpleMeterRegistry()
 
     private fun cacheOf(properties: RedirectCacheProperties = RedirectCacheProperties(ttl = Duration.ofSeconds(30))) =
-        RedirectCache(properties, registry, ticker, Runnable::run)
+        CaffeineRedirectCache(properties, registry, ticker, Runnable::run)
 
-    private fun link(code: String) = ShortLink(ShortCode(code), URI.create("https://example.com/$code"), "owner", Instant.EPOCH)
+    private fun link(code: String, status: LinkStatus = LinkStatus.Active) =
+        LinkLookup.Found(ShortLink(ShortCode(code), URI.create("https://example.com/$code"), Actor.Client("owner"), Instant.EPOCH, status))
 
     private fun counter(result: String) =
         registry.get("cache.gets").tag("cache", "shortlink.redirect").tag("result", result).functionCounter().count()
@@ -47,8 +51,20 @@ class RedirectCacheTest {
         val cache = cacheOf()
         val loads = AtomicInteger()
 
-        repeat(3) { assertThat(cache.find(ShortCode("aaaaaaa")) { loads.incrementAndGet(); null }).isNull() }
+        repeat(3) { assertThat(cache.find(ShortCode("aaaaaaa")) { loads.incrementAndGet(); LinkLookup.Missing }).isEqualTo(LinkLookup.Missing) }
 
+        assertThat(loads).hasValue(3)
+    }
+
+    @Test
+    fun `returns a disabled link but does not keep it`() {
+        val cache = cacheOf()
+        val loads = AtomicInteger()
+        val disabled = link("aaaaaaa", LinkStatus.Disabled(Instant.EPOCH, Actor.Client("owner")))
+
+        val answers = List(3) { cache.find(ShortCode("aaaaaaa")) { loads.incrementAndGet(); disabled } }
+
+        assertThat(answers).containsOnly(disabled)
         assertThat(loads).hasValue(3)
     }
 
@@ -93,7 +109,7 @@ class RedirectCacheTest {
 
     @Test
     fun `runs one load when many callers miss the same code at the same time`() {
-        val cache = RedirectCache(RedirectCacheProperties(), registry)
+        val cache = CaffeineRedirectCache(RedirectCacheProperties(), registry)
         val callers = 16
         val loads = AtomicInteger()
         val start = CyclicBarrier(callers)
@@ -101,7 +117,7 @@ class RedirectCacheTest {
 
         val results = try {
             List(callers) {
-                pool.submit<ShortLink?> {
+                pool.submit<LinkLookup> {
                     start.await(10, TimeUnit.SECONDS)
                     cache.find(ShortCode("aaaaaaa")) {
                         loads.incrementAndGet()
@@ -115,7 +131,7 @@ class RedirectCacheTest {
         }
 
         assertThat(loads).hasValue(1)
-        assertThat(results).allSatisfy { assertThat(it?.shortCode).isEqualTo(ShortCode("aaaaaaa")) }
+        assertThat(results).allSatisfy { assertThat((it as LinkLookup.Found).link.shortCode).isEqualTo(ShortCode("aaaaaaa")) }
     }
 
     @Test
@@ -129,8 +145,8 @@ class RedirectCacheTest {
     }
 
     @Test
-    fun `passes every call to the load when switched off`() {
-        val cache = cacheOf(RedirectCacheProperties(enabled = false))
+    fun `passes every call to the load when it is the no-op cache`() {
+        val cache = NoRedirectCache
         val loads = AtomicInteger()
 
         repeat(3) { cache.find(ShortCode("aaaaaaa")) { loads.incrementAndGet(); link("aaaaaaa") } }

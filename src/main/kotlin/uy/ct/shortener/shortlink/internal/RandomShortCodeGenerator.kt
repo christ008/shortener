@@ -6,8 +6,7 @@ import uy.ct.shortener.shortlink.ShortCodeGenerator
 import java.security.SecureRandom
 
 /**
- * Generates uniformly random codes with [SecureRandom], so they can't be guessed to
- * enumerate links.
+ * Generates uniformly random codes with [SecureRandom], so they cannot be guessed to enumerate links.
  */
 @Component
 class RandomShortCodeGenerator(

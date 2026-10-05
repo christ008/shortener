@@ -4,22 +4,25 @@ import org.springframework.aot.hint.MemberCategory
 import org.springframework.aot.hint.RuntimeHints
 import org.springframework.aot.hint.RuntimeHintsRegistrar
 import org.springframework.aot.hint.TypeReference
+import uy.ct.shortener.shortlink.CreatedByFilter
 
 /**
  * Native-image hints for the method-security expressions.
  *
- * Expressions such as `#createdBy == authentication.name` read `name` from the authentication
- * through the Spring Expression Language, which finds the getter by reflection on the runtime
- * class of the token. A native image keeps no such metadata unless it is registered, so without
- * these hints every authorized call fails with a 500 instead of being decided.
+ * - Expressions such as `authentication.name` and `#filter.isLimitedTo(...)` call methods through
+ *   the Spring Expression Language, which finds them by reflection on the runtime class.
+ * - A native image keeps no such metadata unless it is registered. Without these hints every
+ *   authorized call fails with a 500 instead of being decided.
  */
 class AuthorizationRuntimeHints : RuntimeHintsRegistrar {
 
     override fun registerHints(hints: RuntimeHints, classLoader: ClassLoader?) {
         listOf(
-            "org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken",
-            "org.springframework.security.oauth2.server.resource.authentication.AbstractOAuth2TokenAuthenticationToken",
-            "org.springframework.security.authentication.AbstractAuthenticationToken",
-        ).forEach { hints.reflection().registerType(TypeReference.of(it), MemberCategory.INVOKE_PUBLIC_METHODS) }
+            TypeReference.of("org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken"),
+            TypeReference.of("org.springframework.security.oauth2.server.resource.authentication.AbstractOAuth2TokenAuthenticationToken"),
+            TypeReference.of("org.springframework.security.authentication.AbstractAuthenticationToken"),
+            TypeReference.of(CreatedByFilter.Anyone::class.java),
+            TypeReference.of(CreatedByFilter.Only::class.java),
+        ).forEach { hints.reflection().registerType(it, MemberCategory.INVOKE_PUBLIC_METHODS) }
     }
 }

@@ -1,6 +1,7 @@
 package uy.ct.shortener.security
 
 import jakarta.servlet.DispatcherType
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerProperties
 import org.springframework.context.annotation.Bean
@@ -19,29 +20,29 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.AuthenticationFilter
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy
+import org.springframework.web.servlet.HandlerExceptionResolver
 import uy.ct.shortener.security.internal.CaffeineRuntimeHints
 import uy.ct.shortener.security.internal.ClientJwtAuthenticationConverter
 import uy.ct.shortener.security.internal.DpopRuntimeHints
-import uy.ct.shortener.security.internal.ProblemDetailResponder
 import uy.ct.shortener.security.internal.RateLimitFilter
+import uy.ct.shortener.security.internal.RateLimitKey
 import uy.ct.shortener.security.internal.RateLimiter
+import uy.ct.shortener.security.internal.SecurityProblemResponder
 import uy.ct.shortener.security.internal.SecurityProperties
 import uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver
 
 /**
- * The application's security filter chain: an OAuth2 resource server, stateless and deny by
- * default.
+ * The security filter chain: an OAuth2 resource server, stateless and deny by default.
  *
- * Everything under the `/api` path requires an access token, issued to a client by the identity
- * provider and validated locally against its published keys (signature, JOSE type, issuer,
- * audience and expiry; see `spring.security.oauth2.resourceserver.jwt.*`). Tokens are bound to the
- * client's key and presented with a DPoP proof (RFC 9449) unless `shortener.security.dpop.required`
- * is turned off, in which case plain bearer tokens are accepted as well. Which scopes an operation needs is
- * not decided here but declared on the operations themselves with method security, which this
- * enables. Following a short link and the health probes are public, and every other request is
- * denied. Requests are rate limited per client IP and, once authenticated, per client. Every
- * response carries restrictive security headers, and authentication, authorization and rate-limit
- * failures are problem details.
+ * - Everything under `/api` needs an access token from the identity provider, validated locally against its
+ *   published keys (signature, JOSE type, issuer, audience, expiry).
+ * - Tokens must be bound to the client's key and sent with a DPoP proof (RFC 9449), unless
+ *   `shortener.security.dpop.required` is off, which also accepts plain bearer tokens.
+ * - The scopes an operation needs are declared on the operation with method security, enabled here.
+ * - Following a short link and the health probes are public. Every other request is denied.
+ * - Requests are rate limited per client IP, then per authenticated client.
+ * - Responses carry restrictive security headers. Authentication, authorization and rate-limit
+ *   failures are problem details.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
@@ -54,9 +55,10 @@ class SecurityConfiguration {
         http: HttpSecurity,
         properties: SecurityProperties,
         idp: OAuth2ResourceServerProperties,
+        @Qualifier("handlerExceptionResolver") exceptionResolver: HandlerExceptionResolver,
     ): SecurityFilterChain {
-        val responder = ProblemDetailResponder(properties.dpop.required)
-        val ipLimit = RateLimitFilter("ip", RateLimiter(properties.rateLimit.perIp), responder) { it.remoteAddr }
+        val responder = SecurityProblemResponder(exceptionResolver, properties.dpop.required)
+        val ipLimit = RateLimitFilter("ip", RateLimiter(properties.rateLimit.perIp), responder) { RateLimitKey.Of(it.remoteAddr) }
         val clientLimit = RateLimitFilter("client", RateLimiter(properties.rateLimit.perClient), responder) { authenticatedClient() }
 
         http
@@ -115,8 +117,9 @@ class SecurityConfiguration {
         val DPOP_ALGORITHMS = listOf("RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512")
     }
 
-    private fun authenticatedClient(): String? =
+    private fun authenticatedClient(): RateLimitKey =
         SecurityContextHolder.getContext().authentication
             ?.takeIf { it.isAuthenticated && it !is AnonymousAuthenticationToken }
-            ?.name
+            ?.let { RateLimitKey.Of(it.name) }
+            ?: RateLimitKey.Unlimited
 }

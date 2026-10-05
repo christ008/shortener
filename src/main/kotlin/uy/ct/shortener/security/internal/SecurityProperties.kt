@@ -4,19 +4,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
 
 /**
- * `shortener.security.*` settings. A client is identified by the [clientIdClaim] of its access
- * token (`azp` by default), and that name is recorded as the owner of the links it creates. [RateLimit] holds the
- * token-bucket limits, which are per pod: [RateLimit.perIp] applies to all requests from one
- * client IP and [RateLimit.perClient] to requests from one authenticated client. A [Limit] holds
- * [Limit.capacity] requests, fully refilled over [Limit.period], one minute unless set.
+ * `shortener.security.*` settings.
  *
- * With [Dpop.required], which is the default, only access tokens bound to the client's key are
- * accepted (RFC 9449): they must arrive under the `DPoP` authorization scheme with a proof of
- * possession, and the `Bearer` scheme is refused. Turn it off only for development and tests. Spring
- * remembers each proof for 30 seconds to refuse replays, in memory and per pod, and accepts at most
- * 1,000 of them per client key in that time, so one key can make about 30 requests a second.
- * Access tokens must carry the JOSE type [accessTokenType] (RFC 9068), so that no other kind of
- * JWT from the same issuer is accepted in their place; leave it blank to skip the check.
+ * - [clientIdClaim]: the claim that names the owner of a token (`azp` by default, `owner` as the
+ *   application configures it; Keycloak fills it with the client id for a service and the user id
+ *   for a person). That name is recorded as the creator of the links the token creates.
+ * - [rateLimit]: token-bucket limits, per pod. [RateLimit.perIp] covers all requests from one IP,
+ *   [RateLimit.perClient] those of one authenticated client. A [Limit] holds [Limit.capacity]
+ *   requests, refilled over [Limit.period] (one minute unless set).
+ * - [dpop]: with [Dpop.required], the default, only tokens bound to the client's key are accepted
+ *   (RFC 9449): `DPoP` scheme with a proof, `Bearer` refused. Turn it off only for development and
+ *   tests. Proofs are remembered for 30 seconds to refuse replays, in memory per pod, at most 1,000
+ *   per client key, so one key can make about 30 requests a second.
+ * - [accessTokenType]: the JOSE type access tokens must carry (RFC 9068), so no other JWT from the
+ *   same issuer is accepted in their place. Blank skips the check.
  */
 @ConfigurationProperties("shortener.security")
 data class SecurityProperties(

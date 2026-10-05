@@ -15,17 +15,21 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.util.UriComponentsBuilder
+import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkService
 import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
 
 /**
- * `POST /api/short-links` creates a link for the authenticated client, under a generated or a
- * custom code (201 with a `Location` header). `GET /api/short-links` lists the client's own links,
- * a page at a time (`page`, `size` and `sort`), `GET /api/short-links/{shortCode}` reads one, and `DELETE`
- * disables one (204). An administrator reaches every client's links. `GET /{shortCode}` is public
- * and redirects to the target with a 302, so clients don't cache the redirect, or answers 410 once
- * the link is disabled. Errors are returned as problem details.
+ * The HTTP API of the short link service. Failures are problem details.
+ *
+ * - `POST /api/short-links` creates a link for the authenticated client under a generated or a
+ *   custom code: 201 with a `Location` header.
+ * - `GET /api/short-links` lists the client's own links a page at a time (`page`, `size`, `sort`).
+ *   An administrator may list any client's.
+ * - `GET /api/short-links/{shortCode}` reads one, and `DELETE` disables it: 204.
+ * - `GET /{shortCode}` is public. It redirects with a 302, so clients do not cache the redirect, or
+ *   answers 410 once the link is disabled.
  */
 @RestController
 class ShortLinkController(
@@ -54,8 +58,12 @@ class ShortLinkController(
         @RequestParam(required = false) createdBy: String?,
         @SortDefault(sort = ["createdAt"], direction = Sort.Direction.DESC) pageable: Pageable,
     ): ShortLinkPageResponse {
-        val owner = createdBy ?: authentication.name.takeUnless { authentication.isAdmin() }
-        return ShortLinkPageResponse.from(service.list(owner, pageable))
+        val filter = when {
+            createdBy != null -> CreatedByFilter.Only(createdBy)
+            authentication.isAdmin() -> CreatedByFilter.Anyone
+            else -> CreatedByFilter.Only(authentication.name)
+        }
+        return ShortLinkPageResponse.from(service.list(filter, pageable))
     }
 
     @GetMapping("/api/short-links/{shortCode}")

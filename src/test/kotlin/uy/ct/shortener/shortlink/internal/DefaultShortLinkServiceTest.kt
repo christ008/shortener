@@ -6,6 +6,7 @@ import io.micrometer.observation.tck.TestObservationRegistry
 import io.micrometer.observation.tck.TestObservationRegistryAssert
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.InvalidTargetUrlException
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeExhaustionException
@@ -34,7 +35,7 @@ class DefaultShortLinkServiceTest {
 
     private fun serviceWith(vararg codes: String, observations: ObservationRegistry = ObservationRegistry.NOOP): Pair<DefaultShortLinkService, GeneratorProbe> {
         val generator = GeneratorProbe(codes.map(::ShortCode))
-        val cache = RedirectCache(RedirectCacheProperties(ttl = ttl), SimpleMeterRegistry(), ticker, Runnable::run)
+        val cache = CaffeineRedirectCache(RedirectCacheProperties(ttl = ttl), SimpleMeterRegistry(), ticker, Runnable::run)
         return DefaultShortLinkService(repository, generator, ManageableLinks(repository), cache, observations) to generator
     }
 
@@ -53,7 +54,7 @@ class DefaultShortLinkServiceTest {
 
         assertThat(link.shortCode).isEqualTo(ShortCode("aaaaaaa"))
         assertThat(link.targetUrl).isEqualTo(URI.create("https://example.com/some/path"))
-        assertThat(link.createdBy).isEqualTo("owner")
+        assertThat(link.createdBy).isEqualTo(Actor.Client("owner"))
         assertThat(repository.saved).containsExactly(link)
     }
 
@@ -224,7 +225,7 @@ class DefaultShortLinkServiceTest {
         assertThat(manageable(service).isDisabled).isTrue
     }
 
-    private fun manageable(service: DefaultShortLinkService) = ManageableLinks(repository).find(ShortCode("aaaaaaa"))!!
+    private fun manageable(service: DefaultShortLinkService) = ManageableLinks(repository).get(ShortCode("aaaaaaa"))
 
     @Test
     fun `observes the database read of a cache miss but not of a hit`() {

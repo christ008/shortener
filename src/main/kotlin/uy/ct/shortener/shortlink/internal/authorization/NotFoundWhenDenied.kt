@@ -8,12 +8,12 @@ import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkNotFoundException
 
 /**
- * Turns a denied lookup of a link, whose first argument is its code, into
- * [ShortLinkNotFoundException] so a client cannot tell another client's link from a missing one.
+ * Turns a denied lookup of a link into [ShortLinkNotFoundException], so a client cannot tell another
+ * client's link from a missing one. The link's code is the first argument of the denied call.
  */
 @Component
 class NotFoundWhenDenied : MethodAuthorizationDeniedHandler {
 
-    override fun handleDeniedInvocation(methodInvocation: MethodInvocation, authorizationResult: AuthorizationResult): Any? =
+    override fun handleDeniedInvocation(methodInvocation: MethodInvocation, authorizationResult: AuthorizationResult): Any =
         throw ShortLinkNotFoundException(methodInvocation.arguments.first() as ShortCode)
 }

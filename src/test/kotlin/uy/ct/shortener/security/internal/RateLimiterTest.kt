@@ -10,20 +10,20 @@ class RateLimiterTest {
 
     @Test
     fun `allows requests up to the capacity then reports how long to wait`() {
-        assertThat(limiter.tryAcquire("client")).isNull()
-        assertThat(limiter.tryAcquire("client")).isNull()
+        assertThat(limiter.tryAcquire("client")).isEqualTo(RateLimitDecision.Allowed)
+        assertThat(limiter.tryAcquire("client")).isEqualTo(RateLimitDecision.Allowed)
 
-        val wait = limiter.tryAcquire("client")
+        val decision = limiter.tryAcquire("client")
 
-        assertThat(wait).isNotNull
-        assertThat(wait!!).isPositive.isLessThanOrEqualTo(Duration.ofMinutes(1))
+        assertThat(decision).isInstanceOf(RateLimitDecision.Limited::class.java)
+        assertThat((decision as RateLimitDecision.Limited).retryAfter).isPositive.isLessThanOrEqualTo(Duration.ofMinutes(1))
     }
 
     @Test
     fun `limits each key on its own`() {
         repeat(2) { limiter.tryAcquire("noisy") }
 
-        assertThat(limiter.tryAcquire("noisy")).isNotNull
-        assertThat(limiter.tryAcquire("quiet")).isNull()
+        assertThat(limiter.tryAcquire("noisy")).isInstanceOf(RateLimitDecision.Limited::class.java)
+        assertThat(limiter.tryAcquire("quiet")).isEqualTo(RateLimitDecision.Allowed)
     }
 }

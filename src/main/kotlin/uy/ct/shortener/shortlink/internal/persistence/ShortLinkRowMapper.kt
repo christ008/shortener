@@ -1,6 +1,8 @@
 package uy.ct.shortener.shortlink.internal.persistence
 
 import org.springframework.jdbc.core.RowMapper
+import uy.ct.shortener.shortlink.Actor
+import uy.ct.shortener.shortlink.LinkStatus
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLink
 import java.net.URI
@@ -9,22 +11,28 @@ import java.time.Instant
 import java.time.OffsetDateTime
 
 /**
- * Maps a `short_link` row to a [ShortLink]. JDBC hands back values of unknown nullability, so
- * each column is read as nullable or not according to the schema: `created_by`, `disabled_at` and
- * `disabled_by` may be NULL, the rest may not. A NULL where the schema forbids one means the
- * schema and this mapping have drifted, and is reported as such, naming the column, instead of
- * surfacing later as an anonymous null-pointer error.
+ * Maps a `short_link` row to a [ShortLink].
+ *
+ * - JDBC returns values of unknown nullability, so each column is read as the schema declares it.
+ * - `created_by`, `disabled_at` and `disabled_by` may be NULL, and become [Actor.Unknown] or
+ *   [LinkStatus.Active]. The other columns may not.
+ * - A NULL where the schema forbids one means the schema and this mapping drifted. It is reported
+ *   by column name instead of surfacing later as an anonymous null-pointer error.
  */
 internal object ShortLinkRowMapper : RowMapper<ShortLink> {
 
     override fun mapRow(rs: ResultSet, rowNum: Int): ShortLink = ShortLink(
         shortCode = ShortCode(rs.required("short_code")),
         targetUrl = URI.create(rs.required("target_url")),
-        createdBy = rs.getString("created_by"),
+        createdBy = Actor.of(rs.getString("created_by")),
         createdAt = rs.requiredInstant("created_at"),
-        disabledAt = rs.getObject("disabled_at", OffsetDateTime::class.java)?.toInstant(),
-        disabledBy = rs.getString("disabled_by"),
+        status = rs.status(),
     )
+
+    private fun ResultSet.status(): LinkStatus =
+        getObject("disabled_at", OffsetDateTime::class.java)
+            ?.let { LinkStatus.Disabled(it.toInstant(), Actor.of(getString("disabled_by"))) }
+            ?: LinkStatus.Active
 
     private fun ResultSet.required(column: String): String =
         getString(column) ?: throw nullInRequiredColumn(column)

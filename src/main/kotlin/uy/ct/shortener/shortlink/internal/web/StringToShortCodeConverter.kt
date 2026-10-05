@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component
 import uy.ct.shortener.shortlink.ShortCode
 
 /**
- * Binds path variables directly to [ShortCode]. A malformed value is rejected with a 400.
+ * Binds path variables to [ShortCode]. A malformed value is rejected with a 400.
  */
 @Component
 class StringToShortCodeConverter : Converter<String, ShortCode> {

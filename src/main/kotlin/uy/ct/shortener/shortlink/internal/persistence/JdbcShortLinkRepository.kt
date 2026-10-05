@@ -9,52 +9,61 @@ import org.springframework.data.domain.SliceImpl
 import org.springframework.data.domain.Sort
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
+import uy.ct.shortener.shortlink.CreatedByFilter
+import uy.ct.shortener.shortlink.InsertResult
 import uy.ct.shortener.shortlink.InvalidSortException
+import uy.ct.shortener.shortlink.LinkLookup
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLink
 import uy.ct.shortener.shortlink.ShortLinkRepository
 import uy.ct.shortener.shortlink.StorageUnavailableException
 import java.net.URI
-import kotlin.jvm.optionals.getOrNull
 
 /**
- * [ShortLinkRepository] on plain JDBC through Spring's [JdbcClient], with the SQL written out
- * rather than generated. It leans on Postgres: `INSERT ... ON CONFLICT DO NOTHING RETURNING`
- * claims a code and reads the stored row back in one atomic statement, the database assigns
- * `created_at`, and listing pages with `LIMIT`/`OFFSET` on indexed columns, one extra row telling whether another page follows. Short codes sort in byte order (`COLLATE "C"`), not the database's locale, so the order is the same everywhere. The schema, including the constraints that mirror [ShortCode] and [ShortLink],
- * lives in the Flyway migrations. Failing to get a connection, whether the pool is exhausted or
- * the database is down, is reported as [StorageUnavailableException] so Spring's data-access
- * types do not leak out of this adapter. So are the two limits the application role carries in the
- * database, a statement that runs past `statement_timeout` and a lock not obtained within
- * `lock_timeout` (Spring leaves that one uncategorised, so it is recognised by its SQLSTATE): both mean storage cannot
- * serve the request now, and trying again is the answer.
+ * [ShortLinkRepository] on plain JDBC through Spring's [JdbcClient], with the SQL written out.
+ *
+ * - Relies on Postgres: `INSERT ... ON CONFLICT DO NOTHING RETURNING` claims a code and reads the
+ *   row back in one atomic statement, and the database assigns `created_at`.
+ * - Lists with `LIMIT`/`OFFSET` on indexed columns. One extra row tells whether another page follows.
+ * - Sorts codes in byte order (`COLLATE "C"`), not the database's locale, so the order is the same
+ *   everywhere.
+ * - The schema, including the constraints that mirror [ShortCode] and [ShortLink], lives in the
+ *   Flyway migrations.
+ * - Storage that cannot serve the request now becomes [StorageUnavailableException], so Spring's
+ *   data-access types do not leak out of this adapter, and trying again is the answer. That covers
+ *   a failure to get a connection (pool exhausted or database down), a statement past
+ *   `statement_timeout` and a lock not obtained within `lock_timeout`. Spring leaves the last one
+ *   uncategorised, so it is recognised by its SQLSTATE.
  */
 @Repository
 class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepository {
 
-    override fun findByShortCode(shortCode: ShortCode): ShortLink? = reportingUnavailability {
+    override fun findByShortCode(shortCode: ShortCode): LinkLookup = reportingUnavailability {
         jdbc.sql(FIND)
             .param("shortCode", shortCode.value)
             .query(TO_SHORT_LINK)
             .optional()
-            .getOrNull()
+            .map<LinkLookup> { LinkLookup.Found(it) }
+            .orElse(LinkLookup.Missing)
     }
 
-    override fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): ShortLink? = reportingUnavailability {
+    override fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): InsertResult = reportingUnavailability {
         jdbc.sql(INSERT_IF_ABSENT)
             .param("shortCode", shortCode.value)
             .param("targetUrl", targetUrl.toString())
             .param("createdBy", createdBy)
             .query(TO_SHORT_LINK)
             .optional()
-            .getOrNull()
+            .map<InsertResult> { InsertResult.Created(it) }
+            .orElse(InsertResult.Taken)
     }
 
-    override fun list(createdBy: String?, pageable: Pageable): Slice<ShortLink> = reportingUnavailability {
+    override fun list(filter: CreatedByFilter, pageable: Pageable): Slice<ShortLink> = reportingUnavailability {
         require(pageable.isPaged) { "an unpaged request would load every link" }
-        val where = if (createdBy != null) "WHERE created_by = :createdBy" else ""
-        var statement = jdbc.sql("SELECT $COLUMNS FROM short_link $where ORDER BY ${orderBy(pageable.sort)} LIMIT :fetch OFFSET :offset")
-        if (createdBy != null) statement = statement.param("createdBy", createdBy)
+        val statement = when (filter) {
+            CreatedByFilter.Anyone -> jdbc.sql(listSql(where = "", pageable.sort))
+            is CreatedByFilter.Only -> jdbc.sql(listSql(where = "WHERE created_by = :createdBy", pageable.sort)).param("createdBy", filter.client)
+        }
         val fetched = statement
             .param("fetch", pageable.pageSize + 1)
             .param("offset", pageable.offset)
@@ -63,14 +72,18 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
         SliceImpl(fetched.take(pageable.pageSize), pageable, fetched.size > pageable.pageSize)
     }
 
-    override fun disable(shortCode: ShortCode, disabledBy: String): ShortLink? = reportingUnavailability {
+    override fun disable(shortCode: ShortCode, disabledBy: String): LinkLookup = reportingUnavailability {
         jdbc.sql(DISABLE)
             .param("shortCode", shortCode.value)
             .param("disabledBy", disabledBy)
             .query(TO_SHORT_LINK)
             .optional()
-            .getOrNull()
+            .map<LinkLookup> { LinkLookup.Found(it) }
+            .orElse(LinkLookup.Missing)
     }
+
+    private fun listSql(where: String, sort: Sort) =
+        "SELECT $COLUMNS FROM short_link $where ORDER BY ${orderBy(sort)} LIMIT :fetch OFFSET :offset"
 
     private fun orderBy(sort: Sort): String {
         val requested = sort.map { order ->

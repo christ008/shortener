@@ -66,6 +66,17 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    fun `answers a security failure as a problem detail whatever the client says it accepts`() {
+        val headers = HttpHeaders().apply { accept = listOf(MediaType.TEXT_PLAIN) }
+
+        val response = restTemplate.exchange("/api/short-links", HttpMethod.GET, HttpEntity<Void>(headers), String::class.java)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat(response.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
+        assertThat(response.body).contains(""""title":"Unauthorized"""", """"status":401""", """"detail":"A valid access token is required"""")
+    }
+
+    @Test
     fun `rejects every kind of invalid token as invalid_token`() {
         val invalid = mapOf(
             "not a jwt" to "garbage",

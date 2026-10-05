@@ -1,5 +1,6 @@
 package uy.ct.shortener.shortlink.internal
 
+import uy.ct.shortener.shortlink.LinkLookup
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.micrometer.observation.ObservationRegistry
 import org.assertj.core.api.Assertions.assertThat
@@ -44,7 +45,7 @@ class ShortCodeRaceIntegrationTest {
                 ShortCode("retry%02d".format(n))
             }
         }
-        val service = DefaultShortLinkService(repository, generator, ManageableLinks(repository), RedirectCache(RedirectCacheProperties(), SimpleMeterRegistry()), ObservationRegistry.NOOP)
+        val service = DefaultShortLinkService(repository, generator, ManageableLinks(repository), CaffeineRedirectCache(RedirectCacheProperties(), SimpleMeterRegistry()), ObservationRegistry.NOOP)
 
         val pool = Executors.newFixedThreadPool(threads)
         val results = try {
@@ -56,6 +57,6 @@ class ShortCodeRaceIntegrationTest {
 
         assertThat(results).doesNotHaveDuplicates()
         assertThat(results.count { it == contested }).isEqualTo(1)
-        assertThat(results.all { repository.findByShortCode(it) != null }).isTrue
+        assertThat(results.all { repository.findByShortCode(it) is LinkLookup.Found }).isTrue
     }
 }

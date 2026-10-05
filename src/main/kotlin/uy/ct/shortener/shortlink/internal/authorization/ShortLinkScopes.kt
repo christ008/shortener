@@ -6,13 +6,16 @@ import org.springframework.stereotype.Component
 import org.springframework.validation.annotation.Validated
 
 /**
- * The OAuth scope that grants each operation on short links, bound from
- * `shortener.shortlink.scopes.*` so the names are configuration, not code. It is registered as the
- * bean `scopes`, which the method-security expressions refer to (`@scopes.read`). Tokens carry
- * these scopes as plain authorities, with no prefix. A blank name would make an operation
- * unreachable or open to the wrong tokens, so the application refuses to start with one.
+ * The OAuth scope that grants each operation on short links, bound from `shortener.shortlink.scopes.*`
+ * so the names are configuration, not code.
  *
- * - [create]: make a link with a generated code. [claim] is needed as well to choose a code.
+ * - Registered as the bean `scopes`, which the method-security expressions refer to (`@scopes.read`).
+ * - Tokens carry the scopes as plain authorities, with no prefix.
+ * - A blank name would make an operation unreachable or open to the wrong tokens, so the
+ *   application refuses to start with one.
+ *
+ * The scopes:
+ * - [create]: make a link with a generated code. [claim] is needed as well to choose the code.
  * - [read] and [delete]: read and disable the client's own links.
  * - [admin]: read and disable any client's links, for abuse takedowns.
  */

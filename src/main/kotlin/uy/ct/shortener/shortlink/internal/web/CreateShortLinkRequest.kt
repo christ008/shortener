@@ -6,8 +6,11 @@ import org.hibernate.validator.constraints.URL
 import uy.ct.shortener.shortlink.ShortCode
 
 /**
- * Body of `POST /api/short-links`. [targetUrl] must be a non-blank URL. An optional [customCode]
- * requests a specific short code instead of a generated one.
+ * Body of `POST /api/short-links`.
+ *
+ * - [targetUrl]: a non-blank URL.
+ * - [customCode]: optional, requests a specific short code instead of a generated one. Absent in
+ *   the JSON means generated.
  */
 data class CreateShortLinkRequest(
     @field:NotBlank

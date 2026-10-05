@@ -5,11 +5,12 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
-/** Wires the [RedirectCache] from its [RedirectCacheProperties] and the application's meter registry. */
+/** Provides the [RedirectCache]: a [CaffeineRedirectCache], or [NoRedirectCache] when it is turned off. */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(RedirectCacheProperties::class)
 class RedirectCacheConfiguration {
 
     @Bean
-    fun redirectCache(properties: RedirectCacheProperties, registry: MeterRegistry) = RedirectCache(properties, registry)
+    fun redirectCache(properties: RedirectCacheProperties, registry: MeterRegistry): RedirectCache =
+        if (properties.enabled) CaffeineRedirectCache(properties, registry) else NoRedirectCache
 }

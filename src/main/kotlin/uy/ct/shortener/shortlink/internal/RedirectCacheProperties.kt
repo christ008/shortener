@@ -4,10 +4,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
 
 /**
- * `shortener.shortlink.redirect-cache.*` settings of the [RedirectCache]. An entry lives for [ttl],
- * which is also how long another instance can keep following a link after it was disabled, and at
- * most [maxEntries] are kept, so the memory used has a known ceiling. Turning it off with
- * [enabled] sends every redirect to the database.
+ * `shortener.shortlink.redirect-cache.*` settings of the [RedirectCache].
+ *
+ * - [enabled]: when false, every redirect reads the database.
+ * - [ttl]: how long an entry lives. It is also how long another instance can keep following a link
+ *   after it was disabled.
+ * - [maxEntries]: the cap that gives the cache a known memory ceiling.
  */
 @ConfigurationProperties("shortener.shortlink.redirect-cache")
 data class RedirectCacheProperties(

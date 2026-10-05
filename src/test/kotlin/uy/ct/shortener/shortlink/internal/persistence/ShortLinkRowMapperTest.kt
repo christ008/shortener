@@ -1,5 +1,7 @@
 package uy.ct.shortener.shortlink.internal.persistence
 
+import uy.ct.shortener.shortlink.LinkStatus
+import uy.ct.shortener.shortlink.Actor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -35,12 +37,11 @@ class ShortLinkRowMapperTest {
     }
 
     @Test
-    fun `maps the columns that may be null to null`() {
+    fun `maps the columns that may be null to an unknown creator and an active status`() {
         val link = ShortLinkRowMapper.mapRow(row(), 0)
 
-        assertThat(link.createdBy).isNull()
-        assertThat(link.disabledAt).isNull()
-        assertThat(link.disabledBy).isNull()
+        assertThat(link.createdBy).isEqualTo(Actor.Unknown)
+        assertThat(link.status).isEqualTo(LinkStatus.Active)
         assertThat(link.isDisabled).isFalse
     }
 

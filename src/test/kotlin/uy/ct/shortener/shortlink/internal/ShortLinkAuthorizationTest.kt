@@ -1,5 +1,7 @@
 package uy.ct.shortener.shortlink.internal
 
+import uy.ct.shortener.shortlink.CreatedByFilter
+import uy.ct.shortener.shortlink.Actor
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.micrometer.observation.ObservationRegistry
 import org.assertj.core.api.Assertions.assertThat
@@ -50,7 +52,7 @@ class ShortLinkAuthorizationTest {
         fun repository(): ShortLinkRepository = InMemoryShortLinkRepository()
 
         @Bean
-        fun redirectCache() = RedirectCache(RedirectCacheProperties(), SimpleMeterRegistry())
+        fun redirectCache(): RedirectCache = CaffeineRedirectCache(RedirectCacheProperties(), SimpleMeterRegistry())
 
         @Bean
         fun observations(): ObservationRegistry = ObservationRegistry.NOOP
@@ -88,7 +90,7 @@ class ShortLinkAuthorizationTest {
         assertFailsWith<AccessDeniedException> { actingAs("admin", *admin) { service.shorten("https://example.com", "admin") } }
         assertFailsWith<AccessDeniedException> { actingAs("mallory", *manage) { service.shorten("https://example.com", "victim") } }
 
-        assertThat(create("alice").createdBy).isEqualTo("alice")
+        assertThat(create("alice").createdBy).isEqualTo(Actor.Client("alice"))
     }
 
     @Test
@@ -105,7 +107,7 @@ class ShortLinkAuthorizationTest {
     fun `a client reads its own link but another client's is not found`() {
         val link = create("alice")
 
-        assertThat(actingAs("alice", *manage) { service.get(link.shortCode) }.createdBy).isEqualTo("alice")
+        assertThat(actingAs("alice", *manage) { service.get(link.shortCode) }.createdBy).isEqualTo(Actor.Client("alice"))
         assertFailsWith<ShortLinkNotFoundException> { actingAs("bob", *manage) { service.get(link.shortCode) } }
         assertFailsWith<ShortLinkNotFoundException> { actingAs("alice", *manage) { service.get(ShortCode("nothere")) } }
     }
@@ -123,12 +125,12 @@ class ShortLinkAuthorizationTest {
         create("lister")
         create("other-lister")
 
-        val own = actingAs("lister", *manage) { service.list("lister", firstPage) }
+        val own = actingAs("lister", *manage) { service.list(CreatedByFilter.Only("lister"), firstPage) }
 
-        assertThat(own.content.map { it.createdBy }).containsOnly("lister")
-        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { service.list("other-lister", firstPage) } }
-        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { service.list(null, firstPage) } }
-        assertFailsWith<AccessDeniedException> { actingAs("lister", "shortlinks:create") { service.list("lister", firstPage) } }
+        assertThat(own.content.map { it.createdBy }).containsOnly(Actor.Client("lister"))
+        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { service.list(CreatedByFilter.Only("other-lister"), firstPage) } }
+        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { service.list(CreatedByFilter.Anyone, firstPage) } }
+        assertFailsWith<AccessDeniedException> { actingAs("lister", "shortlinks:create") { service.list(CreatedByFilter.Only("lister"), firstPage) } }
     }
 
     @Test
@@ -136,8 +138,8 @@ class ShortLinkAuthorizationTest {
         create("lister")
         create("other-lister")
 
-        assertThat(actingAs("root", *admin) { service.list(null, firstPage) }.content.map { it.createdBy }).contains("lister", "other-lister")
-        assertThat(actingAs("root", *admin) { service.list("lister", firstPage) }.content.map { it.createdBy }).containsOnly("lister")
+        assertThat(actingAs("root", *admin) { service.list(CreatedByFilter.Anyone, firstPage) }.content.map { it.createdBy }).contains(Actor.Client("lister"), Actor.Client("other-lister"))
+        assertThat(actingAs("root", *admin) { service.list(CreatedByFilter.Only("lister"), firstPage) }.content.map { it.createdBy }).containsOnly(Actor.Client("lister"))
     }
 
     @Test
@@ -150,7 +152,7 @@ class ShortLinkAuthorizationTest {
         actingAs("root", *admin) { service.disable(theirs.shortCode, "root") }
 
         assertThat(actingAs("alice", *manage) { service.get(mine.shortCode) }.isDisabled).isTrue
-        assertThat(actingAs("root", *admin) { service.get(theirs.shortCode) }.disabledBy).isEqualTo("root")
+        assertThat(actingAs("root", *admin) { service.get(theirs.shortCode) }.disabledBy).isEqualTo(Actor.Client("root"))
     }
 
     @Test

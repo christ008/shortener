@@ -1,5 +1,7 @@
 package uy.ct.shortener.shortlink.internal.web
 
+import uy.ct.shortener.shortlink.internal.found
+import uy.ct.shortener.shortlink.Actor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
@@ -50,7 +52,7 @@ class ShortLinkControllerTest {
         val shortCode = created.body!!.shortCode
         assertThat(shortCode).hasSize(ShortCode.GENERATED_LENGTH)
         assertThat(created.headers.location.toString()).endsWith("/$shortCode")
-        assertThat(repository.findByShortCode(ShortCode(shortCode))?.createdBy).isEqualTo(TestIdp.CLIENT)
+        assertThat(repository.findByShortCode(ShortCode(shortCode)).found().createdBy).isEqualTo(Actor.Client(TestIdp.CLIENT))
 
         val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/$shortCode", Void::class.java)
 

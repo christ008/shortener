@@ -8,9 +8,11 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter
 
 /**
- * Turns a validated access token into an authentication named after its client, taken from
- * [clientIdClaim], with one authority per granted scope, named exactly as the scope. A token
- * without that claim is rejected as invalid, since it cannot be attributed to a client.
+ * Turns a validated access token into an authentication named after its client.
+ *
+ * - The name is the [clientIdClaim] of the token.
+ * - Each granted scope becomes an authority named exactly as the scope.
+ * - A token without the claim is invalid: it cannot be attributed to a client.
  */
 class ClientJwtAuthenticationConverter(private val clientIdClaim: String) : Converter<Jwt, AbstractAuthenticationToken> {
 

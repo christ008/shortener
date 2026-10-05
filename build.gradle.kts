@@ -38,7 +38,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.bucket4j:bucket4j_jdk17-core:8.21.0")
     implementation("com.github.ben-manes.caffeine:caffeine")
-    implementation("org.springframework.modulith:spring-modulith-starter-core")
+    testImplementation("org.springframework.modulith:spring-modulith-starter-core")
     implementation("tools.jackson.module:jackson-module-kotlin")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")

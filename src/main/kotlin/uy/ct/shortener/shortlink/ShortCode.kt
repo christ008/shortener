@@ -1,9 +1,10 @@
 package uy.ct.shortener.shortlink
 
 /**
- * Public identifier of a [ShortLink]: 3 to 32 letters, digits, `-` or `_` ([PATTERN]).
- * Generated codes are [GENERATED_LENGTH] base62 characters; custom codes may be any valid value.
- * The format is validated on construction, so an invalid code cannot exist.
+ * The public identifier of a [ShortLink]: 3 to 32 letters, digits, `-` or `_` ([PATTERN]).
+ *
+ * - Generated codes are [GENERATED_LENGTH] base62 characters. Custom codes may be any valid value.
+ * - The format is checked on construction, so an invalid code cannot exist.
  */
 data class ShortCode(val value: String) {
 

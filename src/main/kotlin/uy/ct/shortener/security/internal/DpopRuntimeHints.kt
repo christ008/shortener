@@ -8,11 +8,11 @@ import org.springframework.aot.hint.TypeReference
 /**
  * Native-image hint that keeps DPoP support switched on.
  *
- * Spring Security adds its DPoP authentication filter only when
- * `ClassUtils.isPresent("org.springframework.security.oauth2.jwt.DPoPProofJwtDecoderFactory")`
- * says so. In a native image that lookup finds a class only if it is registered for reflection, so
- * without this hint the check fails quietly, the filter is left out and every request made with a
- * DPoP token reaches the API unauthenticated and is turned away with a 401 that gives no reason.
+ * - Spring Security adds its DPoP filter only if `ClassUtils.isPresent` finds
+ *   `DPoPProofJwtDecoderFactory`.
+ * - In a native image that lookup finds a class only if it is registered for reflection. Without
+ *   this hint the check fails quietly, the filter is left out, and every request with a DPoP token
+ *   is turned away with a 401 that gives no reason.
  */
 class DpopRuntimeHints : RuntimeHintsRegistrar {
 
