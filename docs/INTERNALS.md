@@ -322,48 +322,19 @@ Every error is an RFC 9457 problem detail (`application/problem+json`), rendered
 
 ## Observability
 
-- **Metrics**: `/actuator/prometheus` on management port 8081, which is internal.
-  - Key series: `http_server_requests_seconds`, a histogram tagged by route template and status, so short codes never
-    become label values (tested).
-  - Hikari, JVM and process metrics come with it.
-- **Dashboard**: `deploy/observability/grafana/dashboards/shortener.json`, twelve panels.
-  - A panel stays empty until traffic arrives.
-  - The native image has no GC beans, so its GC panel is empty and its heap maximum reads zero.
-- **Logs**: structured ECS JSON under the `production` profile.
-- **Health**: liveness and readiness on the management port. Readiness is the application's own state and does not
-  include the database. Every instance shares one database, so removing them all from rotation gains nothing, and the
-  health check that restarts unhealthy containers would restart all of them during an outage. An instance answers what
-  it can and gives `503` with `Retry-After` for the rest. A rollout stays safe because a new instance only starts after
-  the migration job has reached the database.
-- **Traces**: Micrometer Tracing with the OpenTelemetry bridge, exported over OTLP/HTTP.
-  - A server span per request, named by route, joined to the caller's trace through `traceparent`.
-  - `shortlink.load` marks a redirect that missed the cache, `shortlink.insert` each attempt to store a link. Both are
-    also timers.
-  - Trace and span ids are in the logs. Spring Security's per-filter observations are off to avoid a span per filter.
-  - Sampling: 0 by default, 100% under `dev`, 5% under `production`.
-  - The exporter is always built in and the endpoint has a default in `application.yaml`: a native image decides at
-    build time which beans exist, so removing the endpoint or supplying it only at run time compiles the exporter out
-    silently. Environment variables still override it at run time.
-  - OTLP export of logs and metrics is off.
+What is reported, the dashboard, the traces and the alerts are in [OBSERVABILITY.md](OBSERVABILITY.md). The decisions:
 
-- **The database**, none of it needing the application:
-  - `deploy/postgres/diagnostics.conf` makes the server explain itself: `pg_stat_statements`, `track_io_timing`,
-    statements slower than 250 ms logged with their plan (`auto_explain`) and the user, database and application name,
-    lock waits, sorts that spill to disk and slow autovacuums. The compose files load it. A managed
-    database takes the same settings as parameters.
-  - The dev compose `observability` profile and the stack's observability overlay run `postgres_exporter` as
-    `shortener_exporter`, limited to 25 statements and no query text. Prometheus scrapes it.
-  - `perf/pg-diagnostics.sql` is what to run when it is slow: connections by application and state, what waits for a
-    lock, the costliest statements, cache hit ratio, dead rows, unused indexes and distance from transaction ID
-    wraparound. It works as a member of `pg_monitor`.
-- **Alerts**: `deploy/observability/alerts.yml` has five, on what the application sees of its database.
-  - Requests waiting for a connection, connection timeouts, a slow wait for a connection, more than 1% of requests
-    answered 503, and redirects served stale.
-  - Each has a unit test with simulated series (`deploy/observability/alerts.test.yml`, run with `promtool` in CI).
-  - The server's own alerts (connections against `max_connections`, replication, backup age, transaction age) depend on
-    how Postgres is run, and are not here.
-
-Not done: nginx metrics, and a Grafana dashboard for Postgres (the exporter's series are there to build one).
+- **Readiness excludes the database.** Every instance shares one, so removing them all from rotation gains nothing, and
+  the health check that restarts unhealthy containers would restart all of them during an outage. An instance answers
+  what it can and gives `503` with `Retry-After` for the rest. A rollout stays safe because a new instance only starts
+  after the migration job has reached the database.
+- **The trace exporter is always built in.** A native image decides at build time which beans exist, so an endpoint that
+  is missing when the image is built, or given only at run time, compiles the exporter out silently. The endpoint has a
+  default in `application.yaml`, and environment variables still override it.
+- **Metrics are labelled by route template**, so short codes never become label values.
+- **The management port is internal.** Health and metrics are never proxied by the edge.
+- **The database explains itself, without the application:** slow-statement logging, an exporter that cannot read data,
+  and a diagnostics script. See `deploy/postgres/diagnostics.conf` and `perf/pg-diagnostics.sql`.
 
 ## Native image
 
