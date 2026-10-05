@@ -133,7 +133,8 @@ socket timeout cannot cut a long migration short. Three more consequences:
 - The startup probe no longer kills a long migration, because init containers have none, and a migration that fails
   leaves the rollout stopped with the old pods still serving.
 - Every new pod starts the init container, HPA scale-ups included. After the first it is a no-op (Flyway's advisory lock
-  makes concurrent ones safe), and it costs about as much as the application takes to start.
+  makes concurrent ones safe), and it costs about as much as the application takes to start: 0.5 s for the native image,
+  and the JVM took 7 s to become ready (both measured here, against Postgres 18).
 - The previous version keeps serving against the new schema during a rollout, so migrations must be compatible with it
   (add, then switch, then remove in a later release).
 
@@ -496,7 +497,8 @@ eviction on disable. See [Redirect cache](#redirect-cache) for the behaviour and
   down, but creates still queue for seconds; the Envoy proxies do not yet limit connections to match Tomcat's.
 - The Envoy Gateway, cert-manager and Prometheus operator parts are untested on a real cluster, and so are the
   migration init container and the local overlay's role setup (the manifests render; the migrate-only run, the role
-  privileges and Flyway as the application role were run against Postgres).
+  privileges and Flyway as the application role were run against Postgres 18, on the JVM and as a native binary built
+  with GraalVM 25, but not in the Paketo image, which needs hosts this environment cannot reach).
 - The database connection is not forced to use TLS: the URL comes from a Secret and the driver's default falls back to
   plain text. Production should use `sslmode=verify-full`.
 - No Envoy metrics or Envoy spans, no alerts on the database server itself, and the alert rules are not tested in CI.
