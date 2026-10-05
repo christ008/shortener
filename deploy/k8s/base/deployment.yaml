@@ -110,8 +110,8 @@ spec:
                 name: shortener-telemetry
                 optional: true
           env:
-            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
-              value: ecs
+            - name: SPRING_PROFILES_ACTIVE
+              value: production
             - name: SPRING_DATASOURCE_URL
               valueFrom:
                 secretKeyRef:

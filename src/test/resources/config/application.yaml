@@ -1,0 +1,6 @@
+# Every test runs under the `test` profile (application-test.yaml). This file sits in `config/` so that it does not hide
+# the application's own application.yaml: Spring loads both, and Spring reads only the first application.yaml found
+# in a single location.
+spring:
+  profiles:
+    active: test

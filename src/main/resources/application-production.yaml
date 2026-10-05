@@ -1,0 +1,31 @@
+# Deployed environments, set with SPRING_PROFILES_ACTIVE=production. Logs are structured JSON, error responses and health
+# checks reveal nothing about internals, 5% of traces are sampled, and DPoP-bound tokens are stated as required.
+# Addresses, credentials and the OTLP endpoint still come from the environment.
+spring:
+  main:
+    banner-mode: "off"
+
+logging:
+  structured:
+    format:
+      console: ecs
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    include-exception: false
+
+management:
+  endpoint:
+    health:
+      show-details: never
+  tracing:
+    sampling:
+      probability: 0.05
+
+shortener:
+  security:
+    dpop:
+      required: true

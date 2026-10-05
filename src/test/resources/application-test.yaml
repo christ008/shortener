@@ -1,0 +1,15 @@
+# Active in every test through config/application.yaml. Tests sign their tokens with a stand-in identity provider that
+# issues ordinary bearer tokens, so DPoP is off unless a test turns it on; nothing is traced, and the banner is skipped.
+spring:
+  main:
+    banner-mode: "off"
+
+management:
+  tracing:
+    sampling:
+      probability: 0.0
+
+shortener:
+  security:
+    dpop:
+      required: false

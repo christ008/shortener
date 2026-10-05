@@ -89,6 +89,14 @@ tasks.withType<Test> {
     )
 }
 
+tasks.bootRun {
+    if (System.getenv("SPRING_PROFILES_ACTIVE") == null) systemProperty("spring.profiles.active", "dev")
+}
+
+tasks.named<org.springframework.boot.gradle.tasks.aot.ProcessAot>("processAot") {
+    args("--spring.profiles.active=production")
+}
+
 /**
  * The native image is built on BellSoft's Alpaquita (musl) builder, with the build pinned so that a rebuild of the
  * same commit produces the same image.

@@ -1,0 +1,21 @@
+# Local development, active under ./gradlew bootRun. Everything is switched on for visibility: debug logs for this
+# application, health details, every trace sampled, and rate limits high enough not to get in the way of exploring.
+logging:
+  level:
+    uy.ct.shortener: DEBUG
+
+management:
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0
+
+shortener:
+  security:
+    rate-limit:
+      per-ip:
+        capacity: 10000
+      per-client:
+        capacity: 5000
