@@ -2,19 +2,21 @@
 
 [![CI](https://github.com/christ008/shortener/actions/workflows/ci.yml/badge.svg)](https://github.com/christ008/shortener/actions/workflows/ci.yml)
 
-A URL shortener built to production standards: OAuth2 with sender-constrained (DPoP) tokens, per-client ownership,
-plain JDBC on Postgres, virtual threads, Prometheus metrics, a GraalVM native image and Kubernetes manifests with the
-Gateway API.
+A URL shortener built to production standards.
+
+- OAuth2 with sender-constrained (DPoP) tokens and per-client ownership.
+- Plain JDBC on Postgres, virtual threads, an in-memory redirect cache.
+- Prometheus metrics and OpenTelemetry traces.
+- A GraalVM native image on Alpaquita (musl), and Kubernetes manifests with the Gateway API.
 
 Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · Envoy Gateway · Apache-2.0
 
 ## What it does
 
-- Creates short links with a generated code (7 base62 characters) or a custom one, and redirects with a `302`.
-- Each client owns the links it creates. It can list, read and disable its own links; an administrator can act on any.
-  A link that belongs to someone else looks like it does not exist.
-- Disabled links answer `410 Gone` and keep their code taken, so nobody can re-register it. Redirects are served from an
-  in-memory cache, so a takedown reaches every instance within 30 seconds.
+- Creates links with a generated code (7 base62 characters) or a custom one, and redirects with a `302`.
+- Each client owns its links and can list, read and disable them. An administrator can act on any.
+- Another client's link looks like it does not exist (`404`).
+- A disabled link answers `410 Gone` and keeps its code taken. A takedown reaches every instance within the cache TTL (30 s).
 - Every authentication, authorization and rate-limit failure is an RFC 9457 problem detail.
 
 ## Run it locally
@@ -25,8 +27,9 @@ You need Docker and JDK 25.
 ./gradlew bootRun
 ```
 
-`bootRun` starts Postgres and Keycloak from `compose.yaml` and applies the Flyway migrations. Clients authenticate with
-a signed assertion and get tokens bound to their key, so use the JDK-only client in `deploy/keycloak`:
+`bootRun` runs the `dev` profile, starts Postgres and Keycloak from `compose.yaml` and applies the Flyway migrations.
+Clients authenticate with a signed assertion and get tokens bound to their key, so use the JDK-only client in
+`deploy/keycloak`:
 
 ```bash
 java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
@@ -39,20 +42,20 @@ The response carries the short URL in `Location`. Following it needs no token:
 curl -i http://localhost:8080/<shortCode>
 ```
 
-Prometheus, Grafana and Tempo (for traces) are behind a profile: `docker compose --profile observability up -d`, then open
-<http://localhost:3000/d/shortener/shortener>. To see traces locally, start the app with
-`MANAGEMENT_TRACING_SAMPLING_PROBABILITY=1.0`; it exports to `http://localhost:4318/v1/traces` by default. The dev clients, keys and secrets in this repository are public on
-purpose and must never be used anywhere real.
+Optional observability: `docker compose --profile observability up -d` starts Prometheus, Grafana and Tempo. Open
+<http://localhost:3000/d/shortener/shortener>. The `dev` profile samples every trace.
+
+The dev clients, keys and secrets in this repository are public on purpose. Never use them anywhere real.
 
 ## What it looks like
 
-The Grafana dashboard that ships in `deploy/observability`, during a 1,500 requests a second run with a 1% share of
-creates (JVM, 2 cores, 512 MB). The redirect cache answers about 99% of redirects, so the connection pool stays idle:
+The shipped Grafana dashboard at 1,500 requests a second, 1% creates (JVM, 2 cores, 512 MB). The cache answers about 99%
+of redirects, so the pool stays idle:
 
 ![Grafana dashboard](docs/images/dashboard.png)
 
-A create request as a trace in Tempo: the HTTP span and, under it, the `shortlink.insert` span for the database write.
-A redirect that hits the cache is a single span; a miss adds `shortlink.load`:
+A create as a trace in Tempo: the HTTP span and its `shortlink.insert` child. A cached redirect is one span, a miss adds
+`shortlink.load`:
 
 ![A trace in Tempo](docs/images/trace.png)
 
@@ -66,19 +69,20 @@ A redirect that hits the cache is a single span; a miss adds `shortlink.load`:
 | `DELETE /api/short-links/{code}` | `shortlinks:delete` | `204`, idempotent, or `404` |
 | `GET /{code}` | nothing | `302`, `404`, or `410` when disabled |
 
-`shortlinks:admin` reads and disables any client's links. Errors are `401` with a `DPoP` challenge, `403` with
-`insufficient_scope`, `429` with `Retry-After`, and `503` with `Retry-After` when the database cannot be reached.
-Scope names are configuration (`shortener.shortlink.scopes.*`). The full contract, with schemas and examples, is
-[docs/openapi.yaml](docs/openapi.yaml); a test fails if it drifts from the code.
+- `shortlinks:admin` reads and disables any client's links.
+- Errors: `401` with a `DPoP` challenge, `403` with `insufficient_scope`, `429` and `503` with `Retry-After`.
+- Scope names are configuration (`shortener.shortlink.scopes.*`).
+- The full contract is [docs/openapi.yaml](docs/openapi.yaml). A test fails if it drifts from the code.
 
 ## Configuration
 
-Everything has a default for local development. In a cluster the main settings are environment variables:
+Everything has a default for local development. Deployed, set `SPRING_PROFILES_ACTIVE=production` (JSON logs, no
+internals in errors or health, 5% trace sampling, DPoP required) and the environment variables below:
 
 | Variable | Meaning |
 |---|---|
 | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres, as the role that serves requests (`shortener_app`) |
-| `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as the role that owns the tables (`shortener_migrator`); only the init container that migrates sets them. With `SHORTENER_MIGRATE_ONLY=true` the process applies the migrations and exits |
+| `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as the role that owns the tables (`shortener_migrator`). Only the init container that migrates sets them. With `SHORTENER_MIGRATE_ONLY=true` the process applies the migrations and exits |
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
@@ -88,32 +92,37 @@ Everything has a default for local development. In a cluster the main settings a
 ## Build, test, package
 
 ```bash
-./gradlew test                  # 184 tests; integration tests use Testcontainers
-./gradlew bootBuildImage        # native image through Paketo and Liberica (needs about 7 GB free; takes 3 minutes)
+./gradlew test                  # integration tests use Testcontainers
+./gradlew bootBuildImage        # native image on Alpaquita (musl); needs about 7 GB free, takes 3 minutes
 ```
 
-The native image starts in about 0.4 seconds. Run `perf/smoke.sh` against it to exercise every endpoint with real
-tokens.
+- The build is pinned in `build.gradle.kts`: Paketo buildpacks by version, BellSoft's builder and run image by digest.
+- The image runs as uid 1000, starts in about 0.4 s, and carries `/workspace/health-check` for container health checks.
+- `perf/smoke.sh` exercises every endpoint with real tokens against a running instance.
 
 ## Deploy
 
-`deploy/k8s` is a Kustomize base with a local overlay (kind) and a production overlay: Envoy Gateway with TLS through
-cert-manager, an HPA, a disruption budget, a NetworkPolicy, secrets from an ExternalSecret, and a PodMonitor. Install
-Envoy Gateway and the `gatewayclass` once per cluster. See [docs/INTERNALS.md](docs/INTERNALS.md#kubernetes).
+`deploy/k8s` is a Kustomize base with a local overlay (kind) and a production overlay: Envoy Gateway with
+cert-manager TLS, an HPA, a disruption budget, a NetworkPolicy, ExternalSecrets and a PodMonitor. See
+[docs/INTERNALS.md](docs/INTERNALS.md#kubernetes).
 
 ## Performance
 
-Measured on one laptop, with the app limited to 2 cores and 512 MB: the JVM and the native image both serve about
-5,000 requests a second at a redirect p99 of 1 ms (the load generator was the limit), and the native image starts in
-0.4 seconds. The redirect cache and a connection limit keep the native image stable under overload. The methodology,
-the numbers and the investigation are in [docs/INTERNALS.md](docs/INTERNALS.md#performance). Read the warning there before running load tests.
+One laptop, app limited to 2 cores and 512 MB:
+
+- The JVM and the native image both serve about 5,000 requests a second at a redirect p99 of 1 ms.
+- The native image starts in 0.4 s.
+- The redirect cache and a connection limit keep the native image stable under overload.
+
+Method, numbers and the investigation: [docs/INTERNALS.md](docs/INTERNALS.md#performance). Read the warning there
+before running load tests.
 
 ## Layout
 
 ```
 src/main/kotlin/uy/ct/shortener
-  shortlink/            public contract: ShortLink, ShortCode, service and repository interfaces, exceptions
-    internal/           service, web, persistence and authorization adapters
+  shortlink/            public contract: types, service and repository interfaces, exceptions
+    internal/           service, cache, web, persistence and authorization adapters
   security/             resource server, DPoP, rate limiting, problem details
 deploy/                 Kubernetes, Keycloak realm and dev keys, Prometheus, Grafana and Tempo
 .github/workflows/      CI: tests and manifest checks on every push, a manual native image build
