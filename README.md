@@ -121,92 +121,39 @@ before running load tests.
 
 ## Layout
 
-```
-src/main/kotlin/uy/ct/shortener
-  shortlink/            public contract: types, service and repository interfaces, exceptions
-    internal/           service, cache, web, persistence and authorization adapters
-  security/             resource server, DPoP, rate limiting, problem details
-compose.prod.yaml       the production stack (compose.prod.observability.yaml adds Prometheus)
-deploy/                 edge and stack scripts, Postgres setup, Keycloak realm and dev keys, alert rules, Grafana, Tempo
-.github/workflows/      CI on every push, a release on v* tags, a manual native image build
-perf/                   k6 workload, benchmark and profiling scripts, results
-docs/INTERNALS.md       how it works and why
-docs/DEPLOY.md          the production stack runbook
-docs/OBSERVABILITY.md   metrics, dashboard, traces and alerts, with screenshots
-docs/openapi.yaml](docs/openapi.yaml). A test fails if it drifts from the code.
-
-## Configuration
-
-Everything has a default for local development. Deployed, set `SPRING_PROFILES_ACTIVE=production` (JSON logs, no
-internals in errors or health, 5% trace sampling, DPoP required) and the environment variables below:
-
-| Variable | Meaning |
-|---|---|
-| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres, as the role that serves requests (`shortener_app`) |
-| `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as the role that owns the tables (`shortener_migrator`). Only the init container that migrates sets them. With `SHORTENER_MIGRATE_ONLY=true` the process applies the migrations and exits |
-| `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
-| `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
-| `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
-| `SERVER_TOMCAT_MAXCONNECTIONS` | connections Tomcat accepts before refusing (500); each costs about 150 KB of heap |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long after it was last read a link is still followed when the database cannot be reached (5m); `0` turns it off |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES` | how long (30s) and how many (100,000) links the redirect cache keeps; `..._ENABLED=false` turns it off |
-
-Environment variable names have no separator inside a word: `SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT`, not
-`..._CONNECTION_TIMEOUT`. Spring reads every underscore as a dot, so the second asks for `hikari.connection.timeout`,
-which starts the pool while looking for it, and the application then fails with `The configuration of the pool is sealed
-once started`.
-
-## Build, test, package
-
-```bash
-./gradlew test                  # integration tests use Testcontainers
-./gradlew bootBuildImage        # native image on Alpaquita (musl); needs about 7 GB free, takes 3 minutes
-```
-
-- The build is pinned in `build.gradle.kts`: Paketo buildpacks by version, BellSoft's builder and run image by digest.
-- The image runs as uid 1000, starts in about 0.4 s, and carries `/workspace/health-check` for container health checks.
-- `perf/smoke.sh` exercises every endpoint with real tokens against a running instance.
-
-## Deploy
-
-`compose.prod.yaml` is the production stack, for Docker Swarm or one host with Compose:
-
-- An nginx edge with TLS, and two application instances behind it, health-gated rolling updates with automatic rollback.
-- A migration job that alone holds the credentials of the role that owns the tables, and a Postgres you can replace
-  with a managed one.
-- Every container read-only, without capabilities, non-root and bounded. Secrets are files, not variables.
-- An optional overlay with Prometheus, the Postgres exporter and the alert rules.
-
-Runbook: [docs/DEPLOY.md](docs/DEPLOY.md). Design and what it gives up against Kubernetes:
-[docs/INTERNALS.md](docs/INTERNALS.md#deployment).
-
-## Performance
-
-One laptop, app limited to 2 cores and 512 MB:
-
-- The JVM and the native image both serve about 5,000 requests a second at a redirect p99 of 1 ms.
-- The native image starts in 0.4 s.
-- The redirect cache and a connection limit keep the native image stable under overload.
-
-Method, numbers and the investigation: [docs/INTERNALS.md](docs/INTERNALS.md#performance). Read the warning there
-before running load tests.
-
-## Layout
-
-```
-src/main/kotlin/uy/ct/shortener
-  shortlink/            public contract: types, service and repository interfaces, exceptions
-    internal/           service, cache, web, persistence and authorization adapters
-  security/             resource server, DPoP, rate limiting, problem details
-compose.prod.yaml        the production stack (compose.prod.observability.yaml adds Prometheus)
-deploy/                 edge and stack scripts, Postgres setup, Keycloak realm and dev keys, alert rules, Grafana, Tempo
-.github/workflows/      CI: tests and manifest checks on every push, a manual native image build
-perf/                   k6 workload, benchmark and profiling scripts, results
-docs/INTERNALS.md       how it works and why
-docs/OBSERVABILITY.md  metrics, dashboard, traces and alerts, with screenshots
-docs/DEPLOY.md          the production stack runbook
-docs/openapi.yaml       the API contract
-docs/UI.md              the plan for a web UI (TanStack Start and Mantine)
+```mermaid
+mindmap
+  root((shortener))
+    src/main/kotlin/uy/ct/shortener
+      shortlink/
+        public contract: types, service and repository interfaces, exceptions
+        internal/
+          service, cache, web, persistence and authorization adapters
+      security/
+        resource server, DPoP, rate limiting, problem details
+    Running it
+      compose.prod.yaml
+        the production stack
+      compose.prod.observability.yaml
+        adds Prometheus and the alert rules
+      deploy/
+        edge and stack scripts, Postgres setup, Keycloak realm and dev keys, alert rules, Grafana, Tempo
+      .github/workflows/
+        CI on every push, a release on v* tags, a manual native image build
+    docs/
+      INTERNALS.md
+        how it works and why
+      DEPLOY.md
+        the production stack runbook
+      OBSERVABILITY.md
+        metrics, dashboard, traces and alerts
+      openapi.yaml
+        the API contract
+      UI.md
+        the plan for a web UI
+    Measuring
+      perf/
+        k6 workload, benchmark and profiling scripts, results
 ```
 
 Releases are tagged `v0.x.0`, one minor version per change.
