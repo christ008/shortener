@@ -8,6 +8,7 @@ import uy.ct.shortener.shortlink.LinkLookup
 import uy.ct.shortener.shortlink.LinkStatus
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLink
+import uy.ct.shortener.shortlink.StorageUnavailableException
 import java.net.URI
 import java.time.Duration
 import java.time.Instant
@@ -15,6 +16,7 @@ import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.assertFailsWith
 
 /**
  * The redirect cache on its own: what it keeps, for how long, how many, what it does when many
@@ -158,5 +160,115 @@ class RedirectCacheTest {
     fun `refuses settings that would make it useless or unbounded`() {
         org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(ttl = Duration.ZERO) }
         org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(maxEntries = 0) }
+    }
+
+    private val down = { _: ShortCode -> throw StorageUnavailableException(RuntimeException("the database is down")) }
+
+    private fun staleCache(window: Duration = Duration.ofMinutes(5), maxEntries: Long = 100_000) =
+        cacheOf(RedirectCacheProperties(ttl = Duration.ofSeconds(30), staleIfError = window, maxEntries = maxEntries))
+
+    private fun stale() = registry.get("shortlink.redirect.cache.stale").counter().count()
+
+    @Test
+    fun `serves the link it last read when the database cannot be reached after the entry has expired, and counts it`() {
+        val cache = staleCache()
+        val known = cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+        ticker.advance(Duration.ofSeconds(31))
+
+        val served = cache.find(ShortCode("aaaaaaa"), down)
+
+        assertThat(served).isEqualTo(known)
+        assertThat(stale()).isEqualTo(1.0)
+    }
+
+    @Test
+    fun `stops serving it once the window has passed, and fails like any other lookup`() {
+        val cache = staleCache(Duration.ofMinutes(5))
+        cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+        ticker.advance(Duration.ofMinutes(5).plusSeconds(1))
+
+        assertFailsWith<StorageUnavailableException> { cache.find(ShortCode("aaaaaaa"), down) }
+
+        assertThat(stale()).isZero()
+    }
+
+    @Test
+    fun `fails for a link it has never read, which is what a code nobody created gets`() {
+        val cache = staleCache()
+        cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+
+        assertFailsWith<StorageUnavailableException> { cache.find(ShortCode("bbbbbbb"), down) }
+    }
+
+    @Test
+    fun `does not bring back a link the database has since said is gone or disabled`() {
+        val cache = staleCache()
+        cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+        ticker.advance(Duration.ofSeconds(31))
+        assertThat(cache.find(ShortCode("aaaaaaa")) { LinkLookup.Missing }).isEqualTo(LinkLookup.Missing)
+        ticker.advance(Duration.ofSeconds(31))
+
+        assertFailsWith<StorageUnavailableException> { cache.find(ShortCode("aaaaaaa"), down) }
+    }
+
+    @Test
+    fun `does not bring back a link that was disabled here, even for an outage`() {
+        val cache = staleCache()
+        cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+        cache.evict(ShortCode("aaaaaaa"))
+
+        assertFailsWith<StorageUnavailableException> { cache.find(ShortCode("aaaaaaa"), down) }
+    }
+
+    @Test
+    fun `does not hide a failure that is not the database being unreachable`() {
+        val cache = staleCache()
+        cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+        ticker.advance(Duration.ofSeconds(31))
+
+        assertFailsWith<IllegalStateException> { cache.find(ShortCode("aaaaaaa")) { throw IllegalStateException("a bug") } }
+
+        assertThat(stale()).isZero()
+    }
+
+    @Test
+    fun `serves nothing stale when the window is zero`() {
+        val cache = staleCache(Duration.ZERO)
+        cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+        ticker.advance(Duration.ofSeconds(31))
+
+        assertFailsWith<StorageUnavailableException> { cache.find(ShortCode("aaaaaaa"), down) }
+    }
+
+    @Test
+    fun `does not count a redirect served stale as a hit, so the hit ratio stays the share answered from memory`() {
+        val cache = staleCache()
+        cache.find(ShortCode("aaaaaaa")) { link("aaaaaaa") }
+        ticker.advance(Duration.ofSeconds(31))
+
+        cache.find(ShortCode("aaaaaaa"), down)
+
+        assertThat(counter("hit")).isZero()
+        assertThat(counter("miss")).isEqualTo(2.0)
+    }
+
+    @Test
+    fun `holds a stale copy for every entry it holds, within the same limit`() {
+        val cache = staleCache(maxEntries = 2)
+        val codes = listOf("aaaaaaa", "bbbbbbb", "ccccccc", "ddddddd")
+        codes.forEach { code -> cache.find(ShortCode(code)) { link(code) } }
+        ticker.advance(Duration.ofSeconds(31))
+
+        val served = codes.count { code -> runCatching { cache.find(ShortCode(code), down) }.isSuccess }
+
+        assertThat(served).isLessThanOrEqualTo(2)
+    }
+
+    @Test
+    fun `refuses a stale window shorter than the time to live, which could never outlast an entry`() {
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(ttl = Duration.ofSeconds(30), staleIfError = Duration.ofSeconds(10)) }
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(staleIfError = Duration.ofSeconds(-1)) }
+        assertThat(RedirectCacheProperties(staleIfError = Duration.ZERO).staleIfError).isZero()
+        assertThat(RedirectCacheProperties(ttl = Duration.ofSeconds(30), staleIfError = Duration.ofSeconds(30)).staleIfError).isEqualTo(Duration.ofSeconds(30))
     }
 }

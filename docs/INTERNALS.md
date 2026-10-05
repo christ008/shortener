@@ -213,6 +213,19 @@ An in-process Caffeine cache per instance, in front of the database read that ev
 - **Misses.** Concurrent misses for one code run one load and share it. A miss for an unknown or disabled code does a
   second lookup to tell them apart, because only active links are stored.
 - **Metrics.** `cache_gets_total`, `cache_size`, `cache_evictions_total` for the cache `shortlink.redirect`.
+- **Outages (`stale-if-error`, 5 minutes, 0 turns it off).** When the database cannot be reached and an entry has
+  expired, the cache serves the last copy this instance read.
+  - A code the instance never read still gets the `503`, and so does any failure that is not the database being
+    unreachable.
+  - The copies live in a second, equally bounded cache used only on that failure, so the hit ratio counts only what
+    memory answered. Serving stale is not a hit.
+  - A link the database then reports gone or disabled is dropped, as is one disabled on this instance.
+  - Cost: a link disabled elsewhere just before an outage keeps redirecting here until its copy expires. That is why the
+    window is short. It cannot be shorter than the TTL.
+  - Each redirect served this way increments `shortlink_redirect_cache_stale_total`, which should be zero.
+  - Drilled on the native binary with Postgres stopped: a link read earlier kept redirecting, an unread code got `503`
+    with `Retry-After`, readiness and liveness stayed up, and the instance recovered when Postgres returned. With the
+    window at zero the same link answered `503`.
 
 Rejected:
 
@@ -317,7 +330,11 @@ Every error is an RFC 9457 problem detail (`application/problem+json`), rendered
   - A panel stays empty until traffic arrives.
   - The native image has no GC beans, so its GC panel is empty and its heap maximum reads zero.
 - **Logs**: structured ECS JSON under the `production` profile.
-- **Health**: liveness, and readiness that includes the database, on the management port.
+- **Health**: liveness and readiness on the management port. Readiness is the application's own state and does not
+  include the database. Every instance shares one database, so removing them all from rotation gains nothing, and the
+  health check that restarts unhealthy containers would restart all of them during an outage. An instance answers what
+  it can and gives `503` with `Retry-After` for the rest. A rollout stays safe because a new instance only starts after
+  the migration job has reached the database.
 - **Traces**: Micrometer Tracing with the OpenTelemetry bridge, exported over OTLP/HTTP.
   - A server span per request, named by route, joined to the caller's trace through `traceparent`.
   - `shortlink.load` marks a redirect that missed the cache, `shortlink.insert` each attempt to store a link. Both are

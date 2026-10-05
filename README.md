@@ -87,7 +87,13 @@ internals in errors or health, 5% trace sampling, DPoP required) and the environ
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
 | `SERVER_TOMCAT_MAXCONNECTIONS` | connections Tomcat accepts before refusing (500); each costs about 150 KB of heap |
+| `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long after it was last read a link is still followed when the database cannot be reached (5m); `0` turns it off |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES` | how long (30s) and how many (100,000) links the redirect cache keeps; `..._ENABLED=false` turns it off |
+
+Environment variable names have no separator inside a word: `SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT`, not
+`..._CONNECTION_TIMEOUT`. Spring reads every underscore as a dot, so the second asks for `hikari.connection.timeout`,
+which starts the pool while looking for it, and the application then fails with `The configuration of the pool is sealed
+once started`.
 
 ## Build, test, package
 
