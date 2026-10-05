@@ -19,14 +19,14 @@ def k6_metric(path, name, field):
 def peak_memory(path):
     peak = 0.0
     for line in path.read_text().splitlines():
-        match = re.search(r"([\d.]+)(MiB|GiB)\s*/", line)
+        match = re.search(r"(\d+(?:\.\d+)?)(MiB|GiB)\s*/", line)
         if match:
             peak = max(peak, float(match.group(1)) * (1024 if match.group(2) == "GiB" else 1))
     return peak
 
 
 def avg_cpu(path):
-    values = [float(m.group(1)) for m in (re.match(r"\d+ ([\d.]+)%", l) for l in path.read_text().splitlines()) if m]
+    values = [float(m.group(1)) for m in (re.match(r"\d+ (\d+(?:\.\d+)?)%", l) for l in path.read_text().splitlines()) if m]
     return sum(values) / len(values) if values else 0
 
 

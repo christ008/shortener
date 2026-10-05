@@ -1,0 +1,124 @@
+name: Release
+
+# A tag like v0.18.1 builds the native image, smoke-tests that exact image, and only then publishes it, signed, with its
+# software bill of materials. The tag must match the version in build.gradle.kts.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  release:
+    name: Build, check, publish and sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write   # push to GitHub Container Registry
+      id-token: write   # keyless signing with the workflow's identity
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the version in the build
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $version in build.gradle.kts"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run the tests (Testcontainers starts Postgres)
+        run: ./gradlew test
+
+      - name: Build the native image
+        run: ./gradlew bootBuildImage --imageName="$IMAGE:$VERSION"
+
+      - name: Start Postgres and Keycloak
+        run: |
+          docker compose up -d postgres keycloak
+          until curl -sf http://localhost:8180/realms/shortener/.well-known/openid-configuration > /dev/null; do sleep 3; done
+
+      - name: Run the image and smoke-test every endpoint
+        run: |
+          port=$(docker compose port postgres 5432 | cut -d: -f2)
+          docker run -d --name app --network host --memory 512m \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:$port/mydatabase \
+            -e SPRING_DATASOURCE_USERNAME=myuser -e SPRING_DATASOURCE_PASSWORD=secret \
+            "$IMAGE:$VERSION"
+          until curl -sf http://localhost:8081/actuator/health/readiness > /dev/null; do sleep 1; done
+          perf/smoke.sh
+
+      - name: Show the application log when something fails
+        if: failure()
+        run: docker logs app
+
+      - name: Scan the image for known vulnerabilities
+        uses: anchore/scan-action@v6
+        with:
+          image: ${{ env.IMAGE }}:${{ env.VERSION }}
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the image that was tested
+        id: push
+        run: |
+          docker push "$IMAGE:$VERSION"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$VERSION" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image by digest
+        run: cosign sign --yes "$IMAGE@${{ steps.push.outputs.digest }}"
+
+      - name: Create the software bill of materials
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: true
+
+      - name: Attach the bill of materials to the image
+        run: cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@${{ steps.push.outputs.digest }}"
+
+      - name: Summarize
+        run: |
+          {
+            echo "### Published"
+            echo
+            echo "\`$IMAGE:$VERSION\`"
+            echo
+            echo "Digest: \`${{ steps.push.outputs.digest }}\`"
+            echo
+            echo "Verify the signature:"
+            echo
+            echo '```bash'
+            echo "cosign verify $IMAGE@${{ steps.push.outputs.digest }} \\"
+            echo "  --certificate-identity-regexp '^https://github.com/${{ github.repository }}/' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -16,6 +16,7 @@ contract (a test keeps it in step with the code).
 - [Observability](#observability)
 - [Native image](#native-image)
 - [Kubernetes](#kubernetes)
+- [Releasing](#releasing)
 - [Performance](#performance)
 - [Decisions](#decisions)
 - [Limitations](#limitations)
@@ -437,6 +438,23 @@ open on 5432 and 443 because the database and identity provider addresses are en
 
 Tested on kind with stand-in backends: routing, forwarded address handling, the body cap, the request timeout. Not
 tested: cert-manager issuance, a real Keycloak behind the gateway, the PodMonitor.
+
+## Releasing
+
+Change `version` in `build.gradle.kts` (the OpenAPI document and the deployment files must match, a test checks), commit,
+tag the commit `v<version>` and push the tag. The `Release` workflow (`.github/workflows/release.yml`):
+
+- refuses a tag that does not match the version in the build;
+- runs the tests, builds the native image, and smoke-tests that exact image against Postgres and Keycloak;
+- scans it, and fails on a fixable high or critical vulnerability;
+- pushes that image to `ghcr.io/christ008/shortener`, signs it by digest with the workflow's own identity (no key to
+  manage), and attaches an SPDX bill of materials. The job summary prints the digest and the `cosign verify` command.
+
+Notes:
+- It has not run yet. Only amd64 is built.
+- The package is private after the first release. Make it public in the repository's package settings, or give the
+  hosts that pull it a registry login.
+- Dependabot proposes updates to the actions weekly. Pin them to commit hashes once the workflow is stable.
 
 ## Performance
 
