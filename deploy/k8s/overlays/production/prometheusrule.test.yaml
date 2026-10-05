@@ -1,0 +1,95 @@
+# Unit tests of the alerts in prometheusrule.yaml, with simulated series. promtool reads plain rule files, so extract the
+# groups first and run it from the directory that holds the result:
+#   python3 -c 'import sys, yaml; print(yaml.safe_dump({"groups": yaml.safe_load(open(sys.argv[1]))["spec"]["groups"]}))' \
+#     deploy/k8s/overlays/production/prometheusrule.yaml > rules.yml
+#   promtool test rules deploy/k8s/overlays/production/prometheusrule.test.yaml   (with rules.yml next to it)
+rule_files:
+  - rules.yml
+evaluation_interval: 1m
+tests:
+  - name: a pool with waiting requests fires after two minutes, and an idle one never does
+    interval: 1m
+    input_series:
+      - series: 'hikaricp_connections_pending{application="shortener", pod="busy"}'
+        values: '0 0 3 3 3 3 3 3'
+      - series: 'hikaricp_connections_pending{application="shortener", pod="idle"}'
+        values: '0 0 0 0 0 0 0 0'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ShortenerDatabasePoolExhausted", alertstate="firing"}
+        eval_time: 3m
+        exp_samples: []
+      - expr: ALERTS{alertname="ShortenerDatabasePoolExhausted", alertstate="firing"}
+        eval_time: 6m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ShortenerDatabasePoolExhausted", alertstate="firing", pod="busy", severity="warning"}'
+            value: 1
+
+  - name: connection timeouts fire while the counter grows, and not for a counter that does not move
+    interval: 1m
+    input_series:
+      - series: 'hikaricp_connections_timeout_total{application="shortener", pod="failing"}'
+        values: '0 0 0 5 10 15 20 25 30 35'
+      - series: 'hikaricp_connections_timeout_total{application="shortener", pod="fine"}'
+        values: '7 7 7 7 7 7 7 7 7 7'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ShortenerDatabaseConnectionTimeouts", alertstate="firing"}
+        eval_time: 8m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ShortenerDatabaseConnectionTimeouts", alertstate="firing", pod="failing", severity="warning"}'
+            value: 1
+
+  - name: a slow connection fires after ten minutes above half a second, and not below it
+    interval: 1m
+    input_series:
+      - series: 'hikaricp_connections_acquire_seconds_max{application="shortener", pod="slow"}'
+        values: '0.8+0x20'
+      - series: 'hikaricp_connections_acquire_seconds_max{application="shortener", pod="quick"}'
+        values: '0.01+0x20'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerDatabaseSlowToConnect", alertstate="firing"})
+        eval_time: 9m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="ShortenerDatabaseSlowToConnect", alertstate="firing"})
+        eval_time: 12m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+
+  - name: 2% of requests answered 503 fires, 0.5% does not, and no traffic at all does not either
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="shortener", status="200", uri="/{shortCode}"}'
+        values: '0+98x20'
+      - series: 'http_server_requests_seconds_count{application="shortener", status="503", uri="/{shortCode}"}'
+        values: '0+2x20'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerStorageUnavailable", alertstate="firing"})
+        eval_time: 4m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="ShortenerStorageUnavailable", alertstate="firing"})
+        eval_time: 12m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+
+  - name: half a percent of 503 stays below the threshold
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="shortener", status="200"}'
+        values: '0+995x20'
+      - series: 'http_server_requests_seconds_count{application="shortener", status="503"}'
+        values: '0+5x20'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerStorageUnavailable", alertstate="firing"})
+        eval_time: 15m
+        exp_samples: []
+
+  - name: no traffic is not an outage
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{application="shortener", status="200"}'
+        values: '5+0x20'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerStorageUnavailable", alertstate="firing"})
+        eval_time: 15m
+        exp_samples: []

@@ -11,6 +11,7 @@ resources:
   - horizontalpodautoscaler.yaml
   - networkpolicy.yaml
   - podmonitor.yaml
+  - prometheusrule.yaml
   - externalsecrets.yaml
 configMapGenerator:
   - name: shortener-idp

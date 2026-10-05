@@ -60,6 +60,9 @@ spec:
             - name: init
               mountPath: /docker-entrypoint-initdb.d
               readOnly: true
+            - name: config
+              mountPath: /etc/shortener
+              readOnly: true
       volumes:
         - name: data
           emptyDir: {}
@@ -67,6 +70,9 @@ spec:
           configMap:
             name: postgres-init
             defaultMode: 365
+        - name: config
+          configMap:
+            name: postgres-config
 ---
 apiVersion: v1
 kind: Service

@@ -88,7 +88,7 @@ Everything has a default for local development. In a cluster the main settings a
 ## Build, test, package
 
 ```bash
-./gradlew test                  # 123 tests; integration tests use Testcontainers
+./gradlew test                  # 181 tests; integration tests use Testcontainers
 ./gradlew bootBuildImage        # native image through Paketo and Liberica (needs about 7 GB free; takes 3 minutes)
 ```
 

@@ -1,0 +1,59 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shortener-database
+  labels:
+    app.kubernetes.io/name: shortener
+spec:
+  # What the application sees of its database, from the Hikari and request metrics it exports. The redirect cache
+  # answers about 99% of redirects, so the pool is idle in normal operation: any of these firing means the cache is not
+  # absorbing the load or the database is slow or gone. The server's own metrics (connections used against the limit,
+  # replication, transaction age, backups) depend on how Postgres is run and are not here.
+  # Tested with `promtool test rules deploy/k8s/overlays/production/prometheusrule.test.yaml` on the groups of this file.
+  groups:
+    - name: shortener-database
+      rules:
+        - alert: ShortenerDatabasePoolExhausted
+          expr: max by (pod) (hikaricp_connections_pending{application="shortener"}) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: Requests are waiting for a database connection on {{ $labels.pod }}
+            description: >-
+              For two minutes there have been requests waiting for one of the pod's ten connections, and after 3 s they
+              fail with a 503. Look at what holds them: `perf/pg-diagnostics.sql` groups the connections by application
+              name (shortener-<pod>) and state, and lists the slowest statements.
+        - alert: ShortenerDatabaseConnectionTimeouts
+          expr: sum by (pod) (increase(hikaricp_connections_timeout_total{application="shortener"}[5m])) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.pod }} gave up waiting for a database connection"
+            description: >-
+              Requests failed with a 503 and Retry-After because no connection was free within 3 s, or the database could
+              not be reached. Check whether Postgres is up before looking at the pool.
+        - alert: ShortenerDatabaseSlowToConnect
+          expr: max(hikaricp_connections_acquire_seconds_max{application="shortener"}) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Taking a database connection takes more than half a second
+            description: >-
+              The slowest wait for a connection in the last scrape was over 500 ms for ten minutes: the pool is nearly
+              always busy, or opening connections is slow (the network, TLS, or Postgres at its connection limit).
+        - alert: ShortenerStorageUnavailable
+          expr: >-
+            sum(rate(http_server_requests_seconds_count{application="shortener",status="503"}[5m]))
+            / sum(rate(http_server_requests_seconds_count{application="shortener"}[5m])) > 0.01
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: More than 1% of requests are answered 503 because storage cannot be reached
+            description: >-
+              503 is only returned when no database connection can be had, so clients are being told to retry and are not
+              being served. Check Postgres first, then the connection budget: pods times ten connections against the
+              server's max_connections.
