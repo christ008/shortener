@@ -6,6 +6,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.AlgorithmParameters;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -16,6 +17,7 @@ import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.ECParameterSpec;
 import java.security.spec.ECPrivateKeySpec;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -38,9 +40,18 @@ public class DpopClient {
     static final String TOKEN_URL = System.getenv().getOrDefault("TOKEN_URL", "http://localhost:8180/realms/shortener/protocol/openid-connect/token");
     static final String ISSUER = System.getenv().getOrDefault("ISSUER", TOKEN_URL.replaceAll("/protocol/openid-connect/token$", ""));
     static final Base64.Encoder B64 = Base64.getUrlEncoder().withoutPadding();
-    static final HttpClient HTTP = HttpClient.newHttpClient();
+    static final Duration TIMEOUT = Duration.ofSeconds(30);
+    static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    static final String USAGE = """
+            usage: java DpopClient.java keygen CLIENT_ID
+                   java DpopClient.java token KEY_FILE CLIENT_ID
+                   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]""";
 
     public static void main(String[] args) throws Exception {
+        if (!validArguments(args)) {
+            System.err.println(USAGE);
+            System.exit(2);
+        }
         switch (args[0]) {
             case "keygen" -> keygen(args[1]);
             case "token" -> {
@@ -55,19 +66,30 @@ public class DpopClient {
                 String url = args[4];
                 String body = args.length > 5 ? args[5] : null;
                 HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+                        .timeout(TIMEOUT)
                         .header("Authorization", "DPoP " + token.accessToken)
-                        .header("DPoP", proof(dpopKey, method, url, token.accessToken))
-                        .header("Content-Type", "application/json")
-                        .headers(System.getenv("TRACEPARENT") == null ? new String[0] : new String[] {"traceparent", System.getenv("TRACEPARENT")})
-                        .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
+                        .header("DPoP", proof(dpopKey, method, url, token.accessToken));
+                if (body != null) request.header("Content-Type", "application/json");
+                String traceparent = System.getenv("TRACEPARENT");
+                if (traceparent != null && !traceparent.isBlank()) request.header("traceparent", traceparent);
+                request.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
                 HttpResponse<String> response = HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
                 System.out.println(response.statusCode());
                 response.headers().firstValue("Location").ifPresent(l -> System.out.println("Location: " + l));
                 response.headers().allValues("WWW-Authenticate").forEach(h -> System.out.println("WWW-Authenticate: " + h));
                 System.out.println(response.body());
             }
-            default -> throw new IllegalArgumentException("unknown command " + args[0]);
+            default -> throw new IllegalStateException("unreachable: " + args[0]);
         }
+    }
+
+    static boolean validArguments(String[] args) {
+        return args.length > 0 && switch (args[0]) {
+            case "keygen" -> args.length == 2;
+            case "token" -> args.length == 3;
+            case "call" -> args.length == 5 || args.length == 6;
+            default -> false;
+        };
     }
 
     record Token(String accessToken, String tokenType) {}
@@ -80,6 +102,7 @@ public class DpopClient {
         String form = "grant_type=client_credentials&client_id=" + clientId
                 + "&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=" + assertion;
         HttpRequest request = HttpRequest.newBuilder(URI.create(TOKEN_URL))
+                .timeout(TIMEOUT)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("DPoP", proof(dpopKey, "POST", TOKEN_URL, null))
                 .POST(HttpRequest.BodyPublishers.ofString(form)).build();
@@ -126,10 +149,9 @@ public class DpopClient {
 
     static PrivateKey readPrivateKey(String jwk) throws Exception {
         BigInteger d = new BigInteger(1, Base64.getUrlDecoder().decode(field(jwk, "d")));
-        KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
-        generator.initialize(new ECGenParameterSpec("secp256r1"));
-        ECParameterSpec params = ((ECPublicKey) generator.generateKeyPair().getPublic()).getParams();
-        return KeyFactory.getInstance("EC").generatePrivate(new ECPrivateKeySpec(d, params));
+        AlgorithmParameters parameters = AlgorithmParameters.getInstance("EC");
+        parameters.init(new ECGenParameterSpec("secp256r1"));
+        return KeyFactory.getInstance("EC").generatePrivate(new ECPrivateKeySpec(d, parameters.getParameterSpec(ECParameterSpec.class)));
     }
 
     static String coordinate(BigInteger value) {

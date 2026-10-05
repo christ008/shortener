@@ -79,7 +79,12 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("project.version", project.version.toString())
-    inputs.files("deploy/k8s/base/kustomization.yaml", "deploy/k8s/overlays/production/kustomization.yaml")
+    inputs.files(
+        "deploy/k8s/base/kustomization.yaml",
+        "deploy/k8s/overlays/production/kustomization.yaml",
+        "deploy/keycloak/DpopClient.java",
+        "deploy/keycloak/dev-keys/demo-client.jwk.json",
+    )
 }
 
 tasks.bootBuildImage {
