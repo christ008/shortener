@@ -282,7 +282,24 @@ rather than conformance.
   data source; start the app with `MANAGEMENT_TRACING_SAMPLING_PROBABILITY=1.0` to see every request. The production
   overlay samples 5% and exports to `otel-collector.monitoring:4318` through the optional `shortener-telemetry` config map.
 
-Not done: alert rules, metrics from the Envoy proxies, and Envoy's own spans, so a trace starts at the application.
+- **The database**: three things, none of which needs the application. `deploy/postgres/diagnostics.conf` makes the
+  server explain itself: `pg_stat_statements`, `track_io_timing`, statements slower than 250 ms in the log together with
+  their plan (`auto_explain`) and the user, database and application name (`shortener-<pod>`), lock waits, sorts that
+  spill to disk and slow autovacuums. Compose and the local overlay load it; a managed database takes the same settings
+  as parameters. The compose `observability` profile also runs `postgres_exporter` as `shortener_exporter` (which can
+  read statistics and not data), with the statement collector limited to 25 statements and no query text, and
+  Prometheus scrapes it. `perf/pg-diagnostics.sql` is what to run when it is slow: connections by application and
+  state, what is running or waiting for a lock, the statements that cost the most, cache hit ratio, dead rows, unused
+  indexes and how far each database is from transaction ID wraparound. It works as a member of `pg_monitor`.
+- **Alerts**: `overlays/production/prometheusrule.yaml` has four, on what the application sees of its database: requests
+  waiting for a connection, connection timeouts, a slow wait for a connection, and more than 1% of requests answered
+  503. Each has a unit test with simulated series (`prometheusrule.test.yaml`, run with `promtool`; it is not part of
+  CI) and was checked to fail when a threshold or a `for` is changed. The server's own alerts (connections against
+  `max_connections`, replication, backup age, transaction age) depend on how Postgres is run, and are not here.
+
+Not done: metrics from the Envoy proxies, and Envoy's own spans, so a trace starts at the application; a Grafana
+dashboard for Postgres (the exporter's series are there to build one, and which exporter a production database has is
+still open).
 
 ## Native image
 
@@ -454,5 +471,5 @@ eviction on disable. See [Redirect cache](#redirect-cache) for the behaviour and
   privileges and Flyway as the application role were run against Postgres).
 - The database connection is not forced to use TLS: the URL comes from a Secret and the driver's default falls back to
   plain text. Production should use `sslmode=verify-full`.
-- No alert rules, Envoy metrics or Envoy spans; no CI.
+- No Envoy metrics or Envoy spans, no alerts on the database server itself, and the alert rules are not tested in CI.
 - The dev keys and secrets are committed deliberately and are public.

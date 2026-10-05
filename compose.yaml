@@ -15,7 +15,19 @@ services:
       - '5432'
     volumes:
       - './deploy/postgres/bootstrap.sql:/docker-entrypoint-initdb.d/10-bootstrap.sql:ro'
+      - './deploy/postgres/include-diagnostics.sh:/docker-entrypoint-initdb.d/15-include-diagnostics.sh:ro'
       - './deploy/postgres/set-role-passwords.sh:/docker-entrypoint-initdb.d/20-set-role-passwords.sh:ro'
+      - './deploy/postgres/diagnostics.conf:/etc/shortener/diagnostics.conf:ro'
+  postgres-exporter:
+    image: 'quay.io/prometheuscommunity/postgres-exporter:v0.20.1'
+    profiles: ['observability']
+    depends_on:
+      - postgres
+    environment:
+      - 'DATA_SOURCE_NAME=postgresql://shortener_exporter:exporter-secret@postgres:5432/mydatabase?sslmode=disable'
+    command: ['--collector.stat_statements', '--collector.stat_statements.limit=25']
+    ports:
+      - '9187:9187'
   keycloak:
     image: 'quay.io/keycloak/keycloak:26.7.5'
     command: ['start-dev', '--import-realm']
