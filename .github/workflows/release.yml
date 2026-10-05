@@ -106,19 +106,20 @@ jobs:
         run: cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@${{ steps.push.outputs.digest }}"
 
       - name: Summarize
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           {
-            echo "### Published"
-            echo
-            echo "\`$IMAGE:$VERSION\`"
-            echo
-            echo "Digest: \`${{ steps.push.outputs.digest }}\`"
-            echo
-            echo "Verify the signature:"
-            echo
-            echo '```bash'
-            echo "cosign verify $IMAGE@${{ steps.push.outputs.digest }} \\"
-            echo "  --certificate-identity-regexp '^https://github.com/${{ github.repository }}/' \\"
-            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
-            echo '```'
+            printf '### Published\n\n'
+            printf '`%s:%s`\n\n' "$IMAGE" "$VERSION"
+            printf 'Digest: `%s`\n\n' "$DIGEST"
+            printf 'Pull it:\n\n'
+            printf '%s\n' '```bash' "docker pull $IMAGE@$DIGEST" '```' ''
+            printf 'Verify the signature:\n\n'
+            printf '%s\n' '```bash' \
+              "cosign verify $IMAGE@$DIGEST \\" \
+              "  --certificate-identity-regexp '^https://github.com/$REPOSITORY/' \\" \
+              "  --certificate-oidc-issuer https://token.actions.githubusercontent.com" \
+              '```'
           } >> "$GITHUB_STEP_SUMMARY"
