@@ -61,7 +61,7 @@ A redirect that hits the cache is a single span; a miss adds `shortlink.load`:
 | Request | Needs | Answers |
 |---|---|---|
 | `POST /api/short-links` | `shortlinks:create` (and `shortlinks:claim` for `customCode`) | `201` with the link, `400`, `409` code taken or reserved |
-| `GET /api/short-links?page&size&sort` | `shortlinks:read` | `200` with `items`, `page`, `size`, `hasNext`; sort by `createdAt` or `shortCode` |
+| `GET /api/short-links?size&sort&cursor` | `shortlinks:read` | `200` with `items`, `size`, `nextCursor` (pass it back as `cursor`; `null` on the last page); newest first, or `sort=createdAt,asc` |
 | `GET /api/short-links/{code}` | `shortlinks:read` | `200`, or `404` |
 | `DELETE /api/short-links/{code}` | `shortlinks:delete` | `204`, idempotent, or `404` |
 | `GET /{code}` | nothing | `302`, `404`, or `410` when disabled |
@@ -88,7 +88,7 @@ Everything has a default for local development. In a cluster the main settings a
 ## Build, test, package
 
 ```bash
-./gradlew test                  # 184 tests; integration tests use Testcontainers
+./gradlew test                  # 196 tests; integration tests use Testcontainers
 ./gradlew bootBuildImage        # native image through Paketo and Liberica (needs about 7 GB free; takes 3 minutes)
 ```
 

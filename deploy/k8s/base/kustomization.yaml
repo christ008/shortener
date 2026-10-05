@@ -7,4 +7,4 @@ resources:
   - poddisruptionbudget.yaml
 images:
   - name: shortener
-    newTag: 0.18.1
+    newTag: 0.19.0
