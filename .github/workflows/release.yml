@@ -69,7 +69,7 @@ jobs:
         run: docker logs app
 
       - name: Scan the image for known vulnerabilities
-        uses: anchore/scan-action@v6
+        uses: anchore/scan-action@v7
         with:
           image: ${{ env.IMAGE }}:${{ env.VERSION }}
           fail-build: true
