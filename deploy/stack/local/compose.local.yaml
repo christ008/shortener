@@ -1,0 +1,25 @@
+# Added to compose.prod.yaml to rehearse it on one machine: the dev Keycloak with the realm, so the DPoP client in
+# deploy/keycloak can get tokens, and the management port for perf/smoke.sh, published on every interface of this
+# machine. Not for production.
+#
+#   deploy/stack/local/prepare.sh
+#   docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml up -d
+#   JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=... perf/smoke.sh https://localhost
+services:
+  shortener:
+    ports:
+      - {target: 8081, published: 8081, protocol: tcp, mode: host}
+    deploy:
+      replicas: 1
+  keycloak:
+    image: 'quay.io/keycloak/keycloak:26.7.5'
+    command: ['start-dev', '--import-realm']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:8180
+    ports:
+      - {target: 8080, published: 8180, protocol: tcp, mode: host}
+    volumes:
+      - ./deploy/keycloak/shortener-realm.json:/opt/keycloak/data/import/shortener-realm.json:ro
+    networks: [edge]

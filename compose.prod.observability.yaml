@@ -1,0 +1,71 @@
+# Metrics and alerts for compose.prod.yaml: Prometheus with the alert rules, and the Postgres exporter. Add it to the
+# stack with a second -c / -f file:
+#   docker stack deploy -c compose.prod.yaml -c compose.prod.observability.yaml shortener
+#   docker compose -f compose.prod.yaml -f compose.prod.observability.yaml up -d
+# Prometheus is not published, because it has no login and Swarm cannot publish to the loopback address only. Look at it
+# from the node it runs on, see docs/DEPLOY.md.
+# Dashboards: deploy/observability/grafana has the Grafana dashboard of the application.
+services:
+  prometheus:
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    image: 'prom/prometheus:v3.5.0'
+    user: '65534:65534'
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.listen-address=:9090'
+    volumes:
+      - prometheus-data:/prometheus
+      - {type: tmpfs, target: /tmp, tmpfs: {size: 16777216, mode: 1023}}
+    configs:
+      - {source: prometheus, target: /etc/prometheus/prometheus.yml}
+      - {source: prometheus-alerts, target: /etc/prometheus/alerts.yml}
+    networks: [data]
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:9090/-/ready']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: '1', memory: 512M}
+      restart_policy: {condition: any, delay: 5s}
+
+  postgres-exporter:
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    image: 'quay.io/prometheuscommunity/postgres-exporter:v0.20.1'
+    user: '65534:65534'
+    command: ['--collector.stat_statements', '--collector.stat_statements.limit=25']
+    environment:
+      # shortener_exporter has pg_monitor: it reads statistics and cannot read the data.
+      DATA_SOURCE_URI: 'postgres:5432/shortener?sslmode=disable'
+      DATA_SOURCE_USER: shortener_exporter
+      DATA_SOURCE_PASS_FILE: /run/secrets/db_exporter_password
+    secrets: [db_exporter_password]
+    networks: [data]
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: '0.5', memory: 128M}
+      restart_policy: {condition: any, delay: 5s}
+
+volumes:
+  prometheus-data: {}
+
+configs:
+  prometheus:
+    name: 'shortener-prometheus-${PROMETHEUS_CONF_HASH:-local}'
+    file: ./deploy/observability/prometheus.stack.yml
+  prometheus-alerts:
+    name: 'shortener-alerts-${PROMETHEUS_CONF_HASH:-local}'
+    file: ./deploy/observability/alerts.yml

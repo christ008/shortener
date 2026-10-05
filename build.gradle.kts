@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "uy.ct"
-version = "0.19.0"
+version = "0.20.0"
 description = "shortener"
 
 java {
@@ -80,9 +80,9 @@ tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("project.version", project.version.toString())
     inputs.files(
-        "deploy/k8s/base/kustomization.yaml",
-        "deploy/k8s/base/deployment.yaml",
-        "deploy/k8s/overlays/production/kustomization.yaml",
+        "compose.prod.yaml",
+        "compose.prod.observability.yaml",
+        "deploy/stack/.env.example",
         "deploy/keycloak/DpopClient.java",
         "deploy/keycloak/dev-keys/demo-client.jwk.json",
         "deploy/postgres/bootstrap.sql",

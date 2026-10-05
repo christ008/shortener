@@ -1,0 +1,61 @@
+# Alerts on what the application sees of its database and of its own redirect cache, from the metrics it exports. The
+# redirect cache answers about 99% of redirects, so the connection pool is idle in normal operation: any of these firing
+# means the cache is not absorbing the load, or the database is slow or gone. The database server's own alerts
+# (connections against the limit, replication, backups, transaction age) depend on how Postgres is run and are not here.
+#
+# `instance` is the address of one application task, from Prometheus's DNS discovery of the `shortener` service.
+# Tested with promtool, see alerts.test.yml:
+#   docker run --rm -v "$PWD/deploy/observability:/rules:ro" -w /rules --entrypoint promtool prom/prometheus:v3.5.0 test rules alerts.test.yml
+groups:
+- name: shortener-database
+  rules:
+  - alert: ShortenerDatabasePoolExhausted
+    expr: max by (instance) (hikaricp_connections_pending{application="shortener"}) > 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: Requests are waiting for a database connection on {{ $labels.instance }}
+      description: 'For two minutes there have been requests waiting for one of the instance''s ten connections, and after 3 s
+        they fail with a 503. Look at what holds them: `perf/pg-diagnostics.sql` groups the connections by application name
+        (shortener-<hostname>) and state, and lists the slowest statements.'
+  - alert: ShortenerDatabaseConnectionTimeouts
+    expr: sum by (instance) (increase(hikaricp_connections_timeout_total{application="shortener"}[5m])) > 0
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: '{{ $labels.instance }} gave up waiting for a database connection'
+      description: Requests failed with a 503 and Retry-After because no connection was free within 3 s, or the database could
+        not be reached. Check whether Postgres is up before looking at the pool.
+  - alert: ShortenerDatabaseSlowToConnect
+    expr: max(hikaricp_connections_acquire_seconds_max{application="shortener"}) > 0.5
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: Taking a database connection takes more than half a second
+      description: 'The slowest wait for a connection in the last scrape was over 500 ms for ten minutes: the pool is nearly
+        always busy, or opening connections is slow (the network, TLS, or Postgres at its connection limit).'
+  - alert: ShortenerStorageUnavailable
+    expr: sum(rate(http_server_requests_seconds_count{application="shortener",status="503"}[5m])) / sum(rate(http_server_requests_seconds_count{application="shortener"}[5m]))
+      > 0.01
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: More than 1% of requests are answered 503 because storage cannot be reached
+      description: '503 is only returned when no database connection can be had, so clients are being told to retry and are
+        not being served. Check Postgres first, then the connection budget: instances times ten connections against the server''s
+        max_connections.'
+  - alert: ShortenerServingStaleRedirects
+    expr: sum(rate(shortlink_redirect_cache_stale_total{application="shortener"}[5m])) > 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: Redirects are being served from links read earlier than the cache's time to live
+      description: 'The database cannot be reached, and the instances are answering redirects from the last copy they read,
+        for up to five minutes, instead of failing them. That is the cache doing its job, and also the one sign that nothing
+        is failing in front of it: a link disabled elsewhere just before the outage keeps redirecting until that copy expires.
+        Treat it as the database being down.'

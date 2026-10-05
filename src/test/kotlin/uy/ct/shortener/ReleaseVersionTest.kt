@@ -7,8 +7,8 @@ import java.nio.file.Path
 
 /**
  * The project version follows semantic versioning (https://semver.org), baselined at 0.1.0, and
- * is the single source of truth: the image tag in the Kubernetes manifests must match it, so a
- * release cannot ship with manifests that point at a different image. While the major version is
+ * is the single source of truth: the image version in the deployment's example settings and the version of the API
+ * document must match it, so a release cannot ship with files that point at a different one. While the major version is
  * 0 the API is not yet stable, so a breaking change bumps the minor version.
  */
 class ReleaseVersionTest {
@@ -33,11 +33,12 @@ class ReleaseVersionTest {
     }
 
     @Test
-    fun `the manifests point at the image of this version`() {
-        listOf("deploy/k8s/base/kustomization.yaml", "deploy/k8s/overlays/production/kustomization.yaml").forEach {
-            val tag = Regex("""newTag:\s*(\S+)""").find(Files.readString(Path.of(it)))?.groupValues?.get(1)
+    fun `the deployment settings point at the image of this version`() {
+        val example = Files.readString(Path.of("deploy/stack/.env.example"))
+        listOf("SHORTENER_VERSION", "SHORTENER_MIGRATE_VERSION").forEach { variable ->
+            val value = Regex("""(?m)^$variable=(\S+)""").find(example)?.groupValues?.get(1)
 
-            assertThat(tag).describedAs("image tag in $it").isEqualTo(version)
+            assertThat(value).describedAs("$variable in deploy/stack/.env.example").isEqualTo(version)
         }
     }
 }

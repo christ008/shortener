@@ -5,7 +5,7 @@
 --   shortener_migrator  owns the tables and runs the Flyway migrations (the init container, never the app container)
 --   shortener_app       serves requests: it can read and insert links and mark them disabled, nothing else
 --   shortener_exporter  reads statistics for postgres_exporter (pg_monitor); it cannot read the data
--- It creates the roles without passwords, because those belong to the platform (Vault, a Kubernetes Secret); set
+-- It creates the roles without passwords, because those belong to the platform (a Docker secret, Vault); set
 -- them with ALTER ROLE ... PASSWORD. The privileges on short_link itself are granted by the Flyway migration that
 -- creates or changes it, so they stay next to the schema they describe.
 
@@ -55,7 +55,7 @@ $$;
 
 -- Limits that no application setting can lift. They apply at login, so they also hold behind a connection pooler.
 -- A request that needs more than 5 s of database time is a bug, not a slow query to wait for; a held lock or an
--- abandoned transaction must not pin one of a pod's ten connections.
+-- abandoned transaction must not pin one of an instance's ten connections.
 ALTER ROLE shortener_app SET statement_timeout = '5s';
 ALTER ROLE shortener_app SET lock_timeout = '2s';
 ALTER ROLE shortener_app SET idle_in_transaction_session_timeout = '10s';

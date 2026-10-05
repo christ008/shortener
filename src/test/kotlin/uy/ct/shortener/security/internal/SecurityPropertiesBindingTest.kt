@@ -11,9 +11,9 @@ import org.springframework.core.env.StandardEnvironment
 import org.springframework.core.env.SystemEnvironmentPropertySource
 
 /**
- * Pins the environment variable names the Kubernetes manifests use. For a fixed property such as
+ * Pins the environment variable names the production stack uses. For a fixed property such as
  * `spring.security.oauth2.resourceserver.jwt.jwk-set-uri`, Spring accepts the dashes either
- * dropped (`..._JWKSETURI`, which the manifests use) or as underscores (`..._JWK_SET_URI`).
+ * dropped (`..._JWKSETURI`, which the stack uses) or as underscores (`..._JWK_SET_URI`).
  */
 class SecurityPropertiesBindingTest {
 

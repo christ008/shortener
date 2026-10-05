@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
  * How the application holds its database connections. The pool keeps idle connections alive, because a load
  * balancer or NAT in the path drops silent ones and the first request after that would fail, and reports a
  * connection held for more than 10 s, which is a leak or a statement that should have been cut off. Every connection
- * carries the application name and pod, so `pg_stat_activity` says who holds what, and the driver does not wait forever
+ * carries the application name and host, so `pg_stat_activity` says who holds what, and the driver does not wait forever
  * to connect or for an answer (the next test shows the answer timeout reaching the driver).
  */
 @WithTestIdp
@@ -34,7 +34,7 @@ class DatasourceHardeningTest {
     }
 
     @Test
-    fun `tells Postgres which application and pod each connection belongs to`() {
+    fun `tells Postgres which application and host each connection belongs to`() {
         val applicationName = jdbc.sql("SHOW application_name").query(String::class.java).single()
 
         assertThat(applicationName).startsWith("shortener-")

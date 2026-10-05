@@ -34,17 +34,31 @@ jobs:
           name: test-reports
           path: build/reports/tests/test
 
-  manifests:
-    name: Kubernetes manifests render
+  stack:
+    name: Production stack and alerts
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Render every kustomization
+      - name: Check the compose files
         run: |
-          for dir in deploy/k8s/overlays/local deploy/k8s/overlays/production deploy/k8s/gatewayclass deploy/keycloak; do
-            echo "== $dir"
-            kubectl kustomize "$dir" > /dev/null
-          done
-      - name: Check the compose file
-        run: docker compose --profile observability config --quiet
+          docker compose --profile observability config --quiet
+          cp deploy/stack/.env.example .env
+          docker compose -f compose.prod.yaml config --quiet
+          docker compose -f compose.prod.yaml -f compose.prod.observability.yaml config --quiet
+          docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml config --quiet
+      - name: Check the edge configuration
+        run: |
+          deploy/stack/local/prepare.sh
+          docker run --rm \
+            -v "$PWD/deploy/edge/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/secrets/tls_cert:/run/secrets/tls_cert:ro" \
+            -v "$PWD/secrets/tls_key:/run/secrets/tls_key:ro" \
+            nginxinc/nginx-unprivileged:1.30.4-alpine nginx -t
+      - name: Check and test the alert rules
+        run: |
+          promtool() { docker run --rm -v "$PWD/deploy/observability:/rules:ro" -w /rules --entrypoint promtool prom/prometheus:v3.5.0 "$@"; }
+          promtool check rules alerts.yml
+          promtool test rules alerts.test.yml
+      - name: Check the shell scripts
+        run: shellcheck deploy/stack/deploy.sh deploy/stack/local/prepare.sh deploy/postgres/*.sh

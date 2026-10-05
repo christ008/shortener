@@ -2,8 +2,11 @@
 # Exercises every endpoint of a running application with DPoP-bound tokens from the local Keycloak, as the demo, other
 # and admin clients, and checks the status each should answer. Meant for a native image, where what works on the JVM
 # can still fail for want of reflection metadata.
-#   perf/smoke.sh [BASE_URL]
+#   [MGMT=http://localhost:8081] [CURL_OPTS="--cacert cert.pem"] perf/smoke.sh [BASE_URL]
+# CURL_OPTS reaches the plain curl calls, for a server with a certificate of its own. A DPoP client trusts it through
+# JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=... as for any Java program.
 set -uo pipefail
+curl() { command curl ${CURL_OPTS:-} "$@"; }
 BASE=${1:-http://localhost:8080}
 MGMT=${MGMT:-http://localhost:8081}
 HERE=$(cd "$(dirname "$0")/.." && pwd)

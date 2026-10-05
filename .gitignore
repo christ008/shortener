@@ -41,3 +41,8 @@ out/
 
 # k6 console output is progress-bar noise; the JSON summaries are kept
 perf/results/**/*.k6.txt
+
+# Secrets and settings of a deployment
+/secrets/
+/.env
+/deploy/stack/local/secrets/

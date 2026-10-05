@@ -16,7 +16,7 @@ import uy.ct.shortener.WithTestIdp
 
 /**
  * All requests are limited per client IP, so redirects and token guessing are throttled, but
- * actuator endpoints never are, so the kubelet's probes cannot be starved.
+ * actuator endpoints never are, so health checks cannot be starved.
  */
 @WithTestIdp
 @SpringBootTest(

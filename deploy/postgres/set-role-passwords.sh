@@ -1,13 +1,25 @@
 #!/bin/sh
-# Gives the Shortener roles the passwords in SHORTENER_APP_PASSWORD, SHORTENER_MIGRATOR_PASSWORD and
-# SHORTENER_EXPORTER_PASSWORD. It runs once, when the container first initialises its data directory, after
-# bootstrap.sql, and is for throwaway databases (compose, kind) whose passwords are public on purpose. A real
-# deployment sets them from its secret store. Unset variables stop it rather than default to something guessable.
+# Gives the Shortener roles their passwords. It runs once, when the container first initialises its data directory,
+# after bootstrap.sql. Each password comes from SHORTENER_<ROLE>_PASSWORD or, when set, from the file named by
+# SHORTENER_<ROLE>_PASSWORD_FILE (a Docker secret), for ROLE in APP, MIGRATOR and EXPORTER. Unset passwords stop it
+# rather than default to something guessable. The compose file for development passes public throwaway values.
 set -eu
-: "${SHORTENER_APP_PASSWORD:?}" "${SHORTENER_MIGRATOR_PASSWORD:?}" "${SHORTENER_EXPORTER_PASSWORD:?}"
+
+password() { # ROLE
+  file=$(eval "echo \"\${SHORTENER_$1_PASSWORD_FILE:-}\"")
+  if [ -n "$file" ]; then
+    cat "$file"
+  else
+    eval "echo \"\${SHORTENER_$1_PASSWORD:?SHORTENER_$1_PASSWORD or SHORTENER_$1_PASSWORD_FILE must be set}\""
+  fi
+}
+
+app=$(password APP)
+migrator=$(password MIGRATOR)
+exporter=$(password EXPORTER)
 
 psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -v app="$SHORTENER_APP_PASSWORD" -v migrator="$SHORTENER_MIGRATOR_PASSWORD" -v exporter="$SHORTENER_EXPORTER_PASSWORD" <<'SQL'
+  -v app="$app" -v migrator="$migrator" -v exporter="$exporter" <<'SQL'
 ALTER ROLE shortener_app PASSWORD :'app';
 ALTER ROLE shortener_migrator PASSWORD :'migrator';
 ALTER ROLE shortener_exporter PASSWORD :'exporter';

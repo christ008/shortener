@@ -10,14 +10,14 @@
 \x auto
 
 \echo
-\echo '== Connections against the limit (a pod holds up to 10; pods x 10 must stay well below max_connections)'
+\echo '== Connections against the limit (an instance holds up to 10; instances x 10 must stay well below max_connections)'
 SELECT count(*)                                                                         AS used,
        current_setting('max_connections')::int                                          AS max_connections,
        round(100.0 * count(*) / current_setting('max_connections')::int, 1)             AS pct_used
 FROM pg_stat_activity;
 
 \echo
-\echo '== Who holds them: by application (shortener-<pod>), role and state. Many "idle in transaction" is a leak.'
+\echo '== Who holds them: by application (shortener-<hostname>), role and state. Many "idle in transaction" is a leak.'
 SELECT application_name, usename, state, count(*) AS connections
 FROM pg_stat_activity
 WHERE backend_type = 'client backend'
