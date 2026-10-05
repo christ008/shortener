@@ -2,8 +2,8 @@ package uy.ct.shortener.shortlink.internal
 
 import io.micrometer.observation.Observation
 import io.micrometer.observation.ObservationRegistry
+import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Slice
 import org.springframework.stereotype.Service
 import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.InsertResult
@@ -77,7 +77,7 @@ class DefaultShortLinkService(
     override fun get(shortCode: ShortCode): ShortLink = manageableLinks.get(shortCode)
 
     @MayList
-    override fun list(filter: CreatedByFilter, pageable: Pageable): Slice<ShortLink> = repository.list(filter, pageable)
+    override fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink> = repository.list(filter, pageable)
 
     @MayDisable
     override fun disable(shortCode: ShortCode, disabledBy: String) {

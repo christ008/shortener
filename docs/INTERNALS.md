@@ -70,7 +70,15 @@ ArchUnit tests enforce what Modulith does not check inside a module:
 
 - Takes a Spring `Pageable` (`page`, `size`, `sort`), capped at 200 (`spring.data.web.pageable.*`).
 - A client lists its own links. An administrator lists one client's or all.
-- Fetches `size + 1` rows to know whether another page follows without counting, and returns a `Slice`.
+- Returns a Spring `Page`: the items, whether another page follows, and the totals (`totalItems`, `totalPages`), so a
+  client can offer any page, including the last.
+  - `hasNext` comes from fetching `size + 1` rows.
+  - The total is read from the page when it ends the listing (the offset plus the rows returned), and for an empty first
+    page. Only a page with more behind it, or a page past the end, runs `SELECT count(*)`, filtered the same way.
+  - The count is a separate statement, so a link created between the two can make them differ by one.
+  - Counting scans the matching rows. Per client that is a small indexed range. For an administrator's unfiltered
+    listing it is the whole table, which is fine at this size; revisit with an estimate if it grows large.
+  - A page past the end is empty and carries the real totals, so a client can recover.
 - Sortable by `createdAt` and `shortCode` only, from a whitelist that maps to columns, so a sort parameter never
   reaches SQL as text. Ties break on the short code, so pages never overlap.
 
@@ -490,7 +498,7 @@ connection fails until reboot. This took the network down three times.
 ## Decisions
 
 - **Plain JDBC, not JPA.** Two statements dominate and need SQL features JPA hides. Only the persistence adapter knows SQL.
-- **Spring facilities over bespoke code.** Method security with a `PermissionEvaluator`, `Pageable` and `Slice`, Spring
+- **Spring facilities over bespoke code.** Method security with a `PermissionEvaluator`, `Pageable` and `Page`, Spring
   Security's resource server, DPoP and RFC 9728 metadata, MVC's problem details. Custom code is limited to what Spring
   lacks: the Bearer refusal, rate limiting and the native hints.
 - **Absence is a type.** Sealed types and a null-object cache instead of nullable returns and fields (see
@@ -506,8 +514,10 @@ connection fails until reboot. This took the network down three times.
   [Redirect cache](#redirect-cache) for what was rejected.
 - **Reproducible image.** Everything the build downloads is pinned, by version where one exists and by digest where
   not.
-- **Offset pagination, not cursors.** Listings take `page` and `size`, so a client can jump to any page. The web UI needs
-  that. Cursor (keyset) paging only moves to the next or previous page. See [Request flows](#request-flows).
+- **Offset pagination with totals, not cursors.** Listings take `page` and `size` and answer with totals, so a client can
+  jump to any page and draw a numbered pager. The web UI needs that. Cursor (keyset) paging only moves to the next or
+  previous page. Its advantages (constant cost at any depth, stable pages under inserts) do not matter at this size. See
+  [Request flows](#request-flows).
 
 ## Limitations
 

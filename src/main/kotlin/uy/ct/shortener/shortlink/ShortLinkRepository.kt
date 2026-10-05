@@ -1,7 +1,7 @@
 package uy.ct.shortener.shortlink
 
+import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Slice
 import java.net.URI
 
 /**
@@ -22,15 +22,17 @@ interface ShortLinkRepository {
     fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): InsertResult
 
     /**
-     * Returns the [pageable] page of the links that match [filter].
+     * Returns the [pageable] page of the links that match [filter], with the total number of matches.
      *
      * - Sorts by [SORTABLE_PROPERTIES], newest first when no sort is given.
      * - Ties are broken by short code, so pages never overlap.
-     * - A [Slice] says whether another page follows without counting every link.
+     * - The total comes from a separate count, run only when the page cannot tell it: a page that ends the
+     *   listing already knows it. A link created between the page and the count can make the two differ by one.
+     * - A page past the end is empty, with the real total, so a client can recover.
      *
      * @throws InvalidSortException if sorted by another property
      */
-    fun list(filter: CreatedByFilter, pageable: Pageable): Slice<ShortLink>
+    fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink>
 
     /**
      * Disables the link under [shortCode] on behalf of [disabledBy]. Idempotent: an already disabled

@@ -101,7 +101,9 @@ paths:
       summary: List short links
       description: |
         A client sees its own links, newest first. An administrator sees every client's links, or one client's with
-        `createdBy`. The page says whether another follows (`hasNext`) without counting every link.
+        `createdBy`. The response counts every match (`totalItems`, `totalPages`), so a client can go to any page.
+        A page past the last one is empty and still carries the totals. The total is counted separately from the
+        page, so a link created between the two can make them differ by one.
       security:
         - dpop: ['shortlinks:read']
         - dpop: ['shortlinks:admin']
@@ -310,7 +312,7 @@ components:
           description: Null while the link is active.
     ShortLinkPage:
       type: object
-      required: [items, page, size, hasNext]
+      required: [items, page, size, hasNext, totalItems, totalPages]
       properties:
         items:
           type: array
@@ -323,6 +325,13 @@ components:
         hasNext:
           type: boolean
           description: Whether another page follows.
+        totalItems:
+          type: integer
+          format: int64
+          description: How many links match, over every page.
+        totalPages:
+          type: integer
+          description: How many pages of `size` the matches fill. Zero when nothing matches.
     Problem:
       type: object
       description: An RFC 9457 problem detail.

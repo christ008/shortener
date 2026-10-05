@@ -3,9 +3,9 @@ package uy.ct.shortener.shortlink.internal.persistence
 import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.dao.QueryTimeoutException
 import org.springframework.jdbc.UncategorizedSQLException
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Slice
-import org.springframework.data.domain.SliceImpl
 import org.springframework.data.domain.Sort
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
@@ -58,7 +58,7 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
             .orElse(InsertResult.Taken)
     }
 
-    override fun list(filter: CreatedByFilter, pageable: Pageable): Slice<ShortLink> = reportingUnavailability {
+    override fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink> = reportingUnavailability {
         require(pageable.isPaged) { "an unpaged request would load every link" }
         val statement = when (filter) {
             CreatedByFilter.Anyone -> jdbc.sql(listSql(where = "", pageable.sort))
@@ -69,7 +69,8 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
             .param("offset", pageable.offset)
             .query(TO_SHORT_LINK)
             .list()
-        SliceImpl(fetched.take(pageable.pageSize), pageable, fetched.size > pageable.pageSize)
+        val content = fetched.take(pageable.pageSize)
+        PageImpl(content, pageable, totalOf(filter, pageable, fetched.size))
     }
 
     override fun disable(shortCode: ShortCode, disabledBy: String): LinkLookup = reportingUnavailability {
@@ -84,6 +85,22 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
 
     private fun listSql(where: String, sort: Sort) =
         "SELECT $COLUMNS FROM short_link $where ORDER BY ${orderBy(sort)} LIMIT :fetch OFFSET :offset"
+
+    /**
+     * The total number of matches. The page already knows it when it ends the listing, because it then holds
+     * every match after the offset, or when it is the first page and empty. Otherwise it is counted.
+     */
+    private fun totalOf(filter: CreatedByFilter, pageable: Pageable, fetched: Int): Long = when {
+        fetched in 1..pageable.pageSize -> pageable.offset + fetched
+        fetched == 0 && pageable.offset == 0L -> 0
+        else -> count(filter)
+    }
+
+    private fun count(filter: CreatedByFilter): Long =
+        when (filter) {
+            CreatedByFilter.Anyone -> jdbc.sql(COUNT_ALL)
+            is CreatedByFilter.Only -> jdbc.sql(COUNT_BY_CREATOR).param("createdBy", filter.client)
+        }.query(Long::class.java).single()
 
     private fun orderBy(sort: Sort): String {
         val requested = sort.map { order ->
@@ -116,6 +133,10 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
         val SORT_COLUMNS = mapOf("createdAt" to "created_at", "shortCode" to SHORT_CODE_IN_BYTE_ORDER)
 
         const val COLUMNS = "short_code, target_url, created_by, created_at, disabled_at, disabled_by"
+
+        const val COUNT_ALL = "SELECT count(*) FROM short_link"
+
+        const val COUNT_BY_CREATOR = "SELECT count(*) FROM short_link WHERE created_by = :createdBy"
 
         const val FIND = "SELECT $COLUMNS FROM short_link WHERE short_code = :shortCode"
 

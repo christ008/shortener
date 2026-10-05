@@ -64,7 +64,7 @@ A create as a trace in Tempo: the HTTP span and its `shortlink.insert` child. A 
 | Request | Needs | Answers |
 |---|---|---|
 | `POST /api/short-links` | `shortlinks:create` (and `shortlinks:claim` for `customCode`) | `201` with the link, `400`, `409` code taken or reserved |
-| `GET /api/short-links?page&size&sort` | `shortlinks:read` | `200` with `items`, `page`, `size`, `hasNext`; sort by `createdAt` or `shortCode` |
+| `GET /api/short-links?page&size&sort` | `shortlinks:read` | `200` with `items`, `page`, `size`, `hasNext`, `totalItems`, `totalPages`; sort by `createdAt` or `shortCode` |
 | `GET /api/short-links/{code}` | `shortlinks:read` | `200`, or `404` |
 | `DELETE /api/short-links/{code}` | `shortlinks:delete` | `204`, idempotent, or `404` |
 | `GET /{code}` | nothing | `302`, `404`, or `410` when disabled |

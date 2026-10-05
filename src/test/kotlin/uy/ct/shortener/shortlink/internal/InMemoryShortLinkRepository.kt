@@ -1,8 +1,8 @@
 package uy.ct.shortener.shortlink.internal
 
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Slice
-import org.springframework.data.domain.SliceImpl
 import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.InsertResult
@@ -45,12 +45,12 @@ class InMemoryShortLinkRepository : ShortLinkRepository {
         return InsertResult.Created(ShortLink(shortCode, targetUrl, Actor.Client(createdBy), now).also { saved += it })
     }
 
-    override fun list(filter: CreatedByFilter, pageable: Pageable): Slice<ShortLink> {
+    override fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink> {
         val newestFirst = compareByDescending<ShortLink> { it.createdAt }.thenByDescending { it.shortCode.value }
         val matching = saved.filter { filter == CreatedByFilter.Anyone || filter.isLimitedTo((it.createdBy as? Actor.Client)?.name.orEmpty()) }
             .sortedWith(newestFirst)
-        val page = matching.drop(pageable.offset.toInt()).take(pageable.pageSize + 1)
-        return SliceImpl(page.take(pageable.pageSize), pageable, page.size > pageable.pageSize)
+        val page = matching.drop(pageable.offset.toInt()).take(pageable.pageSize)
+        return PageImpl(page, pageable, matching.size.toLong())
     }
 
     override fun disable(shortCode: ShortCode, disabledBy: String): LinkLookup {

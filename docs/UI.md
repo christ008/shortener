@@ -125,8 +125,9 @@ Browser                                   Keycloak                     Envoy -> 
 ## Screens
 
 - **Shell**: header with the signed-in user, theme switch and sign-out; routes under `/app`.
-- **Links** (`/app/links`): a table of short code, target, created, status; paging from `page`, `size`, `hasNext`; sort by
-  created or code; an owner filter for administrators; empty and loading states.
+- **Links** (`/app/links`): a table of short code, target, created, status; a numbered pager built from `page`, `size`,
+  `totalItems` and `totalPages` (first, previous, numbers, next, last, jump to a page); a page past the end, for example
+  after links were removed, shows the last one; sort by created or code; an owner filter for administrators; empty and loading states.
 - **Create**: a modal with a form (target URL, optional custom code shown only when the user holds the `claim` scope),
   validated with the same rules as the API, showing the new short URL with a copy button and a QR code.
 - **Disable**: a confirmation, then the row shows the disabled state; the same action repeated is harmless.

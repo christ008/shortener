@@ -1,6 +1,6 @@
 package uy.ct.shortener.shortlink.internal.web
 
-import org.springframework.data.domain.Slice
+import org.springframework.data.domain.Page
 import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.LinkStatus
 import uy.ct.shortener.shortlink.ShortLink
@@ -34,15 +34,27 @@ data class ShortLinkResponse(
 
 /**
  * One page of links, as Spring's `Pageable` resolver asked for it (`page`, `size` and `sort`).
- * [hasNext] says whether another page follows, without counting every link.
+ *
+ * - [page] is zero-based and [size] is the size that applied.
+ * - [totalItems] and [totalPages] count every match, so a client can offer any page, including the last.
+ * - [hasNext] says whether a page follows this one.
  */
-data class ShortLinkPageResponse(val items: List<ShortLinkResponse>, val page: Int, val size: Int, val hasNext: Boolean) {
+data class ShortLinkPageResponse(
+    val items: List<ShortLinkResponse>,
+    val page: Int,
+    val size: Int,
+    val hasNext: Boolean,
+    val totalItems: Long,
+    val totalPages: Int,
+) {
     companion object {
-        fun from(slice: Slice<ShortLink>) = ShortLinkPageResponse(
-            items = slice.content.map(ShortLinkResponse::from),
-            page = slice.number,
-            size = slice.size,
-            hasNext = slice.hasNext(),
+        fun from(page: Page<ShortLink>) = ShortLinkPageResponse(
+            items = page.content.map(ShortLinkResponse::from),
+            page = page.number,
+            size = page.size,
+            hasNext = page.hasNext(),
+            totalItems = page.totalElements,
+            totalPages = page.totalPages,
         )
     }
 }

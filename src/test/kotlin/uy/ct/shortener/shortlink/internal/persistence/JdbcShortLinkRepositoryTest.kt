@@ -90,12 +90,65 @@ class JdbcShortLinkRepositoryTest {
     }
 
     @Test
-    fun `says another page follows only when one does, without counting`() {
+    fun `says another page follows only when one does`() {
         listOf("ex00001", "ex00002").forEach { repository.insertIfAbsent(ShortCode(it), URI.create("https://example.com"), "exact") }
 
         assertThat(repository.list(CreatedByFilter.Only("exact"), PageRequest.of(0, 2)).hasNext()).isFalse
         assertThat(repository.list(CreatedByFilter.Only("exact"), PageRequest.of(0, 1)).hasNext()).isTrue
         assertThat(repository.list(CreatedByFilter.Only("exact"), PageRequest.of(5, 2)).content).isEmpty()
+    }
+
+    @Test
+    fun `reports the same total on every page, so a client can jump straight to any of them`() {
+        (1..5).forEach { repository.insertIfAbsent(ShortCode("tt0000$it"), URI.create("https://example.com/$it"), "totals") }
+        val owner = CreatedByFilter.Only("totals")
+
+        val pages = (0..2).map { repository.list(owner, PageRequest.of(it, 2)) }
+
+        assertThat(pages.map { it.totalElements }).containsOnly(5L)
+        assertThat(pages.map { it.totalPages }).containsOnly(3)
+        assertThat(pages.map { it.content.size }).containsExactly(2, 2, 1)
+        assertThat(pages.map { it.hasNext() }).containsExactly(true, true, false)
+        assertThat(repository.list(owner, PageRequest.of(2, 2)).content).isEqualTo(pages[2].content)
+    }
+
+    @Test
+    fun `reports the total when the last page is exactly full`() {
+        (1..4).forEach { repository.insertIfAbsent(ShortCode("fl0000$it"), URI.create("https://example.com/$it"), "full") }
+
+        val last = repository.list(CreatedByFilter.Only("full"), PageRequest.of(1, 2))
+
+        assertThat(last.content).hasSize(2)
+        assertThat(last.totalElements).isEqualTo(4)
+        assertThat(last.totalPages).isEqualTo(2)
+        assertThat(last.hasNext()).isFalse
+    }
+
+    @Test
+    fun `counts only the matching links, and every link when unfiltered`() {
+        (1..3).forEach { repository.insertIfAbsent(ShortCode("ca0000$it"), URI.create("https://example.com/$it"), "count-a") }
+        (1..2).forEach { repository.insertIfAbsent(ShortCode("cb0000$it"), URI.create("https://example.com/$it"), "count-b") }
+
+        val first = PageRequest.of(0, 1)
+
+        assertThat(repository.list(CreatedByFilter.Only("count-a"), first).totalElements).isEqualTo(3)
+        assertThat(repository.list(CreatedByFilter.Only("count-b"), first).totalElements).isEqualTo(2)
+        assertThat(repository.list(CreatedByFilter.Anyone, first).totalElements).isGreaterThanOrEqualTo(5)
+    }
+
+    @Test
+    fun `answers a page past the end with no links and the real total, and no links at all with a total of zero`() {
+        (1..3).forEach { repository.insertIfAbsent(ShortCode("pe0000$it"), URI.create("https://example.com/$it"), "past-end") }
+
+        val past = repository.list(CreatedByFilter.Only("past-end"), PageRequest.of(5, 2))
+        val nobody = repository.list(CreatedByFilter.Only("nobody-at-all"), PageRequest.of(0, 2))
+
+        assertThat(past.content).isEmpty()
+        assertThat(past.totalElements).isEqualTo(3)
+        assertThat(past.totalPages).isEqualTo(2)
+        assertThat(nobody.content).isEmpty()
+        assertThat(nobody.totalElements).isZero()
+        assertThat(nobody.totalPages).isZero()
     }
 
     @Test

@@ -182,6 +182,18 @@ class AuthorizationIntegrationTest {
     }
 
     @Test
+    fun `says how many links and pages there are, so a client can jump to the last page`() {
+        val alice = client()
+        val created = (1..5).map { codeOf(create(alice)) }
+
+        val last = call(HttpMethod.GET, "/api/short-links?page=2&size=2", alice)
+
+        assertThat(last.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(last.body).contains(""""totalItems":5""", """"totalPages":3""", """"page":2""", """"hasNext":false""")
+        assertThat(codesIn(last)).hasSize(1).isSubsetOf(created)
+    }
+
+    @Test
     fun `sorts when asked and refuses to sort by a property links cannot be listed by`() {
         val alice = client()
         val codes = (1..3).map { codeOf(create(alice)) }.sorted()
