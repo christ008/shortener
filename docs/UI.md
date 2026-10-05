@@ -102,7 +102,7 @@ ui/
 ### Sign-in and requests
 
 ```
-Browser                                   Keycloak                     Envoy -> API
+Browser                                   Keycloak                     nginx -> API
   | generate ES256 key (non-extractable)
   | redirect to /auth?code_challenge&dpop_jkt ->
   |                                         login
@@ -159,9 +159,9 @@ Browser                                   Keycloak                     Envoy -> 
 
 - A multi-stage `Dockerfile` builds with Node and serves with an unprivileged nginx; the shell fallback is
   `/app/_shell.html`, and `/app/assets/*` is cached for a long time because file names carry hashes.
-- Kubernetes: a `ui` Deployment and Service in the base, with the same pod hardening as the API (non-root, read-only root
-  filesystem, no capabilities), and an `HTTPRoute` for `/app` in each overlay.
-- Compose: a `ui` service so that `docker compose up` gives the whole system; the Vite dev server proxies `/api` and
+- Production stack: a `ui` service in `compose.prod.yaml` with the same hardening as the API (non-root, read-only root
+  filesystem, no capabilities), and a `/app` location in the edge's nginx configuration.
+- Compose: a `ui` service in `compose.yaml` so that `docker compose up` gives the whole system; the Vite dev server proxies `/api` and
   `/realms` for hot reloading.
 - CI: install, type-check, lint, unit tests and build on every push; the end-to-end suite in its own job.
 

@@ -15,7 +15,7 @@ contract (a test keeps it in step with the code).
 - [Errors](#errors)
 - [Observability](#observability)
 - [Native image](#native-image)
-- [Kubernetes](#kubernetes)
+- [Deployment](#deployment)
 - [Releasing](#releasing)
 - [Performance](#performance)
 - [Decisions](#decisions)
@@ -128,7 +128,7 @@ Postgres 18 with plain JDBC through `JdbcClient`. Two statements dominate and bo
 ### Roles and migrations
 
 `deploy/postgres/bootstrap.sql` is idempotent and runs once per database, as a superuser, by whatever provisions it
-(compose and the local overlay run it when the data directory is first created). It creates three roles:
+(the dev compose file and the stack run it when the data directory is first created). It creates three roles:
 
 - `shortener_migrator` owns the tables and runs Flyway.
 - `shortener_app` serves requests.
@@ -144,23 +144,21 @@ Limits on the application role apply at login, so no application setting lifts t
 | Setting | Value | Why |
 |---|---|---|
 | `statement_timeout` | 5 s | a request needing more database time is a bug |
-| `lock_timeout` | 2 s | a held lock must not pin one of a pod's ten connections |
+| `lock_timeout` | 2 s | a held lock must not pin one of an instance's ten connections |
 | `idle_in_transaction_session_timeout` | 10 s | an abandoned transaction must not pin one either |
 
 The migrator has `lock_timeout` 10 s and no statement timeout: a migration may run for minutes, but must fail rather
-than queue behind a long query and block every later one. The init container retries.
+than queue behind a long query and block every later one. The migration job retries.
 
-Migrations run in an init container:
+Migrations run in a one-shot job, the `migrate` service of the stack:
 
 - It runs the same image with `SHORTENER_MIGRATE_ONLY=true` and the migrator's credentials. `MigrateOnlyRunner` ends the
   process once Flyway has run.
-- Only that container gets the `shortener-db-migrator` Secret (`MigrationCredentialsTest` checks it), so code execution
-  in the application does not yield the role that owns the tables.
+- Only that service gets the migrator's password secret (`ComposeStackTest` checks it), so code execution in the
+  application does not yield the role that owns the tables.
 - Flyway uses `SPRING_FLYWAY_*`, its own connection, so the pool's 15 s socket timeout cannot cut a long migration short.
-- Init containers have no startup probe, so a long migration is not killed, and a failed one leaves the rollout stopped
-  with the old pods still serving.
-- Every new pod starts it, HPA scale-ups included. After the first it is a no-op (Flyway's advisory lock makes
-  concurrent ones safe) and costs about as much as the application takes to start: 0.5 s native, 7 s on the JVM.
+- A failed job retries up to five times. `deploy/stack/deploy.sh` runs it before it updates the application and waits
+  for it, so a failed migration leaves the old version serving.
 - The previous version keeps serving against the new schema during a rollout, so migrations must be compatible with it:
   add, then switch, then remove in a later release.
 - The application container still runs Flyway on start, as `shortener_app`, and finds nothing to apply. It cannot be
@@ -183,7 +181,7 @@ Migrations run in an init container:
 - The pool is named `shortener`. It keeps idle connections alive every two minutes, because a load balancer or NAT drops
   silent ones and the first request after that would fail.
 - It logs a connection held for more than 10 s.
-- Every connection reports `shortener-<pod>` as its application name, so `pg_stat_activity` says who holds what.
+- Every connection reports `shortener-<hostname>` as its application name, so `pg_stat_activity` says who holds what.
 - The driver waits at most 3 s to connect and 15 s for an answer, above the 5 s statement timeout, and keeps TCP alive.
   The answer timeout covers a network that goes silent, where the server cannot cancel anything.
 
@@ -197,8 +195,9 @@ pool (10 connections, 3 s wait).
 - Each open connection holds about 150 KB of Tomcat buffers on the heap, so concurrency is bounded at the door:
   `server.tomcat.max-connections` (500) plus `accept-count` (100), and the rest are refused. That sheds load instead of
   exhausting memory. Keep connections times 150 KB well inside the heap.
-- Shutdown is graceful: a 5 s `preStop` sleep lets the endpoint leave the Service, then Spring waits up to 20 s for
-  in-flight requests, inside the 30 s termination grace period.
+- Shutdown is graceful: Spring stops accepting connections and waits up to 20 s for in-flight requests, inside the 30 s
+  stop grace period. There is no `preStop` hook to lengthen it, so see [Deployment](#deployment) for how a rollout
+  avoids sending traffic to a task that is stopping.
 
 ## Redirect cache
 
@@ -299,7 +298,7 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 - Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): 300 requests a minute per IP before
   authentication, 60 a minute per client after it.
 - State is per instance, so the effective limit is the limit times the replicas. A global limit needs a shared store.
-- Actuator paths are never limited, so probes cannot be starved.
+- Actuator paths are never limited, so health checks cannot be starved.
 
 ### Identity provider and OAuth 2.1
 
@@ -350,21 +349,21 @@ Every error is an RFC 9457 problem detail (`application/problem+json`), rendered
 - **The database**, none of it needing the application:
   - `deploy/postgres/diagnostics.conf` makes the server explain itself: `pg_stat_statements`, `track_io_timing`,
     statements slower than 250 ms logged with their plan (`auto_explain`) and the user, database and application name,
-    lock waits, sorts that spill to disk and slow autovacuums. Compose and the local overlay load it. A managed
+    lock waits, sorts that spill to disk and slow autovacuums. The compose files load it. A managed
     database takes the same settings as parameters.
-  - The compose `observability` profile runs `postgres_exporter` as `shortener_exporter`, limited to 25 statements and
-    no query text. Prometheus scrapes it.
+  - The dev compose `observability` profile and the stack's observability overlay run `postgres_exporter` as
+    `shortener_exporter`, limited to 25 statements and no query text. Prometheus scrapes it.
   - `perf/pg-diagnostics.sql` is what to run when it is slow: connections by application and state, what waits for a
     lock, the costliest statements, cache hit ratio, dead rows, unused indexes and distance from transaction ID
     wraparound. It works as a member of `pg_monitor`.
-- **Alerts**: `overlays/production/prometheusrule.yaml` has four, on what the application sees of its database.
-  - Requests waiting for a connection, connection timeouts, a slow wait for a connection, and more than 1% of requests
-    answered 503.
-  - Each has a unit test with simulated series (`prometheusrule.test.yaml`, run with `promtool`, not part of CI).
+- **Alerts**: `deploy/observability/alerts.yml` has five, on what the application sees of its database.
+  - Requests waiting for a connection, connection timeouts, a slow wait for a connection, more than 1% of requests
+    answered 503, and redirects served stale.
+  - Each has a unit test with simulated series (`deploy/observability/alerts.test.yml`, run with `promtool` in CI).
   - The server's own alerts (connections against `max_connections`, replication, backup age, transaction age) depend on
     how Postgres is run, and are not here.
 
-Not done: Envoy metrics and spans, and a Grafana dashboard for Postgres (the exporter's series are there to build one).
+Not done: nginx metrics, and a Grafana dashboard for Postgres (the exporter's series are there to build one).
 
 ## Native image
 
@@ -414,30 +413,86 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 Unit tests cannot run a native image, so `perf/smoke.sh` exercises every endpoint with real tokens (21 checks).
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
 
-## Kubernetes
+## Deployment
 
-`deploy/k8s`:
+One file, `compose.prod.yaml`, runs as `docker stack deploy` on Swarm and as `docker compose` on one host. The runbook is
+[DEPLOY.md](DEPLOY.md). Kubernetes was dropped: four cluster operators, none of which ever ran on a real cluster, for a
+service this size.
 
-- `base`: Deployment (two replicas, rolling update without unavailability, topology spread, non-root, read-only root
-  filesystem, no capabilities, probes on the management port, an init container that applies the migrations with its
-  own credentials), Service, ServiceAccount, PodDisruptionBudget.
-- `gateway`: Envoy Gateway resources for both overlays.
-  - `EnvoyProxy`: two replicas, a disruption budget, source address preserved.
-  - `ClientTrafficPolicy`: header and idle timeouts.
-  - `BackendTrafficPolicy`: bodies capped at 16 KiB, 15 s request timeout.
-  - `gatewayclass` is cluster-wide, applied once.
-- `overlays/local`: kind with in-cluster Postgres and Keycloak, the proxy on `localhost:8088`, `/realms` routed to
-  Keycloak. Postgres is initialised with `deploy/postgres`, so it has the same three roles as production, each with its
-  own Secret.
-- `overlays/production`: restricted pod security, cert-manager TLS with HTTP to HTTPS redirect, an HPA (2 to 10 on CPU),
-  a NetworkPolicy (gateway to 8080, monitoring to 8081), two ExternalSecrets (the application's and the
-  migrator's), a PodMonitor.
+Services:
 
-Assumes Envoy Gateway, cert-manager with Gateway API support, External Secrets and the Prometheus operator. Egress is
-open on 5432 and 443 because the database and identity provider addresses are environment specific.
+- `edge`: nginx, unprivileged. TLS, redirect to HTTPS, limits. The only service that publishes ports.
+- `shortener`: the application, two tasks, each with its own DNS address (`dnsrr`).
+- `migrate`: the one-shot migration job.
+- `postgres`: the database, on one node with a local volume. A managed database replaces it by dropping the service.
+- Overlay `compose.prod.observability.yaml`: Prometheus with the alert rules, and the Postgres exporter.
 
-Tested on kind with stand-in backends: routing, forwarded address handling, the body cap, the request timeout. Not
-tested: cert-manager issuance, a real Keycloak behind the gateway, the PodMonitor.
+### Hardening
+
+`ComposeStackTest` holds every service to this.
+
+| Control | How | Swarm |
+|---|---|---|
+| Read-only root filesystem | `read_only`, writable memory mounted for `/tmp` | applied |
+| No capabilities | `cap_drop: [ALL]`; only Postgres adds the five its entrypoint needs | applied |
+| Not root | `user` 1000, 101 and 65534; Postgres starts as root and hands over | applied |
+| No privilege gain | `no-new-privileges` | **ignored**, see below |
+| Writable memory | long `volumes:` syntax with a size | applied. The short `tmpfs:` key is silently dropped |
+| Resources | memory and CPU limits, rotated logs | applied |
+| Secrets | Docker secrets, read as files by Spring's `configtree:` | applied: in memory at `/run/secrets` |
+| Network | `data` has no route out, and encrypts across nodes on Swarm | applied |
+| Exposure | only the edge publishes, in host mode so it sees client addresses | applied |
+| Health | Tiny Health Checker on the readiness probe; Swarm replaces unhealthy tasks | applied |
+
+- `no-new-privileges` is not applied by Swarm (verified on Docker 29.8). The application, nginx and Prometheus images
+  have no setuid binaries, so it would add nothing. Postgres has some, and with every capability dropped they have
+  nothing to escalate to.
+- The app and migration job get the database password as the file `spring.datasource.password`, named like the
+  property. Only the migration job gets `spring.flyway.password`.
+
+### Edge
+
+- Certificates are files (`tls_cert`, `tls_key` secrets). Issuing and renewing them is outside the stack. nginx has an
+  ACME module (HTTP-01 and TLS-ALPN-01, no wildcards), which is the way to automate it. It was not tried.
+- Replaces the forwarded headers rather than appending, because the application builds the DPoP proof's URL from them
+  and trusts them only from private addresses.
+- Caps bodies at 16 KiB, sets header, body and proxy timeouts, and caps connections per address. Never proxies the
+  management port.
+- Resolves `shortener` every 5 s, so tasks that come and go are followed without a reload.
+
+### Rollouts
+
+- The application updates one task at a time, new before old (`start-first`), waits for the health check, watches the
+  new task for 20 s and rolls back if it fails.
+- A stopping task may still be in nginx's DNS answer for a few seconds. nginx retries a request that failed to connect
+  on the next address, for requests that are safe to repeat.
+- Measured: 1,290 redirects at 20 requests a second during a forced rolling update of two tasks, every one answered.
+  Creates were not measured: nginx does not repeat a request that was already sent.
+- `deploy.sh` runs the migration job first, then the application, so a migration never meets a task it was not
+  written for.
+
+### What this gives up against Kubernetes
+
+- No egress filtering by destination. The `data` network has no route out, and the `edge` network, which the application
+  needs to reach the identity provider, has all of it.
+- No autoscaling. Replicas are set by hand.
+- No `preStop` hook, so the guarantee is health gating plus short DNS caching plus a retry for repeatable requests.
+- `no-new-privileges` is not applied.
+- Secrets and configs are immutable: rotating one means a new name and a stack update.
+- The database is one instance on one node, with no replication and no backups unless you add them.
+- Prometheus cannot be published to the loopback address only, so it is not published at all.
+
+### Verified
+
+On Docker 29.8, a single-node swarm and plain Compose, with the native image:
+
+- the whole stack through the TLS edge, with the 21-check smoke test (`perf/smoke.sh`), on both;
+- the migration job as the migrator role from a file secret, and the application refusing to change the schema;
+- Prometheus discovering both tasks and loading the five alert rules, and the exporter reporting `pg_up`;
+- a rolling update under load.
+
+Not verified: more than one node (overlay encryption, host-mode edge on several nodes, where Postgres lands), real
+certificates and ACME, pulling from a registry, and any failure of the database node.
 
 ## Releasing
 
@@ -558,13 +613,10 @@ connection fails until reboot. This took the network down three times.
 
 - A link disabled on one instance can redirect on the others for up to the cache TTL (30 s).
 - Rate limits and the DPoP replay cache are per instance.
-- Beyond capacity (about 5,800 req/s on two cores) the service sheds load, but creates still queue for seconds. The
-  proxies do not yet limit connections to match Tomcat.
-- The Envoy Gateway, cert-manager and Prometheus operator parts are untested on a real cluster, and so are the migration
-  init container and the local overlay's role setup. The manifests render, and the migrate-only run, the role
-  privileges and Flyway as the application role ran against Postgres 18, on the JVM and as a native binary built with
-  GraalVM 25, but not in the Paketo image.
-- The database connection is not forced to use TLS: the URL comes from a Secret and the driver falls back to plain
+- Beyond capacity (about 5,800 req/s on two cores) the service sheds load, but creates still queue for seconds. nginx
+  caps connections per address but not in total, which Tomcat does at 500.
+- The stack has run on one node only, see [Deployment](#deployment).
+- The database connection is not forced to use TLS: the URL comes from the environment and the driver falls back to plain
   text. Production should use `sslmode=verify-full`.
-- No Envoy metrics or spans, no alerts on the database server itself, and the alert rules are not tested in CI.
+- No proxy metrics, no alerts on the database server itself, and nothing sends the alerts that Prometheus fires.
 - The dev keys and secrets are committed deliberately and are public.

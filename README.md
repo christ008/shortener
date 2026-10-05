@@ -7,9 +7,9 @@ A URL shortener built to production standards.
 - OAuth2 with sender-constrained (DPoP) tokens and per-client ownership.
 - Plain JDBC on Postgres, virtual threads, an in-memory redirect cache.
 - Prometheus metrics and OpenTelemetry traces.
-- A GraalVM native image on Alpaquita (musl), and Kubernetes manifests with the Gateway API.
+- A GraalVM native image on Alpaquita (musl), and a hardened Docker Compose / Swarm stack with an nginx edge.
 
-Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · Envoy Gateway · Apache-2.0
+Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx · Apache-2.0
 
 ## What it does
 
@@ -108,9 +108,16 @@ once started`.
 
 ## Deploy
 
-`deploy/k8s` is a Kustomize base with a local overlay (kind) and a production overlay: Envoy Gateway with
-cert-manager TLS, an HPA, a disruption budget, a NetworkPolicy, ExternalSecrets and a PodMonitor. See
-[docs/INTERNALS.md](docs/INTERNALS.md#kubernetes).
+`compose.prod.yaml` is the production stack, for Docker Swarm or one host with Compose:
+
+- An nginx edge with TLS, and two application instances behind it, health-gated rolling updates with automatic rollback.
+- A migration job that alone holds the credentials of the role that owns the tables, and a Postgres you can replace
+  with a managed one.
+- Every container read-only, without capabilities, non-root and bounded. Secrets are files, not variables.
+- An optional overlay with Prometheus, the Postgres exporter and the alert rules.
+
+Runbook: [docs/DEPLOY.md](docs/DEPLOY.md). Design and what it gives up against Kubernetes:
+[docs/INTERNALS.md](docs/INTERNALS.md#deployment).
 
 ## Performance
 
@@ -130,7 +137,8 @@ src/main/kotlin/uy/ct/shortener
   shortlink/            public contract: types, service and repository interfaces, exceptions
     internal/           service, cache, web, persistence and authorization adapters
   security/             resource server, DPoP, rate limiting, problem details
-deploy/                 Kubernetes, Keycloak realm and dev keys, Prometheus, Grafana and Tempo
+compose.prod.yaml        the production stack (compose.prod.observability.yaml adds Prometheus)
+deploy/                 edge and stack scripts, Postgres setup, Keycloak realm and dev keys, alert rules, Grafana, Tempo
 .github/workflows/      CI: tests and manifest checks on every push, a manual native image build
 perf/                   k6 workload, benchmark and profiling scripts, results
 docs/INTERNALS.md       how it works and why
