@@ -1,0 +1,990 @@
+[0K
+[33m         /\      Grafana   /‾‾/  [0K
+    /\  /  \     |\  __   /  /   [0K
+   /  \/    \    | |/ /  /   ‾‾\ [0K
+  /          \   |   (  |  (‾)  |[0K
+ / __________ \  |_|\_\  \_____/ [0m[0K
+[0K
+[0K
+     execution: [36mlocal[0m[0K
+        script: [36m/scripts/mixed.js[0m[0K
+        output: [36m-[0m[0K
+[0K
+     scenarios: [36m(100.00%) 1 scenario, 3000 max VUs, 1m0s max duration (incl. graceful stop):[0m[0K
+              * mixed: 2000.00 iterations/s for 30s (maxVUs: 200-3000, gracefulStop: 30s)[0K
+[0K
+[K
+Run     [======================================[2m[22m] setup()[K
+mixed   [[2m--------------------------------------[22m][K
+[J[3A[K
+Run     [======================================[2m[22m] setup()[K
+mixed   [[2m--------------------------------------[22m][K
+[J[3A[K
+Run     [======================================[2m[22m] setup()[K
+mixed   [[2m--------------------------------------[22m][K
+[J[3A[K
+Run     [======================================[2m[22m] setup()[K
+mixed   [[2m--------------------------------------[22m][K
+[J[3A[K
+Run     [======================================[2m[22m] setup()[K
+mixed   [[2m--------------------------------------[22m][K
+[J[3A[K
+Run     [======================================[2m[22m] setup()[K
+mixed   [[2m--------------------------------------[22m][K
+[J[3A[K
+Run     [======================================[2m[22m] setup()[K
+mixed   [[2m--------------------------------------[22m][K
+[J[3A[K
+running (0m00.8s), 0011/0200 VUs, 16 complete and 0 interrupted iterations[K
+mixed   [[2m--------------------------------------[22m] 0011/0200 VUs  00.0s/30s  2000.00 iters/s[K
+[J[4A[K
+running (0m00.9s), 0000/0200 VUs, 224 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0000/0200 VUs  00.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.0s), 0001/0200 VUs, 424 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0001/0200 VUs  00.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.1s), 0001/0200 VUs, 625 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0001/0200 VUs  00.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.2s), 0002/0200 VUs, 823 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0002/0200 VUs  00.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.3s), 0001/0200 VUs, 1024 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0002/0200 VUs  00.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.4s), 0001/0200 VUs, 1223 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0002/0200 VUs  00.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.5s), 0002/0200 VUs, 1423 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0002/0200 VUs  00.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.6s), 0001/0200 VUs, 1624 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0002/0200 VUs  00.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.7s), 0000/0200 VUs, 1823 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0000/0200 VUs  00.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.8s), 0001/0200 VUs, 2024 complete and 0 interrupted iterations[K
+mixed   [[2m---------------------------[22m] 0001/0200 VUs  01.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m01.9s), 0001/0200 VUs, 2224 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  01.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.0s), 0001/0200 VUs, 2424 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  01.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.1s), 0001/0200 VUs, 2624 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  01.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.2s), 0001/0200 VUs, 2824 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  01.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.3s), 0002/0200 VUs, 3023 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0002/0200 VUs  01.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.4s), 0000/0200 VUs, 3223 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  01.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.5s), 0000/0200 VUs, 3423 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  01.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.6s), 0000/0200 VUs, 3623 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0000/0200 VUs  01.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.7s), 0001/0200 VUs, 3824 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  01.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.8s), 0003/0200 VUs, 4022 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0003/0200 VUs  02.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m02.9s), 0001/0200 VUs, 4224 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0001/0200 VUs  02.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.0s), 0000/0200 VUs, 4424 complete and 0 interrupted iterations[K
+mixed   [>[2m--------------------------[22m] 0000/0200 VUs  02.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.1s), 0002/0200 VUs, 4623 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0002/0200 VUs  02.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.2s), 0003/0200 VUs, 4823 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0003/0200 VUs  02.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.3s), 0000/0200 VUs, 5023 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0000/0200 VUs  02.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.4s), 0001/0200 VUs, 5223 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0001/0200 VUs  02.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.5s), 0000/0200 VUs, 5424 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0001/0200 VUs  02.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.6s), 0000/0200 VUs, 5623 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0000/0200 VUs  02.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.7s), 0001/0200 VUs, 5824 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0001/0200 VUs  02.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.8s), 0003/0200 VUs, 6023 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0003/0200 VUs  03.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m03.9s), 0001/0200 VUs, 6224 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0001/0200 VUs  03.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.0s), 0003/0200 VUs, 6424 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0003/0200 VUs  03.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.1s), 0000/0200 VUs, 6623 complete and 0 interrupted iterations[K
+mixed   [=>[2m-------------------------[22m] 0001/0200 VUs  03.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.2s), 0001/0200 VUs, 6824 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0001/0200 VUs  03.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.3s), 0002/0200 VUs, 7024 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0002/0200 VUs  03.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.4s), 0003/0200 VUs, 7222 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0003/0200 VUs  03.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.5s), 0002/0200 VUs, 7423 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0002/0200 VUs  03.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.6s), 0000/0200 VUs, 7623 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0000/0200 VUs  03.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.7s), 0001/0200 VUs, 7825 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0001/0200 VUs  03.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.8s), 0001/0200 VUs, 8024 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0001/0200 VUs  04.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m04.9s), 0003/0200 VUs, 8222 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0003/0200 VUs  04.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.0s), 0001/0200 VUs, 8423 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0001/0200 VUs  04.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.1s), 0000/0200 VUs, 8624 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0000/0200 VUs  04.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.2s), 0001/0200 VUs, 8824 complete and 0 interrupted iterations[K
+mixed   [==>[2m------------------------[22m] 0001/0200 VUs  04.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.3s), 0000/0200 VUs, 9023 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0000/0200 VUs  04.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.4s), 0001/0200 VUs, 9224 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0001/0200 VUs  04.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.5s), 0000/0200 VUs, 9423 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0000/0200 VUs  04.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.6s), 0000/0200 VUs, 9624 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0000/0200 VUs  04.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.7s), 0001/0200 VUs, 9824 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0001/0200 VUs  04.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.8s), 0003/0200 VUs, 10024 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0003/0200 VUs  05.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m05.9s), 0003/0200 VUs, 10222 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0003/0200 VUs  05.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.0s), 0003/0200 VUs, 10423 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0003/0200 VUs  05.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.1s), 0002/0200 VUs, 10623 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0002/0200 VUs  05.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.2s), 0001/0200 VUs, 10824 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0001/0200 VUs  05.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.3s), 0001/0200 VUs, 11024 complete and 0 interrupted iterations[K
+mixed   [===>[2m-----------------------[22m] 0001/0200 VUs  05.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.4s), 0001/0200 VUs, 11224 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0001/0200 VUs  05.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.5s), 0003/0200 VUs, 11424 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0003/0200 VUs  05.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.6s), 0000/0200 VUs, 11623 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0000/0200 VUs  05.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.7s), 0002/0200 VUs, 11823 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0002/0200 VUs  05.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.8s), 0002/0200 VUs, 12023 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0002/0200 VUs  06.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m06.9s), 0000/0200 VUs, 12225 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0000/0200 VUs  06.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.0s), 0001/0200 VUs, 12423 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0002/0200 VUs  06.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.1s), 0000/0200 VUs, 12623 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0000/0200 VUs  06.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.2s), 0000/0200 VUs, 12823 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0000/0200 VUs  06.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.3s), 0001/0200 VUs, 13024 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0001/0200 VUs  06.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.4s), 0000/0200 VUs, 13223 complete and 0 interrupted iterations[K
+mixed   [====>[2m----------------------[22m] 0000/0200 VUs  06.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.5s), 0001/0200 VUs, 13424 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0001/0200 VUs  06.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.6s), 0001/0200 VUs, 13624 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0001/0200 VUs  06.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.7s), 0001/0200 VUs, 13824 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0001/0200 VUs  06.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.8s), 0002/0200 VUs, 14023 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0001/0200 VUs  07.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m07.9s), 0000/0200 VUs, 14223 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0000/0200 VUs  07.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.0s), 0003/0200 VUs, 14422 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0003/0200 VUs  07.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.1s), 0013/0200 VUs, 14613 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0013/0200 VUs  07.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.2s), 0001/0200 VUs, 14824 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0001/0200 VUs  07.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.3s), 0000/0200 VUs, 15023 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0000/0200 VUs  07.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.4s), 0000/0200 VUs, 15223 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0000/0200 VUs  07.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.5s), 0000/0200 VUs, 15423 complete and 0 interrupted iterations[K
+mixed   [=====>[2m---------------------[22m] 0000/0200 VUs  07.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.6s), 0003/0200 VUs, 15622 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0003/0200 VUs  07.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.7s), 0001/0200 VUs, 15823 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0002/0200 VUs  07.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.8s), 0002/0200 VUs, 16023 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0002/0200 VUs  08.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m08.9s), 0002/0200 VUs, 16224 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0002/0200 VUs  08.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.0s), 0000/0200 VUs, 16423 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0000/0200 VUs  08.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.1s), 0000/0200 VUs, 16624 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0000/0200 VUs  08.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.2s), 0000/0200 VUs, 16823 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0000/0200 VUs  08.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.3s), 0001/0200 VUs, 17023 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0002/0200 VUs  08.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.4s), 0000/0200 VUs, 17224 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0000/0200 VUs  08.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.5s), 0003/0200 VUs, 17422 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0003/0200 VUs  08.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.6s), 0003/0200 VUs, 17622 complete and 0 interrupted iterations[K
+mixed   [======>[2m--------------------[22m] 0003/0200 VUs  08.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.7s), 0001/0200 VUs, 17824 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0001/0200 VUs  08.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.8s), 0003/0200 VUs, 18024 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0003/0200 VUs  09.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m09.9s), 0001/0200 VUs, 18223 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0001/0200 VUs  09.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.0s), 0000/0200 VUs, 18423 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0000/0200 VUs  09.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.1s), 0001/0200 VUs, 18624 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0001/0200 VUs  09.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.2s), 0003/0200 VUs, 18822 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0003/0200 VUs  09.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.3s), 0003/0200 VUs, 19022 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0003/0200 VUs  09.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.4s), 0002/0200 VUs, 19224 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0002/0200 VUs  09.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.5s), 0008/0200 VUs, 19417 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0008/0200 VUs  09.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.6s), 0001/0200 VUs, 19624 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0001/0200 VUs  09.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.7s), 0001/0200 VUs, 19824 complete and 0 interrupted iterations[K
+mixed   [=======>[2m-------------------[22m] 0001/0200 VUs  09.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.8s), 0001/0200 VUs, 20024 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0001/0200 VUs  10.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m10.9s), 0002/0200 VUs, 20223 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0002/0200 VUs  10.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.0s), 0002/0200 VUs, 20422 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0002/0200 VUs  10.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.1s), 0002/0200 VUs, 20623 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0002/0200 VUs  10.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.2s), 0001/0200 VUs, 20823 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0002/0200 VUs  10.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.3s), 0001/0200 VUs, 21024 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0001/0200 VUs  10.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.4s), 0001/0200 VUs, 21224 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0001/0200 VUs  10.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.5s), 0002/0200 VUs, 21423 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0002/0200 VUs  10.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.6s), 0003/0200 VUs, 21622 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0003/0200 VUs  10.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.7s), 0003/0200 VUs, 21823 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0003/0200 VUs  10.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.8s), 0001/0200 VUs, 22024 complete and 0 interrupted iterations[K
+mixed   [========>[2m------------------[22m] 0001/0200 VUs  11.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m11.9s), 0001/0200 VUs, 22224 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0002/0200 VUs  11.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.0s), 0001/0200 VUs, 22424 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0001/0200 VUs  11.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.1s), 0000/0200 VUs, 22623 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0000/0200 VUs  11.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.2s), 0002/0200 VUs, 22824 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0002/0200 VUs  11.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.3s), 0003/0200 VUs, 23023 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0003/0200 VUs  11.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.4s), 0000/0200 VUs, 23225 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0000/0200 VUs  11.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.5s), 0001/0200 VUs, 23424 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0001/0200 VUs  11.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.6s), 0002/0200 VUs, 23623 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0002/0200 VUs  11.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.7s), 0001/0200 VUs, 23823 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0001/0200 VUs  11.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.8s), 0000/0200 VUs, 24023 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0000/0200 VUs  12.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m12.9s), 0001/0200 VUs, 24223 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0001/0200 VUs  12.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.0s), 0001/0200 VUs, 24423 complete and 0 interrupted iterations[K
+mixed   [=========>[2m-----------------[22m] 0002/0200 VUs  12.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.1s), 0001/0200 VUs, 24625 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0001/0200 VUs  12.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.2s), 0000/0200 VUs, 24823 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0000/0200 VUs  12.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.3s), 0000/0200 VUs, 25024 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0000/0200 VUs  12.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.4s), 0000/0200 VUs, 25224 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0000/0200 VUs  12.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.5s), 0002/0200 VUs, 25423 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0002/0200 VUs  12.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.6s), 0008/0200 VUs, 25618 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0008/0200 VUs  12.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.7s), 0001/0200 VUs, 25824 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0001/0200 VUs  12.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.8s), 0001/0200 VUs, 26023 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0001/0200 VUs  13.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m13.9s), 0002/0200 VUs, 26223 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0002/0200 VUs  13.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.0s), 0003/0200 VUs, 26422 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0003/0200 VUs  13.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.1s), 0002/0200 VUs, 26623 complete and 0 interrupted iterations[K
+mixed   [==========>[2m----------------[22m] 0002/0200 VUs  13.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.2s), 0000/0200 VUs, 26823 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0000/0200 VUs  13.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.3s), 0003/0200 VUs, 27022 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0003/0200 VUs  13.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.4s), 0000/0200 VUs, 27223 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0001/0200 VUs  13.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.5s), 0002/0200 VUs, 27423 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0002/0200 VUs  13.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.6s), 0003/0200 VUs, 27623 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0003/0200 VUs  13.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.7s), 0003/0200 VUs, 27823 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0003/0200 VUs  13.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.8s), 0001/0200 VUs, 28023 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0002/0200 VUs  14.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m14.9s), 0001/0200 VUs, 28225 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0001/0200 VUs  14.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.0s), 0002/0200 VUs, 28424 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0002/0200 VUs  14.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.1s), 0002/0200 VUs, 28623 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0002/0200 VUs  14.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.2s), 0000/0200 VUs, 28823 complete and 0 interrupted iterations[K
+mixed   [===========>[2m---------------[22m] 0000/0200 VUs  14.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.3s), 0002/0200 VUs, 29022 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0003/0200 VUs  14.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.4s), 0001/0200 VUs, 29224 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0001/0200 VUs  14.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.5s), 0001/0200 VUs, 29424 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0001/0200 VUs  14.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.6s), 0001/0200 VUs, 29624 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0001/0200 VUs  14.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.7s), 0001/0200 VUs, 29823 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0002/0200 VUs  14.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.8s), 0001/0200 VUs, 30024 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0001/0200 VUs  15.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m15.9s), 0001/0200 VUs, 30224 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0001/0200 VUs  15.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.0s), 0002/0200 VUs, 30423 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0002/0200 VUs  15.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.1s), 0000/0200 VUs, 30624 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0000/0200 VUs  15.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.2s), 0002/0200 VUs, 30823 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0002/0200 VUs  15.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.3s), 0000/0200 VUs, 31023 complete and 0 interrupted iterations[K
+mixed   [============>[2m--------------[22m] 0002/0200 VUs  15.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.4s), 0003/0200 VUs, 31222 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0003/0200 VUs  15.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.5s), 0002/0200 VUs, 31424 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0002/0200 VUs  15.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.6s), 0002/0200 VUs, 31623 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0002/0200 VUs  15.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.7s), 0002/0200 VUs, 31823 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0002/0200 VUs  15.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.8s), 0003/0200 VUs, 32022 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0003/0200 VUs  16.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m16.9s), 0001/0200 VUs, 32224 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0001/0200 VUs  16.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.0s), 0001/0200 VUs, 32423 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0001/0200 VUs  16.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.1s), 0002/0200 VUs, 32623 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0002/0200 VUs  16.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.2s), 0003/0200 VUs, 32822 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0003/0200 VUs  16.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.3s), 0002/0200 VUs, 33023 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0001/0200 VUs  16.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.4s), 0002/0200 VUs, 33223 complete and 0 interrupted iterations[K
+mixed   [=============>[2m-------------[22m] 0002/0200 VUs  16.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.5s), 0001/0200 VUs, 33424 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0001/0200 VUs  16.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.6s), 0000/0200 VUs, 33624 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0000/0200 VUs  16.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.7s), 0002/0200 VUs, 33824 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0002/0200 VUs  16.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.8s), 0002/0200 VUs, 34023 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0002/0200 VUs  17.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m17.9s), 0001/0200 VUs, 34224 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0001/0200 VUs  17.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.0s), 0000/0200 VUs, 34424 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0000/0200 VUs  17.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.1s), 0001/0200 VUs, 34623 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0001/0200 VUs  17.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.2s), 0002/0200 VUs, 34823 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0002/0200 VUs  17.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.3s), 0001/0200 VUs, 35023 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0001/0200 VUs  17.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.4s), 0000/0200 VUs, 35223 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0000/0200 VUs  17.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.5s), 0001/0200 VUs, 35424 complete and 0 interrupted iterations[K
+mixed   [==============>[2m------------[22m] 0001/0200 VUs  17.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.6s), 0001/0200 VUs, 35623 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0002/0200 VUs  17.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.7s), 0000/0200 VUs, 35823 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0000/0200 VUs  17.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.8s), 0002/0200 VUs, 36024 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0002/0200 VUs  18.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m18.9s), 0002/0200 VUs, 36223 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0002/0200 VUs  18.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.0s), 0001/0200 VUs, 36424 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0001/0200 VUs  18.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.1s), 0002/0200 VUs, 36624 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0002/0200 VUs  18.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.2s), 0000/0200 VUs, 36823 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0000/0200 VUs  18.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.3s), 0000/0200 VUs, 37023 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0000/0200 VUs  18.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.4s), 0001/0200 VUs, 37224 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0001/0200 VUs  18.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.5s), 0003/0200 VUs, 37422 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0003/0200 VUs  18.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.6s), 0000/0200 VUs, 37623 complete and 0 interrupted iterations[K
+mixed   [===============>[2m-----------[22m] 0000/0200 VUs  18.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.7s), 0003/0200 VUs, 37822 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0003/0200 VUs  18.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.8s), 0000/0200 VUs, 38023 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0000/0200 VUs  19.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m19.9s), 0000/0200 VUs, 38224 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0001/0200 VUs  19.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.0s), 0000/0200 VUs, 38425 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0000/0200 VUs  19.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.1s), 0000/0200 VUs, 38624 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0000/0200 VUs  19.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.2s), 0001/0200 VUs, 38824 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0001/0200 VUs  19.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.3s), 0001/0200 VUs, 39024 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0001/0200 VUs  19.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.4s), 0001/0200 VUs, 39224 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0001/0200 VUs  19.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.5s), 0000/0200 VUs, 39425 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0000/0200 VUs  19.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.6s), 0002/0200 VUs, 39623 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0002/0200 VUs  19.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.7s), 0003/0200 VUs, 39822 complete and 0 interrupted iterations[K
+mixed   [================>[2m----------[22m] 0003/0200 VUs  19.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.8s), 0002/0200 VUs, 40023 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0002/0200 VUs  20.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m20.9s), 0002/0200 VUs, 40223 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0002/0200 VUs  20.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.0s), 0001/0200 VUs, 40423 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0002/0200 VUs  20.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.1s), 0003/0200 VUs, 40624 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0003/0200 VUs  20.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.2s), 0001/0200 VUs, 40824 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0001/0200 VUs  20.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.3s), 0000/0200 VUs, 41024 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0000/0200 VUs  20.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.4s), 0002/0200 VUs, 41223 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0002/0200 VUs  20.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.5s), 0003/0200 VUs, 41422 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0003/0200 VUs  20.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.6s), 0001/0200 VUs, 41624 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0001/0200 VUs  20.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.7s), 0001/0200 VUs, 41824 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0001/0200 VUs  20.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.8s), 0000/0200 VUs, 42023 complete and 0 interrupted iterations[K
+mixed   [=================>[2m---------[22m] 0000/0200 VUs  21.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m21.9s), 0000/0200 VUs, 42223 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0001/0200 VUs  21.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.0s), 0003/0200 VUs, 42422 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0003/0200 VUs  21.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.1s), 0003/0200 VUs, 42622 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0003/0200 VUs  21.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.2s), 0002/0200 VUs, 42824 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0002/0200 VUs  21.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.3s), 0001/0200 VUs, 43023 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0002/0200 VUs  21.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.4s), 0001/0200 VUs, 43224 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0001/0200 VUs  21.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.5s), 0002/0200 VUs, 43423 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0002/0200 VUs  21.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.6s), 0001/0200 VUs, 43624 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0001/0200 VUs  21.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.7s), 0002/0200 VUs, 43823 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0002/0200 VUs  21.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.8s), 0000/0200 VUs, 44024 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0000/0200 VUs  22.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m22.9s), 0002/0200 VUs, 44223 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0002/0200 VUs  22.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.0s), 0003/0200 VUs, 44422 complete and 0 interrupted iterations[K
+mixed   [==================>[2m--------[22m] 0003/0200 VUs  22.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.1s), 0002/0200 VUs, 44623 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0002/0200 VUs  22.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.2s), 0003/0200 VUs, 44822 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0003/0200 VUs  22.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.3s), 0003/0200 VUs, 45022 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0003/0200 VUs  22.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.4s), 0001/0200 VUs, 45224 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0001/0200 VUs  22.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.5s), 0002/0200 VUs, 45423 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0002/0200 VUs  22.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.6s), 0001/0200 VUs, 45624 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0001/0200 VUs  22.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.7s), 0002/0200 VUs, 45824 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0002/0200 VUs  22.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.8s), 0001/0200 VUs, 46024 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0001/0200 VUs  23.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m23.9s), 0002/0200 VUs, 46224 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0002/0200 VUs  23.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.0s), 0001/0200 VUs, 46424 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0001/0200 VUs  23.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.1s), 0000/0200 VUs, 46625 complete and 0 interrupted iterations[K
+mixed   [===================>[2m-------[22m] 0000/0200 VUs  23.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.2s), 0001/0200 VUs, 46825 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0001/0200 VUs  23.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.3s), 0000/0200 VUs, 47024 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0000/0200 VUs  23.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.4s), 0001/0200 VUs, 47224 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0001/0200 VUs  23.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.5s), 0003/0200 VUs, 47422 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0003/0200 VUs  23.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.6s), 0000/0200 VUs, 47624 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0000/0200 VUs  23.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.7s), 0002/0200 VUs, 47824 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0002/0200 VUs  23.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.8s), 0002/0200 VUs, 48024 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0002/0200 VUs  24.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m24.9s), 0003/0200 VUs, 48222 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0003/0200 VUs  24.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.0s), 0002/0200 VUs, 48423 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0002/0200 VUs  24.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.1s), 0001/0200 VUs, 48624 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0001/0200 VUs  24.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.2s), 0001/0200 VUs, 48824 complete and 0 interrupted iterations[K
+mixed   [====================>[2m------[22m] 0001/0200 VUs  24.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.3s), 0000/0200 VUs, 49023 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0000/0200 VUs  24.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.4s), 0002/0200 VUs, 49223 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0002/0200 VUs  24.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.5s), 0001/0200 VUs, 49424 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0001/0200 VUs  24.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.6s), 0000/0200 VUs, 49623 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0000/0200 VUs  24.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.7s), 0000/0200 VUs, 49823 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0000/0200 VUs  24.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.8s), 0002/0200 VUs, 50024 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0002/0200 VUs  25.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m25.9s), 0001/0200 VUs, 50224 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0001/0200 VUs  25.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.0s), 0001/0200 VUs, 50424 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0001/0200 VUs  25.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.1s), 0000/0200 VUs, 50623 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0000/0200 VUs  25.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.2s), 0002/0200 VUs, 50824 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0002/0200 VUs  25.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.3s), 0035/0200 VUs, 50992 complete and 0 interrupted iterations[K
+mixed   [=====================>[2m-----[22m] 0035/0200 VUs  25.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.4s), 0001/0200 VUs, 51225 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0001/0200 VUs  25.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.5s), 0003/0200 VUs, 51422 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0003/0200 VUs  25.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.6s), 0002/0200 VUs, 51623 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0002/0200 VUs  25.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.7s), 0002/0200 VUs, 51823 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0002/0200 VUs  25.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.8s), 0001/0200 VUs, 52025 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0001/0200 VUs  26.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m26.9s), 0002/0200 VUs, 52223 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0002/0200 VUs  26.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.0s), 0001/0200 VUs, 52423 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0001/0200 VUs  26.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.1s), 0000/0200 VUs, 52623 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0001/0200 VUs  26.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.2s), 0002/0200 VUs, 52823 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0002/0200 VUs  26.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.3s), 0002/0200 VUs, 53023 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0002/0200 VUs  26.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.4s), 0001/0200 VUs, 53223 complete and 0 interrupted iterations[K
+mixed   [======================>[2m----[22m] 0001/0200 VUs  26.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.5s), 0000/0200 VUs, 53423 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0000/0200 VUs  26.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.6s), 0002/0200 VUs, 53623 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0002/0200 VUs  26.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.7s), 0001/0200 VUs, 53824 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0001/0200 VUs  26.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.8s), 0003/0200 VUs, 54022 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0003/0200 VUs  27.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m27.9s), 0003/0200 VUs, 54224 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0003/0200 VUs  27.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.0s), 0001/0200 VUs, 54424 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0001/0200 VUs  27.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.1s), 0001/0200 VUs, 54624 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0001/0200 VUs  27.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.2s), 0001/0200 VUs, 54824 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0001/0200 VUs  27.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.3s), 0000/0200 VUs, 55024 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0000/0200 VUs  27.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.4s), 0003/0200 VUs, 55222 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0003/0200 VUs  27.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.5s), 0002/0200 VUs, 55423 complete and 0 interrupted iterations[K
+mixed   [=======================>[2m---[22m] 0002/0200 VUs  27.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.6s), 0001/0200 VUs, 55623 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0001/0200 VUs  27.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.7s), 0003/0200 VUs, 55824 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0003/0200 VUs  27.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.8s), 0003/0200 VUs, 56023 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0003/0200 VUs  28.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m28.9s), 0001/0200 VUs, 56223 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0001/0200 VUs  28.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.0s), 0005/0200 VUs, 56422 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0005/0200 VUs  28.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.1s), 0001/0200 VUs, 56624 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0001/0200 VUs  28.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.2s), 0000/0200 VUs, 56823 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0000/0200 VUs  28.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.3s), 0002/0200 VUs, 57023 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0002/0200 VUs  28.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.4s), 0001/0200 VUs, 57224 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0001/0200 VUs  28.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.5s), 0001/0200 VUs, 57424 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0001/0200 VUs  28.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.6s), 0000/0200 VUs, 57623 complete and 0 interrupted iterations[K
+mixed   [========================>[2m--[22m] 0000/0200 VUs  28.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.7s), 0002/0200 VUs, 57822 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0003/0200 VUs  28.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.8s), 0000/0200 VUs, 58023 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0000/0200 VUs  29.0s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m29.9s), 0002/0200 VUs, 58223 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0002/0200 VUs  29.1s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.0s), 0001/0200 VUs, 58423 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0001/0200 VUs  29.2s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.1s), 0000/0200 VUs, 58623 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0001/0200 VUs  29.3s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.2s), 0002/0200 VUs, 58823 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0002/0200 VUs  29.4s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.3s), 0003/0200 VUs, 59023 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0003/0200 VUs  29.5s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.4s), 0001/0200 VUs, 59224 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0001/0200 VUs  29.6s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.5s), 0000/0200 VUs, 59423 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0000/0200 VUs  29.7s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.6s), 0001/0200 VUs, 59622 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0001/0200 VUs  29.8s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.7s), 0001/0200 VUs, 59824 complete and 0 interrupted iterations[K
+mixed   [=========================>[2m-[22m] 0001/0200 VUs  29.9s/30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.8s), 0000/0200 VUs, 60000 complete and 0 interrupted iterations[K
+mixed [32m✓[0m [===========================[2m[22m] 0000/0200 VUs  30s  2000.00 iters/s[K
+[J[3A[0K
+[0K
+  █ [1mTHRESHOLDS[0m [0K
+[0K
+    create_latency[0K
+    [32m✓[0m [37m'p(99)<250'[0m [37mp(99)[0m=[36m11.3ms[0m[0K
+[0K
+    http_req_failed[0K
+    [32m✓[0m [37m'rate<0.01'[0m [37mrate[0m=[36m0.00%[0m[0K
+[0K
+    redirect_latency[0K
+    [32m✓[0m [37m'p(99)<100'[0m [37mp(99)[0m=[36m3.33ms[0m[0K
+[0K
+[0K
+  █ [1mTOTAL RESULTS[0m [0K
+[0K
+    checks_total[2;37m.......:[0m [36m60000[0m   [2;36m1949.987398/s[0m[0K
+    checks_succeeded[2;37m...:[0m [36m100.00%[0m [2;36m60000 out of 60000[0m[0K
+    checks_failed[2;37m......:[0m [36m0.00%[0m   [2;36m0 out of 60000[0m[0K
+[0K
+    [32m✓ redirected[0m[0K
+    [32m✓ created[0m[0K
+[0K
+    [1mCUSTOM[0m[0K
+    create_latency[2;37m.................:[0m avg=[36m2.94ms[0m   min=[36m1.98ms[0m   med=[36m2.49ms[0m   max=[36m25.58ms[0m p(90)=[36m3.77ms[0m   p(95)=[36m4.52ms[0m   p(99)=[36m11.3ms[0m[0K
+    redirect_latency[2;37m...............:[0m avg=[36m472.92µs[0m min=[36m191.76µs[0m med=[36m271.22µs[0m max=[36m51.33ms[0m p(90)=[36m532.41µs[0m p(95)=[36m692.17µs[0m p(99)=[36m3.33ms[0m[0K
+[0K
+    [1mHTTP[0m[0K
+    http_req_duration[2;37m..............:[0m avg=[36m494.74µs[0m min=[36m191.76µs[0m med=[36m272.69µs[0m max=[36m51.33ms[0m p(90)=[36m550.52µs[0m p(95)=[36m772.66µs[0m p(99)=[36m3.58ms[0m[0K
+      { expected_response:true }[2;37m...:[0m avg=[36m494.74µs[0m min=[36m191.76µs[0m med=[36m272.69µs[0m max=[36m51.33ms[0m p(90)=[36m550.52µs[0m p(95)=[36m772.66µs[0m p(99)=[36m3.58ms[0m[0K
+    http_req_failed[2;37m................:[0m [36m0.00%[0m  [2;36m0 out of 60301[0m[0K
+    http_reqs[2;37m......................:[0m [36m60301[0m  [2;36m1959.769835/s[0m[0K
+[0K
+    [1mEXECUTION[0m[0K
+    iteration_duration[2;37m.............:[0m avg=[36m549.3µs[0m  min=[36m226.7µs[0m  med=[36m329.46µs[0m max=[36m51.98ms[0m p(90)=[36m611.1µs[0m  p(95)=[36m803.48µs[0m p(99)=[36m3.82ms[0m[0K
+    iterations[2;37m.....................:[0m [36m60000[0m  [2;36m1949.987398/s[0m[0K
+    vus[2;37m............................:[0m [36m3[0m      [2;36mmin=0[0m          [2;36mmax=5[0m  [0K
+    vus_max[2;37m........................:[0m [36m200[0m    [2;36mmin=200[0m        [2;36mmax=200[0m[0K
+[0K
+    [1mNETWORK[0m[0K
+    data_received[2;37m..................:[0m [36m23 MB[0m  [2;36m751 kB/s[0m[0K
+    data_sent[2;37m......................:[0m [36m5.7 MB[0m [2;36m184 kB/s[0m[0K
+[0K
+[0K
+[0K
+[K
+running (0m30.8s), 0000/0200 VUs, 60000 complete and 0 interrupted iterations[K
+mixed [32m✓[0m [===========================[2m[22m] 0000/0200 VUs  30s  2000.00 iters/s[K
+[J[3A[K
+running (0m30.8s), 0000/0200 VUs, 60000 complete and 0 interrupted iterations[K
+mixed [32m✓[0m [=================================[2m[22m] 0000/0200 VUs  30s  2000.00 iters/s[K

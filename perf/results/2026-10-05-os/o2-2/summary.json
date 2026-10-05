@@ -1,0 +1,13 @@
+{"variant":"o2-2","image":"shortener:bench-o2","ready_ms":440,"idle_mem":"85.62MiB","started":"Started ShortenerApplicationKt in 0.265 seconds","runs":[
+{"name":"r1500","rate":1500,"duration":"60s","create_share":0.01,"start":1791237344,"end":1791237405,
+ "server":{"redirect_p50":0.0005068397742695907,"redirect_p95":0.0009629955711122222,"redirect_p99":0.0012273114744809676,
+ "create_p50":0.0022214820357142856,"create_p99":0.0060747498449999805,
+ "hikari_acquire_max":0.025529153,"hikari_timeouts":0,
+ "gc_pause_seconds":null,"process_cpu_avg":0.1947989546486458}}
+,
+{"name":"r5000","rate":5000,"duration":"60s","create_share":0.003,"start":1791237414,"end":1791237475,
+ "server":{"redirect_p50":0.0005015942333999789,"redirect_p95":0.0009530290434599599,"redirect_p99":0.0009931565821319581,
+ "create_p50":0.0025601650625,"create_p99":0.010235269215714288,
+ "hikari_acquire_max":0.025529153,"hikari_timeouts":0,
+ "gc_pause_seconds":null,"process_cpu_avg":0.48334125334125333}}
+]}
