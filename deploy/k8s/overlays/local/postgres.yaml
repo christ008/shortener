@@ -27,23 +27,46 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: shortener-db
+                  name: postgres-admin
                   key: username
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
+                  name: postgres-admin
+                  key: password
+            # Read once by deploy/postgres/set-role-passwords.sh, when the data directory is first initialised.
+            - name: SHORTENER_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
                   name: shortener-db
+                  key: password
+            - name: SHORTENER_MIGRATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db-migrator
+                  key: password
+            - name: SHORTENER_EXPORTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db-exporter
                   key: password
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "shortener", "-d", "shortener"]
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
             periodSeconds: 3
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
       volumes:
         - name: data
           emptyDir: {}
+        - name: init
+          configMap:
+            name: postgres-init
+            defaultMode: 365
 ---
 apiVersion: v1
 kind: Service
