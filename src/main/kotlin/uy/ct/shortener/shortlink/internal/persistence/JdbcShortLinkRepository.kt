@@ -1,6 +1,8 @@
 package uy.ct.shortener.shortlink.internal.persistence
 
 import org.springframework.dao.DataAccessResourceFailureException
+import org.springframework.dao.QueryTimeoutException
+import org.springframework.jdbc.UncategorizedSQLException
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Slice
 import org.springframework.data.domain.SliceImpl
@@ -22,7 +24,10 @@ import kotlin.jvm.optionals.getOrNull
  * `created_at`, and listing pages with `LIMIT`/`OFFSET` on indexed columns, one extra row telling whether another page follows. Short codes sort in byte order (`COLLATE "C"`), not the database's locale, so the order is the same everywhere. The schema, including the constraints that mirror [ShortCode] and [ShortLink],
  * lives in the Flyway migrations. Failing to get a connection, whether the pool is exhausted or
  * the database is down, is reported as [StorageUnavailableException] so Spring's data-access
- * types do not leak out of this adapter.
+ * types do not leak out of this adapter. So are the two limits the application role carries in the
+ * database, a statement that runs past `statement_timeout` and a lock not obtained within
+ * `lock_timeout` (Spring leaves that one uncategorised, so it is recognised by its SQLSTATE): both mean storage cannot
+ * serve the request now, and trying again is the answer.
  */
 @Repository
 class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepository {
@@ -82,9 +87,17 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
             statement()
         } catch (ex: DataAccessResourceFailureException) {
             throw StorageUnavailableException(ex)
+        } catch (ex: QueryTimeoutException) {
+            throw StorageUnavailableException(ex)
+        } catch (ex: UncategorizedSQLException) {
+            if (ex.sqlException?.sqlState != LOCK_NOT_AVAILABLE) throw ex
+            throw StorageUnavailableException(ex)
         }
 
     private companion object {
+        /** `lock_not_available`, what Postgres reports for a lock that `lock_timeout` gave up on. */
+        const val LOCK_NOT_AVAILABLE = "55P03"
+
         const val SHORT_CODE_IN_BYTE_ORDER = "short_code COLLATE \"C\""
 
         val SORT_COLUMNS = mapOf("createdAt" to "created_at", "shortCode" to SHORT_CODE_IN_BYTE_ORDER)

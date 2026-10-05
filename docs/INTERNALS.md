@@ -140,7 +140,12 @@ waits at most 3 s to connect and 15 s for an answer, above the 5 s statement tim
 timeout covers a network that goes silent, where the server cannot cancel anything.
 
 A `DataAccessResourceFailureException` is mapped to `StorageUnavailableException`, which becomes `503` with
-`Retry-After: 5`, so a database outage reads as retryable rather than as a server bug.
+`Retry-After: 5`, so a database outage reads as retryable rather than as a server bug. So are the two limits the
+application role carries (above): a statement cut off at 5 s arrives as Spring's `QueryTimeoutException`, and a lock given
+up after 2 s as an `UncategorizedSQLException` with SQLSTATE `55P03` (Spring has no category for it), and both are mapped
+too, because otherwise a timeout the database enforces would reach the client as a 500. Any other database error is not
+mapped, so a real bug is not hidden behind a retry (`DatabaseLimitsTest` makes both limits fire on the repository's own
+query, with another connection holding a lock on the table).
 
 ## Concurrency
 
