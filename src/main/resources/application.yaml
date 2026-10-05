@@ -28,8 +28,18 @@ spring:
         sort-parameter: sort
   datasource:
     hikari:
+      pool-name: shortener
       maximum-pool-size: 10
       connection-timeout: 3000
+      keepalive-time: 120000
+      leak-detection-threshold: 10000
+      data-source-properties:
+        ApplicationName: ${spring.application.name}-${HOSTNAME:local}
+        connectTimeout: 3
+        socketTimeout: 15
+        tcpKeepAlive: true
+  flyway:
+    clean-disabled: true
 
 server:
   shutdown: graceful
