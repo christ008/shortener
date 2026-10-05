@@ -28,7 +28,8 @@ import java.util.Date
  * signs access tokens with the private half. [token] can produce valid tokens and each kind of
  * invalid one: another signing key, the wrong issuer or audience, an expired token, or one
  * missing its client or scope, with the wrong JOSE type, or bound to a client key by thumbprint
- * ([jkt]). The JDK HTTP server behind it uses a non-daemon thread, so [stop]
+ * ([jkt]). The `owner` claim names who owns what the token creates: the client, as for a service, or
+ * a user when [owner] and [authorizedParty] are given separately, as for the web UI. The JDK HTTP server behind it uses a non-daemon thread, so [stop]
  * must run when the test session ends or the test JVM never exits; [TestIdpShutdown] does that.
  */
 object TestIdp {
@@ -64,6 +65,8 @@ object TestIdp {
         key: RSAKey = signingKey,
         type: String? = "at+jwt",
         jkt: String? = null,
+        owner: String? = client,
+        authorizedParty: String? = client,
     ): String {
         val now = Instant.now()
         val claims = JWTClaimsSet.Builder()
@@ -73,7 +76,8 @@ object TestIdp {
             .issueTime(Date.from(now))
             .expirationTime(Date.from(now.plus(expiresIn)))
             .apply {
-                client?.let { claim("azp", it) }
+                authorizedParty?.let { claim("azp", it) }
+                owner?.let { claim("owner", it) }
                 scope?.let { claim("scope", it) }
                 jkt?.let { claim("cnf", mapOf("jkt" to it)) }
             }

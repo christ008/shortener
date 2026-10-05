@@ -145,7 +145,23 @@
         "jwks.string": "{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"demo-client-key-1\",\"alg\":\"ES256\",\"use\":\"sig\",\"x\":\"2GPIejG3fDsmZVRgfG3gUiD2ENfJ4qdcpwsREdjAtqI\",\"y\":\"cpjP0BxNBLcnQaz2dvXYd6oTzrQgVaI4nfAeMGmSncs\"}]}",
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "owner",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "owner",
+            "claim.value": "demo-client",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "other-client",
@@ -170,7 +186,23 @@
         "jwks.string": "{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"other-client-key-1\",\"alg\":\"ES256\",\"use\":\"sig\",\"x\":\"MrQtnRcdKyysEjQxzgff11BwgCQo4w9kJ1nAn5mrIcE\",\"y\":\"dec5ZiLjSWjEuf04F65F2yvK-mxY0yQ4EoDwcCVulJ0\"}]}",
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "owner",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "owner",
+            "claim.value": "other-client",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "admin-client",
@@ -193,7 +225,23 @@
         "jwks.string": "{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"admin-client-key-1\",\"alg\":\"ES256\",\"use\":\"sig\",\"x\":\"q81zszivr-_6C1oHXwRr0VaGQe7ypmBmO5OLjtjlOCY\",\"y\":\"0ckqiOQJKPN9RPI1rgNtPvW3aPpw_kqFGIP6pxAHaIc\"}]}",
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "owner",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "owner",
+            "claim.value": "admin-client",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "no-scope-client",
@@ -220,6 +268,20 @@
             "access.token.claim": "true",
             "introspection.token.claim": "true"
           }
+        },
+        {
+          "name": "owner",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "owner",
+            "claim.value": "no-scope-client",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
         }
       ],
       "attributes": {
@@ -229,6 +291,91 @@
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true"
       }
+    },
+    {
+      "clientId": "shortener-ui",
+      "name": "The web UI, a public client that signs in users with code and PKCE and holds DPoP-bound tokens (dev only)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/app/*",
+        "http://localhost:5173/app/*",
+        "http://localhost:8088/app/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8088"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "dpop.bound.access.tokens": "true",
+        "access.token.header.type.rfc9068": "true",
+        "post.logout.redirect.uris": "http://localhost:3000/app/*##http://localhost:5173/app/*##http://localhost:8088/app/*"
+      },
+      "defaultClientScopes": [
+        "shortlinks:create",
+        "shortlinks:claim",
+        "shortlinks:read",
+        "shortlinks:delete"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "owner",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "id",
+            "claim.name": "owner",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice@example.test",
+      "firstName": "Alice",
+      "lastName": "Example",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bob@example.test",
+      "firstName": "Bob",
+      "lastName": "Example",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

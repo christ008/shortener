@@ -1,5 +1,6 @@
 import java.math.BigInteger;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -12,6 +13,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
+import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
@@ -20,6 +22,8 @@ import java.security.spec.ECPrivateKeySpec;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,9 +35,14 @@ import java.util.regex.Pattern;
  *   java DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
  *   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
  *   java DpopClient.java token KEY_FILE CLIENT_ID         prints a DPoP-bound access token and the key it is bound to
+ *   java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]
+ *                                                         signs a user in the way a single-page app does (authorization
+ *                                                         code with PKCE and a DPoP-bound code), shows the token's claims,
+ *                                                         refreshes it, then calls the API as that user
  *
  * The token endpoint comes from TOKEN_URL, by default the local realm. TRACEPARENT, if set, is sent as the W3C trace
- * context of the request, so a sampled trace can be forced for a call.
+ * context of the request, so a sampled trace can be forced for a call. For login, CLIENT_ID (shortener-ui), REDIRECT_URI
+ * and SCOPE can be overridden.
  */
 public class DpopClient {
 
@@ -45,7 +54,8 @@ public class DpopClient {
     static final String USAGE = """
             usage: java DpopClient.java keygen CLIENT_ID
                    java DpopClient.java token KEY_FILE CLIENT_ID
-                   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]""";
+                   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
+                   java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]""";
 
     public static void main(String[] args) throws Exception {
         if (!validArguments(args)) {
@@ -79,6 +89,7 @@ public class DpopClient {
                 response.headers().allValues("WWW-Authenticate").forEach(h -> System.out.println("WWW-Authenticate: " + h));
                 System.out.println(response.body());
             }
+            case "login" -> login(args);
             default -> throw new IllegalStateException("unreachable: " + args[0]);
         }
     }
@@ -88,8 +99,130 @@ public class DpopClient {
             case "keygen" -> args.length == 2;
             case "token" -> args.length == 3;
             case "call" -> args.length == 5 || args.length == 6;
+            case "login" -> args.length == 5 || args.length == 6;
             default -> false;
         };
+    }
+
+    static String env(String name, String fallback) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    static String enc(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    static void login(String[] args) throws Exception {
+        String user = args[1], password = args[2], method = args[3], url = args[4];
+        String body = args.length > 5 ? args[5] : null;
+        String clientId = env("CLIENT_ID", "shortener-ui");
+        String redirect = env("REDIRECT_URI", "http://localhost:3000/app/auth/callback");
+        String scope = env("SCOPE", "shortlinks:create shortlinks:claim shortlinks:read shortlinks:delete");
+
+        KeyPair dpopKey = generate();
+        byte[] random = new byte[32];
+        new SecureRandom().nextBytes(random);
+        String verifier = B64.encodeToString(random);
+        String challenge = B64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
+        String state = UUID.randomUUID().toString();
+
+        HttpClient browser = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+        Map<String, String> jar = new LinkedHashMap<>();
+        String authUrl = ISSUER + "/protocol/openid-connect/auth?response_type=code&client_id=" + enc(clientId) + "&redirect_uri=" + enc(redirect)
+                + "&scope=" + enc(scope) + "&state=" + state + "&code_challenge=" + challenge + "&code_challenge_method=S256&dpop_jkt=" + thumbprint(dpopKey);
+
+        HttpResponse<String> page = browser.send(HttpRequest.newBuilder(URI.create(authUrl)).GET().build(), HttpResponse.BodyHandlers.ofString());
+        remember(jar, page);
+        Matcher form = Pattern.compile("<form[^>]*id=\"kc-form-login\"[^>]*action=\"([^\"]+)\"").matcher(page.body());
+        if (!form.find()) throw new IllegalStateException("no login form (status " + page.statusCode() + "): " + page.body().substring(0, Math.min(500, page.body().length())));
+        String action = form.group(1).replace("&amp;", "&");
+
+        HttpResponse<String> submitted = browser.send(HttpRequest.newBuilder(URI.create(action))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("Cookie", cookieHeader(jar))
+                .POST(HttpRequest.BodyPublishers.ofString("username=" + enc(user) + "&password=" + enc(password) + "&credentialId=")).build(), HttpResponse.BodyHandlers.ofString());
+        String location = submitted.headers().firstValue("Location").orElseThrow(() -> new IllegalStateException("the login did not redirect (status " + submitted.statusCode() + "): " + submitted.body().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim().substring(0, Math.min(300, submitted.body().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim().length()))));
+        Map<String, String> returned = new LinkedHashMap<>();
+        for (String pair : URI.create(location).getRawQuery().split("&")) {
+            String[] kv = pair.split("=", 2);
+            returned.put(kv[0], java.net.URLDecoder.decode(kv.length > 1 ? kv[1] : "", StandardCharsets.UTF_8));
+        }
+        if (!state.equals(returned.get("state"))) throw new IllegalStateException("state mismatch");
+        System.out.println("1. signed in as " + user + "; redirected to " + location.substring(0, location.indexOf('?')) + " with a code");
+
+        String tokens = postToken("grant_type=authorization_code&client_id=" + enc(clientId) + "&code=" + enc(returned.get("code"))
+                + "&redirect_uri=" + enc(redirect) + "&code_verifier=" + verifier, dpopKey);
+        String accessToken = field(tokens, "access_token");
+        System.out.println("2. token_type " + field(tokens, "token_type") + ", refresh token " + (tokens.contains("refresh_token") ? "issued" : "NOT issued"));
+        String claims = payload(accessToken);
+        System.out.println("3. access token header " + new String(Base64.getUrlDecoder().decode(accessToken.split("\\.")[0]), StandardCharsets.UTF_8));
+        System.out.println("   claims " + claims);
+        String boundTo = claims.replaceAll(".*\"jkt\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+        System.out.println("   bound to this client's key: " + boundTo.equals(thumbprint(dpopKey)));
+
+        String refreshToken = field(tokens, "refresh_token");
+        String refreshed = postToken("grant_type=refresh_token&client_id=" + enc(clientId) + "&refresh_token=" + enc(refreshToken), dpopKey);
+        String newAccess = field(refreshed, "access_token");
+        System.out.println("4. refreshed with the same key; new token bound to it: " + payload(newAccess).contains(thumbprint(dpopKey)) + ", refresh token rotated: " + !refreshToken.equals(field(refreshed, "refresh_token")));
+        try {
+            postToken("grant_type=refresh_token&client_id=" + enc(clientId) + "&refresh_token=" + enc(refreshToken), dpopKey);
+            System.out.println("   reusing the old refresh token: ACCEPTED (rotation is not enforced)");
+        } catch (IllegalStateException expected) {
+            System.out.println("   reusing the old refresh token: refused, as rotation requires");
+        }
+        KeyPair otherKey = generate();
+        try {
+            postToken("grant_type=refresh_token&client_id=" + enc(clientId) + "&refresh_token=" + enc(field(refreshed, "refresh_token")), otherKey);
+            System.out.println("   refreshing with a different key: ACCEPTED (the refresh token is not bound to the key)");
+        } catch (IllegalStateException expected) {
+            System.out.println("   refreshing with a different key: refused");
+        }
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(TIMEOUT)
+                .header("Authorization", "DPoP " + newAccess)
+                .header("DPoP", proof(dpopKey, method, url, newAccess))
+                .header("Content-Type", "application/json")
+                .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
+        HttpResponse<String> response = HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        System.out.println("5. " + method + " " + url + " -> " + response.statusCode());
+        response.headers().allValues("WWW-Authenticate").forEach(h -> System.out.println("   WWW-Authenticate: " + h));
+        System.out.println("   " + response.body());
+    }
+
+    static void remember(Map<String, String> jar, HttpResponse<?> response) {
+        for (String header : response.headers().allValues("Set-Cookie")) {
+            String pair = header.split(";", 2)[0];
+            int equals = pair.indexOf('=');
+            if (equals > 0) jar.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
+        }
+    }
+
+    static String cookieHeader(Map<String, String> jar) {
+        StringBuilder out = new StringBuilder();
+        jar.forEach((name, value) -> out.append(out.length() == 0 ? "" : "; ").append(name).append('=').append(value));
+        return out.toString();
+    }
+
+    static String postToken(String form, KeyPair dpopKey) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(TOKEN_URL))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("DPoP", proof(dpopKey, "POST", TOKEN_URL, null))
+                .POST(HttpRequest.BodyPublishers.ofString(form)).build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) throw new IllegalStateException("token endpoint answered " + response.statusCode() + ": " + response.body());
+        return response.body();
+    }
+
+    static String payload(String jwt) {
+        return new String(Base64.getUrlDecoder().decode(jwt.split("\\.")[1]), StandardCharsets.UTF_8);
+    }
+
+    static String thumbprint(KeyPair key) throws Exception {
+        ECPublicKey pub = (ECPublicKey) key.getPublic();
+        String canonical = "{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"" + coordinate(pub.getW().getAffineX()) + "\",\"y\":\"" + coordinate(pub.getW().getAffineY()) + "\"}";
+        return B64.encodeToString(MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8)));
     }
 
     record Token(String accessToken, String tokenType) {}

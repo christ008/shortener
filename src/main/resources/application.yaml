@@ -49,6 +49,8 @@ server:
   forward-headers-strategy: native
 
 shortener:
+  security:
+    client-id-claim: owner
   shortlink:
     scopes:
       create: shortlinks:create
