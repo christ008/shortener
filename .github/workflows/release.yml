@@ -76,7 +76,7 @@ jobs:
           severity-cutoff: high
           only-fixed: true
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
