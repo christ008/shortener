@@ -4,10 +4,13 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.springframework.dao.DataAccessResourceFailureException
+import org.springframework.jdbc.UncategorizedSQLException
 import org.springframework.jdbc.core.simple.JdbcClient
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.StorageUnavailableException
 import java.net.URI
+import java.sql.Connection
+import java.sql.SQLException
 import java.sql.SQLTransientConnectionException
 import javax.sql.DataSource
 import kotlin.test.assertFailsWith
@@ -37,6 +40,15 @@ class JdbcShortLinkRepositoryUnavailableTest {
         assertFailsWith<StorageUnavailableException> {
             repository.insertIfAbsent(ShortCode("abcdefg"), URI.create("https://example.com"), "ci")
         }
+    }
+
+    @Test
+    fun `does not pass off another database error as storage being unavailable`() {
+        val connection = Mockito.mock(Connection::class.java)
+        Mockito.`when`(connection.prepareStatement(Mockito.anyString())).thenThrow(SQLException("internal error", "XX000"))
+        val pool = Mockito.mock(DataSource::class.java).also { Mockito.`when`(it.connection).thenReturn(connection) }
+
+        assertFailsWith<UncategorizedSQLException> { JdbcShortLinkRepository(JdbcClient.create(pool)).findByShortCode(ShortCode("abcdefg")) }
     }
 
     @Test
