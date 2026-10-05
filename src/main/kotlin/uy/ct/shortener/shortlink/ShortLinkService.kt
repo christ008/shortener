@@ -1,8 +1,5 @@
 package uy.ct.shortener.shortlink
 
-import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Slice
-
 /**
  * Creates, finds, lists and disables short links, and resolves them to their targets. Who may do
  * what is declared on the implementation with Spring method security, so an operation the caller
@@ -50,14 +47,13 @@ interface ShortLinkService {
     fun get(shortCode: ShortCode): ShortLink
 
     /**
-     * Lists links, newest first unless [pageable] sorts otherwise. A client may only list its own
-     * links, so [createdBy] must be its own name. An administrator may list those of any one client,
-     * or every link when [createdBy] is null.
+     * Lists up to [size] links in [order], after [after] (the first page when null). A client may only list its own
+     * links, so [createdBy] must be its own name. An administrator may list those of any one client, or every link
+     * when [createdBy] is null.
      *
-     * @throws InvalidSortException if sorted by a property links cannot be listed by
      * @throws StorageUnavailableException if storage cannot be reached right now
      */
-    fun list(createdBy: String?, pageable: Pageable): Slice<ShortLink>
+    fun list(createdBy: String?, order: LinkOrder, size: Int, after: LinkCursor?): LinkPage
 
     /**
      * Disables the short link under [shortCode] on behalf of [disabledBy], idempotently. A client

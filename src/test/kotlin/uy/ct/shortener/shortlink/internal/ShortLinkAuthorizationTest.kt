@@ -9,13 +9,12 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
-import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Sort
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.authentication.TestingAuthenticationToken
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig
+import uy.ct.shortener.shortlink.LinkOrder
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.ShortLinkNotFoundException
@@ -80,7 +79,7 @@ class ShortLinkAuthorizationTest {
     private fun create(client: String, vararg scopes: String = manage) =
         actingAs(client, *scopes) { service.shorten("https://example.com/$client", client) }
 
-    private val firstPage = PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "createdAt"))
+    private fun list(createdBy: String?) = service.list(createdBy, LinkOrder.NEWEST_FIRST, 50, null)
 
     @Test
     fun `creating needs the create scope and must be done in the caller's own name`() {
@@ -123,12 +122,12 @@ class ShortLinkAuthorizationTest {
         create("lister")
         create("other-lister")
 
-        val own = actingAs("lister", *manage) { service.list("lister", firstPage) }
+        val own = actingAs("lister", *manage) { list("lister") }
 
-        assertThat(own.content.map { it.createdBy }).containsOnly("lister")
-        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { service.list("other-lister", firstPage) } }
-        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { service.list(null, firstPage) } }
-        assertFailsWith<AccessDeniedException> { actingAs("lister", "shortlinks:create") { service.list("lister", firstPage) } }
+        assertThat(own.items.map { it.createdBy }).containsOnly("lister")
+        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { list("other-lister") } }
+        assertFailsWith<AccessDeniedException> { actingAs("lister", *manage) { list(null) } }
+        assertFailsWith<AccessDeniedException> { actingAs("lister", "shortlinks:create") { list("lister") } }
     }
 
     @Test
@@ -136,8 +135,8 @@ class ShortLinkAuthorizationTest {
         create("lister")
         create("other-lister")
 
-        assertThat(actingAs("root", *admin) { service.list(null, firstPage) }.content.map { it.createdBy }).contains("lister", "other-lister")
-        assertThat(actingAs("root", *admin) { service.list("lister", firstPage) }.content.map { it.createdBy }).containsOnly("lister")
+        assertThat(actingAs("root", *admin) { list(null) }.items.map { it.createdBy }).contains("lister", "other-lister")
+        assertThat(actingAs("root", *admin) { list("lister") }.items.map { it.createdBy }).containsOnly("lister")
     }
 
     @Test

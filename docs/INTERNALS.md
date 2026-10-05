@@ -33,8 +33,8 @@ everything else is an adapter behind it:
 
 The rules are enforced by ArchUnit tests, because Modulith does not check layering inside a module: the public API
 depends on no JDBC type and no security type, the web adapter talks only to the service interface, and nothing
-depends on the web or persistence adapters. The service interface returns domain types and Spring Data `Slice`; the
-JDBC types never leave `persistence`.
+depends on the web or persistence adapters. The service interface speaks only in domain types (`LinkPage`, `LinkCursor`); the
+JDBC types never leave `persistence`, and Spring Data's `Pageable` stops at the controller.
 
 ## Request flows
 
@@ -59,11 +59,34 @@ hit, or one indexed read.
 only the owner or an administrator see it. Anyone else gets `404`, so the existence of a link is not revealed. The
 update is `COALESCE`-based, so disabling twice keeps the first actor and time.
 
-**List** (`GET /api/short-links`) takes a Spring `Pageable` (`page`, `size`, `sort`), capped at 200 items and
-configured with `spring.data.web.pageable.*`. A client lists its own links; an administrator can list one client's or
-all. The repository fetches `size + 1` rows to know whether another page follows without counting, and returns a
-`Slice`. Only `createdAt` and `shortCode` are sortable, from a whitelist that maps to columns, so a sort parameter can
-never reach SQL as text. Ties break on the short code so pages never overlap.
+**List** (`GET /api/short-links`) reads a page at a time by position, not by number. A client lists its own links; an
+administrator can list one client's or all. `size` (capped at 200, `spring.data.web.pageable.*`) and `sort` come from
+Spring's `Pageable` resolver, but only `sort=createdAt` is accepted, newest first by default or `createdAt,asc`: creation
+time is the one order whose positions can be named and that the indexes serve, so a sort by code, or by anything else,
+is a `400`, and so is the `page` parameter of earlier versions (ignoring it would answer the first page again to a client
+that still counts pages). Each response carries `nextCursor`, to be sent back unchanged as `cursor`, and it is `null` on the
+last page; it is set only when another link exists, which the repository learns by fetching `size + 1` rows, so a client
+never follows it to an empty page.
+
+The cursor is `v1.<order>.<creation time in microseconds>.<short code>` in base64url (`ListCursorCodec`). Microseconds,
+because that is what Postgres stores: a coarser time would skip or repeat the links created within the same millisecond as
+the last of a page. It includes the sort and is refused by the other one. It is only a position: what the caller may see is
+decided on every request from its token, and a cursor from one client used by another lists the second client's links
+(tested). A cursor that is not one the service issued is a `400`.
+
+Why not `OFFSET`, which it replaced: Postgres produces and discards every row before the page, so on two million links the
+the page a million links in took 255 ms (15 ms at a hundred thousand), growing with the table and with how far a client goes (nothing bounded the page number),
+and links created between two requests shifted the rest, repeating or skipping some. Seeking past the last row costs 0.06 ms
+at any depth (all measured on one Postgres 18, with bound parameters), and the pages that follow are not moved by new links (tested). The query is a row
+comparison, `(created_at, short_code COLLATE "C") < (:createdAt, :shortCode)`, with the same direction on both columns as the
+index it uses, which is what lets Postgres seek to it instead of filtering; `ListingPlanTest` asks for the plan of every form
+of the query and fails if it sorts, scans the table or applies the position as a filter, because a change that stopped
+the index serving it would still return the right rows, only slowly. Two sorts at once, or two directions, could not use
+the index this way, which is one more reason they are refused.
+
+Costs of the change: no jump to page N or to the last page, and no way back except starting again; and a link whose
+transaction commits after a reader has gone past its creation time is missed by that traversal and seen by the next
+(`created_at` is the time of the insert, which is a single statement, so the gap is milliseconds).
 
 ## Persistence
 
@@ -445,8 +468,8 @@ and loopback to the Docker bridge, and pause such a firewall before saturation t
 **Plain JDBC instead of JPA.** Two statements dominate and both need SQL features JPA hides. The persistence adapter is
 the only place that knows SQL.
 
-**Spring facilities over bespoke code.** Authorization is method security with a `PermissionEvaluator`; pagination is
-`Pageable` and `Slice`; the resource server, DPoP and RFC 9728 metadata are Spring Security's. Custom code is limited to
+**Spring facilities over bespoke code.** Authorization is method security with a `PermissionEvaluator`; the page size and sort are parsed by Spring Data's
+`Pageable` resolver; the resource server, DPoP and RFC 9728 metadata are Spring Security's. Custom code is limited to
 what Spring does not offer: the Bearer refusal, the problem-detail responder, rate limiting and the hints.
 
 **Virtual threads, not coroutines or structured concurrency.** Each request does one blocking query, so there is nothing

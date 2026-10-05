@@ -1,6 +1,7 @@
 package uy.ct.shortener.shortlink.internal.web
 
-import org.springframework.data.domain.Slice
+import uy.ct.shortener.shortlink.LinkOrder
+import uy.ct.shortener.shortlink.LinkPage
 import uy.ct.shortener.shortlink.ShortLink
 import java.time.Instant
 
@@ -26,16 +27,15 @@ data class ShortLinkResponse(
 }
 
 /**
- * One page of links, as Spring's `Pageable` resolver asked for it (`page`, `size` and `sort`
- * parameters). [hasNext] says whether another page follows, without counting every link.
+ * One page of links. [size] is the page size that applied, after the maximum was enforced. [nextCursor] is where the next
+ * page starts, to be passed back unchanged as `cursor`, and is null on the last page.
  */
-data class ShortLinkPageResponse(val items: List<ShortLinkResponse>, val page: Int, val size: Int, val hasNext: Boolean) {
+data class ShortLinkPageResponse(val items: List<ShortLinkResponse>, val size: Int, val nextCursor: String?) {
     companion object {
-        fun from(slice: Slice<ShortLink>) = ShortLinkPageResponse(
-            items = slice.content.map(ShortLinkResponse::from),
-            page = slice.number,
-            size = slice.size,
-            hasNext = slice.hasNext(),
+        fun from(page: LinkPage, order: LinkOrder, size: Int) = ShortLinkPageResponse(
+            items = page.items.map(ShortLinkResponse::from),
+            size = size,
+            nextCursor = page.next?.let { ListCursorCodec.encode(it, order) },
         )
     }
 }

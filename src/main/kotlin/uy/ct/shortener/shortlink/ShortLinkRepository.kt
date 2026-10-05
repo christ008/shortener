@@ -1,7 +1,5 @@
 package uy.ct.shortener.shortlink
 
-import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Slice
 import java.net.URI
 
 /**
@@ -21,14 +19,15 @@ interface ShortLinkRepository {
     fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): ShortLink?
 
     /**
-     * Returns the [pageable] page of links, only those created by [createdBy] when given. It can
-     * be sorted by [SORTABLE_PROPERTIES], newest first when no sort is given, and ties are broken
-     * by short code so pages never overlap. A [Slice] says whether another page follows without
-     * counting every link.
+     * Returns up to [size] links in [order], only those created by [createdBy] when given, starting after [after]
+     * (the first page when null). The page names where the next one starts, and only when another link exists, so
+     * reading a page costs the same however far into the listing it is and a link created meanwhile cannot shift
+     * the pages that follow. A link whose transaction commits after a reader has gone past its creation time is
+     * missed by that reader and seen by the next.
      *
-     * @throws InvalidSortException if sorted by another property
+     * @throws IllegalArgumentException if [size] is not between 1 and [MAX_PAGE_SIZE], which would load every link
      */
-    fun list(createdBy: String?, pageable: Pageable): Slice<ShortLink>
+    fun list(createdBy: String?, order: LinkOrder, size: Int, after: LinkCursor?): LinkPage
 
     /**
      * Disables the link under [shortCode] on behalf of [disabledBy] and returns it, or null if
@@ -38,6 +37,6 @@ interface ShortLinkRepository {
     fun disable(shortCode: ShortCode, disabledBy: String): ShortLink?
 
     companion object {
-        val SORTABLE_PROPERTIES = setOf("createdAt", "shortCode")
+        const val MAX_PAGE_SIZE = 1000
     }
 }

@@ -28,8 +28,15 @@ check "missing url" 400 "$(status demo-client POST "$BASE/api/short-links" '{}')
 check "get own link" 200 "$(status demo-client GET "$BASE/api/short-links/$code")"
 check "another client's link looks not found" 404 "$(status other-client GET "$BASE/api/short-links/$code")"
 check "admin reads any link" 200 "$(status admin-client GET "$BASE/api/short-links/$code")"
-check "list own links" 200 "$(status demo-client GET "$BASE/api/short-links?size=1&sort=shortCode,asc")"
+page=$(call demo-client GET "$BASE/api/short-links?size=1")
+check "list own links" 200 "$(echo "$page" | head -1)"
+cursor=$(echo "$page" | field nextCursor)
+check "list names where the next page starts" 1 "$([ -n "$cursor" ] && echo 1 || echo 0)"
+check "list follows the cursor" 200 "$(status demo-client GET "$BASE/api/short-links?size=1&cursor=$cursor")"
 check "list with a sort that is not allowed" 400 "$(status demo-client GET "$BASE/api/short-links?sort=targetUrl")"
+check "list by code is not offered" 400 "$(status demo-client GET "$BASE/api/short-links?sort=shortCode,asc")"
+check "list refuses the page parameter" 400 "$(status demo-client GET "$BASE/api/short-links?page=0")"
+check "list refuses a cursor it did not issue" 400 "$(status demo-client GET "$BASE/api/short-links?cursor=nonsense")"
 check "no-scope client cannot create" 403 "$(status no-scope-client POST "$BASE/api/short-links" '{"targetUrl":"https://example.com/x"}')"
 check "redirect is public" 302 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/$code")"
 check "unknown code" 404 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/zzzzzzz")"

@@ -2,8 +2,6 @@ package uy.ct.shortener.shortlink.internal
 
 import io.micrometer.observation.Observation
 import io.micrometer.observation.ObservationRegistry
-import org.springframework.data.domain.Pageable
-import org.springframework.data.domain.Slice
 import org.springframework.stereotype.Service
 import uy.ct.shortener.shortlink.internal.authorization.ManageableLinks
 import uy.ct.shortener.shortlink.internal.authorization.MayClaim
@@ -12,6 +10,9 @@ import uy.ct.shortener.shortlink.internal.authorization.MayDisable
 import uy.ct.shortener.shortlink.internal.authorization.MayList
 import uy.ct.shortener.shortlink.internal.authorization.MayRead
 import uy.ct.shortener.shortlink.InvalidTargetUrlException
+import uy.ct.shortener.shortlink.LinkCursor
+import uy.ct.shortener.shortlink.LinkOrder
+import uy.ct.shortener.shortlink.LinkPage
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeExhaustionException
 import uy.ct.shortener.shortlink.ShortCodeGenerator
@@ -76,7 +77,8 @@ class DefaultShortLinkService(
         manageableLinks.find(shortCode) ?: throw ShortLinkNotFoundException(shortCode)
 
     @MayList
-    override fun list(createdBy: String?, pageable: Pageable): Slice<ShortLink> = repository.list(createdBy, pageable)
+    override fun list(createdBy: String?, order: LinkOrder, size: Int, after: LinkCursor?): LinkPage =
+        repository.list(createdBy, order, size, after)
 
     @MayDisable
     override fun disable(shortCode: ShortCode, disabledBy: String) {
