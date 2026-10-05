@@ -36,6 +36,64 @@ spec:
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: shortener
+      initContainers:
+        # Applies the migrations and exits (see MigrateOnlyRunner). It is the only container that gets the credentials
+        # of shortener_migrator, which owns the tables; the application container serves requests as shortener_app,
+        # which cannot change the schema, and finds nothing to apply when it starts. Flyway connects with its own
+        # settings (SPRING_FLYWAY_*) so the pool's socket timeout does not cut a long migration short. The datasource
+        # is only here because the context needs one to start.
+        - name: migrate
+          image: shortener
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SHORTENER_MIGRATE_ONLY
+              value: "true"
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db
+                  key: url
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db
+                  key: password
+            - name: SPRING_FLYWAY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db-migrator
+                  key: url
+            - name: SPRING_FLYWAY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db-migrator
+                  key: username
+            - name: SPRING_FLYWAY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shortener-db-migrator
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       containers:
         - name: shortener
           image: shortener

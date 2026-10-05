@@ -15,6 +15,7 @@ resources:
   - ../../gatewayclass
   - ../../gateway
   - gateway.yaml
+  - ../../../postgres
   - postgres.yaml
 generatorOptions:
   disableNameSuffixHash: true
@@ -23,12 +24,27 @@ configMapGenerator:
     literals:
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI=http://localhost:8088/realms/shortener
       - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs
+# One credential per role, as in production: the administrator creates the roles when the data directory is first
+# initialised (deploy/postgres), the migration init container uses shortener_migrator, the application shortener_app.
 secretGenerator:
+  - name: postgres-admin
+    literals:
+      - username=admin
+      - password=admin
   - name: shortener-db
     literals:
       - url=jdbc:postgresql://postgres:5432/shortener
-      - username=shortener
-      - password=shortener
+      - username=shortener_app
+      - password=app-secret
+  - name: shortener-db-migrator
+    literals:
+      - url=jdbc:postgresql://postgres:5432/shortener
+      - username=shortener_migrator
+      - password=migrator-secret
+  - name: shortener-db-exporter
+    literals:
+      - username=shortener_exporter
+      - password=exporter-secret
 patches:
   - target:
       kind: EnvoyProxy
@@ -58,13 +74,13 @@ patches:
         path: /spec/replicas
         value: 1
       - op: add
-        path: /spec/template/spec/initContainers
+        path: /spec/template/spec/initContainers/0
         value:
-          - name: wait-for-db
-            image: postgres:18.6
-            command: ["sh", "-c", "until pg_isready -h postgres -p 5432 -U shortener; do sleep 1; done"]
-            securityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities:
-                drop: ["ALL"]
+          name: wait-for-db
+          image: postgres:18.6
+          command: ["sh", "-c", "until pg_isready -h postgres -p 5432 -U shortener_app; do sleep 1; done"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

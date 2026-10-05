@@ -5,8 +5,17 @@ services:
       - 'POSTGRES_DB=mydatabase'
       - 'POSTGRES_PASSWORD=secret'
       - 'POSTGRES_USER=myuser'
+      # Passwords of the roles deploy/postgres/bootstrap.sql creates, set by set-role-passwords.sh. The application
+      # run by bootRun still connects as myuser; these exist so that what compose starts has the same roles as
+      # everywhere else.
+      - 'SHORTENER_APP_PASSWORD=app-secret'
+      - 'SHORTENER_MIGRATOR_PASSWORD=migrator-secret'
+      - 'SHORTENER_EXPORTER_PASSWORD=exporter-secret'
     ports:
       - '5432'
+    volumes:
+      - './deploy/postgres/bootstrap.sql:/docker-entrypoint-initdb.d/10-bootstrap.sql:ro'
+      - './deploy/postgres/set-role-passwords.sh:/docker-entrypoint-initdb.d/20-set-role-passwords.sh:ro'
   keycloak:
     image: 'quay.io/keycloak/keycloak:26.7.5'
     command: ['start-dev', '--import-realm']

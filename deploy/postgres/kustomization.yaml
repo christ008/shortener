@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The initialisation scripts of a throwaway Postgres container, in the order the image runs them. Only the local
+# overlay uses this; a real database is bootstrapped from bootstrap.sql by whatever provisions it.
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - 10-bootstrap.sql=bootstrap.sql
+      - 20-set-role-passwords.sh=set-role-passwords.sh

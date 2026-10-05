@@ -78,9 +78,66 @@ The listing indexes are `(created_at DESC, short_code COLLATE "C" DESC)`, and th
 per-client listing. `COLLATE "C"` matters: the stock Postgres image uses `en_US.utf8`, which orders `Z` and `a`
 differently from the bytes, so sorting by code would not be deterministic across databases without it.
 
-Migrations are Flyway `V1` to `V5`. The Flyway class scanner prints "Unable to scan location /db/migration" in the
+Migrations are Flyway `V1` to `V6`. The Flyway class scanner prints "Unable to scan location /db/migration" in the
 native image; it is harmless and migrations are applied from the registered resources (checked on an empty
 database).
+
+### Roles and migrations
+
+Three roles, created by `deploy/postgres/bootstrap.sql`, which is idempotent and is run once per database by whatever
+provisions it (as a superuser; compose and the local overlay run it when the data directory is first created):
+
+- `shortener_migrator` owns the tables and runs Flyway.
+- `shortener_app` serves requests. It can `SELECT` and `INSERT` on `short_link`, `UPDATE` only `disabled_at` and
+  `disabled_by`, and read the Flyway history. It cannot `DELETE`, `TRUNCATE`, change a target or a code, or run any DDL,
+  so an injection or a compromised dependency cannot drop or rewrite links. V6 states those grants next to the schema;
+  where the role does not exist V6 does nothing, so a developer's database with a single user works as before.
+- `shortener_exporter` has `pg_monitor`: it reads statistics and not data.
+
+The application role also has limits that no application setting can lift, because they apply at login (so they hold
+behind a connection pooler too): `statement_timeout` 5 s, `lock_timeout` 2 s and `idle_in_transaction_session_timeout`
+10 s. A request that needs more than 5 s of database time is a bug, and a held lock or an abandoned transaction must not
+pin one of a pod's ten connections. The migrator has a `lock_timeout` of 10 s and no statement timeout: a migration may
+run for minutes but must fail rather than queue behind a long query while blocking every later one, and the init
+container retries.
+
+The Deployment applies the migrations in an init container that runs the same image with `SHORTENER_MIGRATE_ONLY=true`
+and the migrator's credentials (`MigrateOnlyRunner` ends the process once Flyway has run). Only that container gets the
+`shortener-db-migrator` Secret (`MigrationCredentialsTest` checks it), so a code execution in the application does not
+yield the role that owns the tables. Flyway connects with `SPRING_FLYWAY_*`, its own connection, so the pool's 15 s
+socket timeout cannot cut a long migration short. Three more consequences:
+
+- The startup probe no longer kills a long migration, because init containers have none, and a migration that fails
+  leaves the rollout stopped with the old pods still serving.
+- Every new pod starts the init container, HPA scale-ups included. After the first it is a no-op (Flyway's advisory lock
+  makes concurrent ones safe), and it costs about as much as the application takes to start.
+- The previous version keeps serving against the new schema during a rollout, so migrations must be compatible with it
+  (add, then switch, then remove in a later release).
+
+The application container still runs Flyway on start, as `shortener_app`, and finds nothing to apply. It cannot be
+switched off: a native image decides at build time which beans exist, so `spring.flyway.enabled=false` set when the
+container starts would not remove it. If the schema is behind, the application role cannot change it and the container
+fails to start, which is the right way to fail (tested on an empty database: exit 1, `permission denied for schema
+public`, no table created).
+
+A database that predates the roles: run `bootstrap.sql` (it hands the existing tables to the migrator), then point the
+Secrets at the new roles.
+
+`MigrationConventionsTest` enforces, for `V7` onwards, what two million rows showed: adding a `CHECK` took an exclusive
+lock for 4.7 s with reads blocked and an ordinary `CREATE INDEX` blocked writes for 1.3 s, and both grow with the table.
+A constraint is added `NOT VALID` and validated in a later migration (validating takes a lock that lets reads and writes
+through, and takes as long, but not while holding the exclusive one); an index is built `CONCURRENTLY`, in a migration
+with a `.conf` file saying `executeInTransaction=false`; a column is not retyped, made `NOT NULL`, dropped or renamed
+without a note (`-- unsafe-ok: <reason>`) saying why that is safe. It reads text and is not a SQL parser, so it catches
+the usual mistakes and not every one.
+
+### Connections
+
+The pool is named `shortener`, keeps idle connections alive every two minutes (a load balancer or NAT between the pod and
+Postgres drops silent ones, and the first request after that would fail) and logs a connection held for more than 10 s.
+Every connection reports `shortener-<pod>` as its application name, so `pg_stat_activity` says who holds what. The driver
+waits at most 3 s to connect and 15 s for an answer, above the 5 s statement timeout, and keeps TCP alive; the answer
+timeout covers a network that goes silent, where the server cannot cancel anything.
 
 A `DataAccessResourceFailureException` is mapped to `StorageUnavailableException`, which becomes `503` with
 `Retry-After: 5`, so a database outage reads as retryable rather than as a server bug.
@@ -254,16 +311,18 @@ For diagnosis, `./gradlew bootBuildImage -PnativeProfiling` builds an image with
 `deploy/k8s`:
 
 - `base`: Deployment (two replicas, rolling update with no unavailability, topology spread, non-root, read-only root
-  filesystem, all capabilities dropped, startup, liveness and readiness probes on the management port), Service,
-  ServiceAccount and PodDisruptionBudget.
+  filesystem, all capabilities dropped, startup, liveness and readiness probes on the management port, and an init
+  container that applies the migrations with its own credentials), Service, ServiceAccount and PodDisruptionBudget.
 - `gateway`: Envoy Gateway resources shared by both overlays: an `EnvoyProxy` (two replicas, a disruption budget, source
   address preserved), a `ClientTrafficPolicy` (header and idle timeouts) and a `BackendTrafficPolicy` (request bodies
   capped at 16 KiB, 15 s request timeout). `gatewayclass` is cluster-wide and applied once.
 - `overlays/local`: kind, with Postgres and Keycloak inside the cluster, the proxy as a NodePort mapped to
-  `localhost:8088`, and `/realms` routed to Keycloak.
+  `localhost:8088`, and `/realms` routed to Keycloak. Postgres is initialised with `deploy/postgres`, so it has the same
+  three roles as production, each with its own Secret.
 - `overlays/production`: its own namespace under the `restricted` pod-security level, TLS through cert-manager with an
   HTTP to HTTPS redirect, an HPA (2 to 10 on CPU), a NetworkPolicy (only the gateway reaches port 8080 and only the
-  monitoring namespace reaches 8081), database credentials from an ExternalSecret, and a PodMonitor.
+  monitoring namespace reaches 8081), database credentials from two ExternalSecrets (the application's and the
+  migrator's), and a PodMonitor.
 
 The production overlay assumes Envoy Gateway, cert-manager with Gateway API support enabled, External Secrets and the
 Prometheus operator. The replica count is left to the HPA. Egress is open on ports 5432 and 443 because the database and
@@ -390,6 +449,10 @@ eviction on disable. See [Redirect cache](#redirect-cache) for the behaviour and
 - Rate limits and the DPoP replay cache are per pod; one DPoP key is capped at about 30 requests a second.
 - Beyond capacity (about 5,800 requests a second on two cores) the service sheds load rather than slowing everything
   down, but creates still queue for seconds; the Envoy proxies do not yet limit connections to match Tomcat's.
-- The Envoy Gateway, cert-manager and Prometheus operator parts are untested on a real cluster.
+- The Envoy Gateway, cert-manager and Prometheus operator parts are untested on a real cluster, and so are the
+  migration init container and the local overlay's role setup (the manifests render; the migrate-only run, the role
+  privileges and Flyway as the application role were run against Postgres).
+- The database connection is not forced to use TLS: the URL comes from a Secret and the driver's default falls back to
+  plain text. Production should use `sslmode=verify-full`.
 - No alert rules, Envoy metrics or Envoy spans; no CI.
 - The dev keys and secrets are committed deliberately and are public.

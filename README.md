@@ -77,7 +77,8 @@ Everything has a default for local development. In a cluster the main settings a
 
 | Variable | Meaning |
 |---|---|
-| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres |
+| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres, as the role that serves requests (`shortener_app`) |
+| `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as the role that owns the tables (`shortener_migrator`); only the init container that migrates sets them. With `SHORTENER_MIGRATE_ONLY=true` the process applies the migrations and exits |
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
