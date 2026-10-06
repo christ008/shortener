@@ -1,12 +1,11 @@
 #!/bin/sh
-# Gives Keycloak a database of its own in the same Postgres, and a role that is the only one that can use it. It runs once,
-# when the container first initialises its data directory, after the roles of bootstrap.sql. The password comes from
+# Gives Keycloak a database of its own in the same Postgres, and a role that is the only one that can use it. It runs once, when
+# the container first initialises its data directory, after the roles of bootstrap.sql. The password comes from
 # SHORTENER_KEYCLOAK_PASSWORD or, when set, from the file named by SHORTENER_KEYCLOAK_PASSWORD_FILE (a Docker secret).
 #
 # It can be run again, and on an existing database, as the superuser:
 #   docker exec <postgres container> sh /docker-entrypoint-initdb.d/30-keycloak-database.sh
-# Nothing in it touches the shortener database: shortener_app cannot connect to this one, and this role cannot connect to
-# that.
+# shortener_app cannot connect to this database, and this role cannot connect to the shortener one.
 set -eu
 
 if [ -n "${SHORTENER_KEYCLOAK_PASSWORD_FILE:-}" ]; then

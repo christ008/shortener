@@ -12,14 +12,10 @@ import java.time.Duration
  * What the security filter chain reports about requests it turned away, as a log line and a counter.
  *
  * - One event per `401` ([unauthenticated]), `403` ([forbidden]) and `429` ([rateLimited]), on the logger [LOGGER_NAME].
- * - A line carries what an investigation needs: the type, why, the scheme used, the method and path, the address and the
- *   client when there is one. It never carries a token, a proof, a query string or a header value: the reason is the
- *   OAuth error code, not the exception's message.
- * - Every event increments `shortener.security.events` tagged with the type only, so the metric has three series and
- *   alerts read rates, not lines.
- * - A `429` is logged once per key and minute, because a limited client keeps retrying and would fill the log. The
- *   counter still counts every one.
- * - `401` and `403` are not deduplicated: the address limit applies before authentication, so their rate is bounded.
+ * - A line has the type, the reason (the OAuth error code), the scheme, the method and path, the address and the client when
+ *   there is one. It never has a token, a proof, a query string, a header value or an exception message.
+ * - Every event increments `shortener.security.events`, tagged with the type only.
+ * - A `429` is logged once per key and minute and counted every time. `401` and `403` are logged every time.
  */
 class SecurityEvents(
     private val meters: MeterRegistry,

@@ -10,9 +10,8 @@ import org.springframework.security.access.expression.method.DefaultMethodSecuri
 import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler
 
 /**
- * Teaches method security about short links: the `@scopes` bean and the `hasPermission` rule of
- * [ShortLinkPermissionEvaluator]. The handler is a static infrastructure bean, as Spring Security
- * asks for it, so it does not force other beans to initialise early.
+ * Registers the `@scopes` bean and the `hasPermission` rule of [ShortLinkPermissionEvaluator] for method security.
+ * The handler is a static infrastructure bean.
  */
 @Configuration(proxyBeanMethods = false)
 @ImportRuntimeHints(AuthorizationRuntimeHints::class)

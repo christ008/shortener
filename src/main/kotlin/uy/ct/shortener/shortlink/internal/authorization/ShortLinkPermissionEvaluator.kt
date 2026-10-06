@@ -8,12 +8,11 @@ import uy.ct.shortener.shortlink.ShortLink
 import java.io.Serializable
 
 /**
- * Spring Security's hook for rules about one domain object, used as `hasPermission(link, 'manage')`.
+ * Spring Security's `hasPermission(link, 'manage')` rule for short links.
  *
  * - A client may manage the links it created.
  * - An administrator may manage any link.
- * - The scopes are resolved lazily, because method security needs this evaluator while the
- *   application context is still starting.
+ * - The scopes are resolved lazily.
  */
 class ShortLinkPermissionEvaluator(private val scopes: ObjectProvider<ShortLinkScopes>) : PermissionEvaluator {
 

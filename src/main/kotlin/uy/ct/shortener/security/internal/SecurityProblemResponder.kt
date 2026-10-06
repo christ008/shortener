@@ -14,16 +14,14 @@ import org.springframework.security.web.access.AccessDeniedHandler
 import org.springframework.web.servlet.HandlerExceptionResolver
 
 /**
- * Answers the failures that happen in the security filter chain: 401, 403 and 429.
+ * Answers the failures of the security filter chain (`401`, `403`, `429`) as problem details.
  *
- * - The chain runs before Spring MVC, so it cannot throw to MVC's error handling. Each failure is
- *   built as a [SecurityProblem] and handed to MVC's own exception resolver, which renders it as the
- *   problem detail every other error uses.
- * - A 401 carries the challenge, with the `error` of the failure when a token or proof was rejected
- *   (`invalid_token`, `invalid_dpop_proof`). A 403 carries `error="insufficient_scope"`.
- * - The challenge names `DPoP` with the proof algorithms accepted (RFC 9449), and `Bearer` as well
- *   unless [dpopRequired], or unless the request already used one scheme.
- * - A 429 carries `Retry-After`.
+ * - Each failure is built as a [SecurityProblem] and handed to MVC's exception resolver.
+ * - A `401` carries the challenge, with `error` set to `invalid_token` or `invalid_dpop_proof` when a token or proof was
+ *   rejected. A `403` carries `error="insufficient_scope"`.
+ * - The challenge names `DPoP` with the accepted proof algorithms (RFC 9449), and `Bearer` as well unless [dpopRequired] or
+ *   the request already used one scheme.
+ * - A `429` carries `Retry-After`.
  * - Each failure is reported to [events], when there is one, with the OAuth error code and never the exception's message.
  */
 class SecurityProblemResponder(

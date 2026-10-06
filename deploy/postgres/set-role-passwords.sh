@@ -1,8 +1,8 @@
 #!/bin/sh
-# Gives the Shortener roles their passwords. It runs once, when the container first initialises its data directory,
-# after bootstrap.sql. Each password comes from SHORTENER_<ROLE>_PASSWORD or, when set, from the file named by
-# SHORTENER_<ROLE>_PASSWORD_FILE (a Docker secret), for ROLE in APP, MIGRATOR and EXPORTER. Unset passwords stop it
-# rather than default to something guessable. The compose file for development passes public throwaway values.
+# Gives the Shortener roles their passwords. It runs once, when the container first initialises its data directory, after
+# bootstrap.sql. Each password comes from SHORTENER_<ROLE>_PASSWORD or, when set, from the file named by
+# SHORTENER_<ROLE>_PASSWORD_FILE (a Docker secret), for ROLE in APP, MIGRATOR and EXPORTER. A missing password stops it. The
+# compose file for development passes public throwaway values.
 set -eu
 
 password() { # ROLE

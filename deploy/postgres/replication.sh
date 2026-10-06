@@ -1,11 +1,7 @@
 #!/bin/sh
-# Lets a replica connect: the role shortener_replicator, which can only replicate, and the line of pg_hba.conf that admits it.
-# It runs once, when the container first initialises its data directory, after the roles of bootstrap.sql. The password is the
-# file named by SHORTENER_REPLICATOR_PASSWORD_FILE, or SHORTENER_REPLICATOR_PASSWORD.
-#
-# On a database that exists already, run it by hand as the superuser and reload the configuration:
-#   docker exec <postgres container> sh /docker-entrypoint-initdb.d/35-replication.sh
-#   docker exec <postgres container> psql -U postgres -c 'SELECT pg_reload_conf()'
+# Creates the replication-only role shortener_replicator and admits it in pg_hba.conf. Runs when the data directory is first
+# initialised; on an existing database, see docs/DEPLOY.md.
+# Settings: SHORTENER_REPLICATOR_PASSWORD_FILE or SHORTENER_REPLICATOR_PASSWORD.
 set -eu
 
 if [ -n "${SHORTENER_REPLICATOR_PASSWORD_FILE:-}" ]; then

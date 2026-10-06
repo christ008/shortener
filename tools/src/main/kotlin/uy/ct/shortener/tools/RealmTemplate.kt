@@ -2,13 +2,11 @@ package uy.ct.shortener.tools
 
 /**
  * A realm template and what goes into it: the public key of each client where the template has `@JWKS:CLIENT@`, and the
- * password of each user where it has `@PASSWORD:USER@`. Shared by [Realms], which makes a realm from files, and [DevSetup],
- * which makes one from keys it has just made.
+ * password of each user where it has `@PASSWORD:USER@`. Used by [Realms] and [DevSetup].
  *
- * - Every placeholder in the template must be given and every one given must be in the template, so that a typo is an error and
- *   not a realm that trusts nothing.
- * - A key with a private part (a `d`) is refused: a realm is imported into a server and kept.
- * - Values are put inside JSON strings, so a quote or a backslash in a password stays part of the password.
+ * - Every placeholder in the template must be given and every value given must be in the template.
+ * - A key with a private part (a `d`) is refused.
+ * - Values go inside JSON strings: quotes and backslashes in a password are escaped.
  */
 object RealmTemplate {
 

@@ -8,8 +8,8 @@ import kotlin.system.exitProcess
 private val TOOLS: List<Tool> = listOf(Realms, DevSetup, Smoke, Report)
 
 /**
- * Starts the tool named by the first argument, from the root of the repository, with the rest. `tools/run` is how a person, a
- * script or a workflow gets here: it builds this when a source has changed.
+ * Starts the tool named by the first argument, with the remaining arguments, in the current directory (the root of the repository).
+ * The exit status is the tool's, or 2 when there is no such tool.
  */
 fun main(arguments: Array<String>) {
     val name = arguments.firstOrNull()

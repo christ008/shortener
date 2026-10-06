@@ -10,15 +10,11 @@ import org.springframework.stereotype.Component
 import kotlin.system.exitProcess
 
 /**
- * Lets the image that serves requests also apply the schema and stop, so the init container of the Deployment can
- * run the migrations with credentials the application container never receives. Flyway runs while the context
- * starts, before any runner, so by the time this one is called the schema is up to date; with
- * `shortener.migrate-only` set it ends the process, and a migration that fails never gets here because the context
- * fails to start and the process exits with an error.
+ * Applies the schema and ends the process when `shortener.migrate-only` is set, for the one-shot migration job.
  *
- * It reads the property when it runs instead of being switched on by it (`@ConditionalOnProperty`): a native image
- * decides at build time which beans exist, so a bean that depends on a property set only when the container starts
- * would be left out or left in for good.
+ * - Flyway runs while the context starts, before any runner, so the schema is current when this runs.
+ * - A failed migration fails the context, so the process exits with an error.
+ * - The property is read when the runner runs, not through `@ConditionalOnProperty` (native image: docs/INTERNALS.md).
  */
 @Component
 class MigrateOnlyRunner(private val context: ConfigurableApplicationContext, environment: Environment) : ApplicationRunner {

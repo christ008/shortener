@@ -1,10 +1,8 @@
 #!/bin/sh
-# Proves that the latest backup restores: restores it into an empty directory, lets the server recover, counts the links and
-# throws the copy away. The data directory carries the include of diagnostics.conf, so the file is mounted as it is on the server. Run it with `deploy/postgres/backup restore-test`, which starts it in a throwaway container of this image
-# with the repository mounted read only. A backup nobody has restored is a hope.
-#
-# It replays the WAL of the repository, so the links it counts are those archived, which trail the primary by at most
-# archive_timeout (5 minutes).
+# Restores the latest backup into an empty directory, recovers it, prints how many links it has and when the newest was created,
+# and removes the copy. Run it with `deploy/postgres/backup restore-test`.
+# The count is that of the archived WAL, at most archive_timeout (5 minutes) behind the primary.
+# Exit status: non-zero when the restore or the recovery fails.
 set -eu
 data=/tmp/restored
 mkdir -p "$data"

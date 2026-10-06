@@ -24,10 +24,10 @@ interface Prompt {
 }
 
 /**
- * What a tool runs against, so that a test can give it a directory, an environment and streams instead of those of the process.
+ * What a tool runs against: the directory, environment and streams of the process, or those a test provides.
  *
- * - [root] is the root of the repository. Every path a tool is given is read from it, so an absolute one is itself.
- * - [prompt] is null when nobody is there to ask, and the tool takes its defaults.
+ * - [root] is the root of the repository. Paths a tool is given are resolved against it, so an absolute one is itself.
+ * - [prompt] is null when nobody is there to ask. The tool then takes its defaults.
  */
 class Context(
     val root: Path,
@@ -60,13 +60,13 @@ class Context(
 }
 
 /**
- * A tool of this directory, with the one convention they share, so that none has its own.
+ * A tool of this directory.
  *
- * - [name] is what `tools/run` is given. [label] is what the tool calls itself in what it says, which is the script that people
- *   know it by when that is not its name.
- * - [execute] runs it and turns what goes wrong into a status and one line on stderr: 0 when it did what was asked, 1 when it
- *   could not ([Failure], or a file it could not read or write), 2 for arguments it does not understand ([Usage]). A stack trace
- *   is a bug in the tool.
+ * - [name] is what `tools/run` is given. [label] is what the tool calls itself in its messages (the script people know it by,
+ *   when that is not its name).
+ * - [execute] runs it and returns its status: 0 when it did what was asked, 1 when it could not ([Failure], or a file it could
+ *   not read or write; one line on stderr), 2 for arguments it does not understand ([Usage]; the message and [usage] on
+ *   stderr). A stack trace is a bug in the tool.
  */
 abstract class Tool(val name: String, val usage: String, private val label: String = name) {
 

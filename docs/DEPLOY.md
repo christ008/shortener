@@ -1,9 +1,9 @@
 # Deploying
 
-How to run the production stack, `compose.prod.yaml`, on Swarm or on one host with Compose. Why it is built this way, and
-what it gives up, is in [INTERNALS.md](INTERNALS.md#deployment).
+Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host with Compose. Design and trade-offs:
+[INTERNALS.md](INTERNALS.md#deployment).
 
-- [What you need](#what-you-need)
+- [Requirements](#requirements)
 - [First deploy](#first-deploy)
 - [Update, roll back](#update-roll-back)
 - [Operate](#operate)
@@ -13,32 +13,30 @@ what it gives up, is in [INTERNALS.md](INTERNALS.md#deployment).
 - [Without Swarm](#without-swarm)
 - [Managed database](#managed-database)
 
-## What you need
+## Requirements
 
-- One or more hosts with Docker 25 or later. Swarm for more than one.
-- An image: `ghcr.io/christ008/shortener:<version>`, published by the Release workflow when you push a `v*` tag. A
-  private package needs `docker login ghcr.io` on the manager, and `--with-registry-auth`, which `deploy.sh` passes.
-- An identity provider whose tokens carry the `owner` claim and bind to the client's key (DPoP). The dev realm in
-  `deploy/keycloak/shortener-realm.json` shows what the service needs, and must not be imported into a real one.
-- A certificate and key for the host name, as PEM files.
-- DNS pointing the host name at the node that runs the edge.
+- Docker 25 or later on each host. Swarm for more than one.
+- The image `ghcr.io/christ008/shortener:<version>`, published by the Release workflow on a `v*` tag. A private package needs
+  `docker login ghcr.io` on the manager. `deploy.sh` passes `--with-registry-auth`.
+- An identity provider whose tokens carry the `owner` claim and bind to the client's key (DPoP). The dev realm
+  `deploy/keycloak/shortener-realm.json` shows what is needed. Never import it into a real one.
+- A certificate and key for the host name, as PEM files, and DNS pointing at the node that runs the edge.
 
 ## First deploy
 
-1. Settings. Copy `deploy/stack/.env.example` to `.env` and fill it in: the image version, the issuer and the key
-   endpoint of the identity provider, and which hosts links may point to (`ALLOWED_TARGET_HOSTS`, or `ALLOW_ANY_TARGET=true`
-   for a private instance). The application does not start without one of the two.
-2. Secrets. Make a directory for them, readable only by you (`secrets/`, which Git ignores), with these files, each
-   `chmod 0444` because the containers run as other users and Swarm mounts a secret with the file's mode:
+1. **Settings.** Copy `deploy/stack/.env.example` to `.env` and fill in the image version, the issuer and key endpoint of the
+   identity provider, and either `ALLOWED_TARGET_HOSTS` or `ALLOW_ANY_TARGET=true`. The application does not start without one.
+2. **Secrets.** Create `secrets/` (git-ignored) with these files, each `chmod 0444` (Swarm mounts a secret with the file's
+   mode, and the containers run as other users):
 
    | File | Content |
    |---|---|
-   | `tls_cert` | the certificate chain, PEM |
-   | `tls_key` | its private key, PEM |
-   | `db_postgres_password` | the database superuser, used once to create the roles |
-   | `db_app_password` | `shortener_app`, which serves requests |
-   | `db_migrator_password` | `shortener_migrator`, which owns the tables |
-   | `db_exporter_password` | `shortener_exporter`, which reads statistics |
+   | `tls_cert` | certificate chain, PEM |
+   | `tls_key` | private key, PEM |
+   | `db_postgres_password` | database superuser, used once to create the roles |
+   | `db_app_password` | `shortener_app`, serves requests |
+   | `db_migrator_password` | `shortener_migrator`, owns the tables |
+   | `db_exporter_password` | `shortener_exporter`, reads statistics |
 
    ```bash
    for name in db_postgres_password db_app_password db_migrator_password db_exporter_password; do
@@ -46,71 +44,65 @@ what it gives up, is in [INTERNALS.md](INTERNALS.md#deployment).
    done
    chmod 0444 secrets/*
    ```
-3. Swarm. On the host: `docker swarm init`, then label the node that holds the database and publishes the edge:
+3. **Swarm.** `docker swarm init`, then label the node that holds the database and publishes the edge:
 
    ```bash
    docker node update --label-add shortener.postgres=true <node>
    ```
-4. Deploy:
+4. **Deploy.**
 
    ```bash
    deploy/stack/deploy.sh 0.21.0
    OBSERVABILITY=1 deploy/stack/deploy.sh 0.21.0     # with Prometheus and the Postgres exporter
    ```
 
-   Everything starts at once. The application restarts until the migration job has finished, which takes seconds.
-5. Check: `docker service ls`, then `curl https://<host>/<any code>` answers `404`, and `perf/smoke.sh https://<host>`
-   exercises every endpoint if you can sign in as the dev clients.
+   Everything starts at once. The application restarts until the migration job finishes (seconds).
+5. **Check.** `docker service ls`; `curl https://<host>/<any code>` answers `404`; `perf/smoke.sh https://<host>` exercises
+   every endpoint if you can sign in as the dev clients.
 
 ## Update, roll back
 
-- **Update**: `deploy/stack/deploy.sh <version>`. It runs the migration job at the new version while the application
-  still runs the old one, waits for it, then updates the application one task at a time, new before old. A task that
-  does not become healthy within 20 s rolls the update back.
-- **Roll back** an update that went wrong later: `deploy/stack/deploy.sh <previous version>`. Migrations are written so
-  that the previous version works against the new schema, so there is nothing to undo.
-- **Change the edge configuration**: edit `deploy/edge/nginx.conf` and deploy again. The configuration's name carries a
-  hash of the file, so Swarm creates a new one and updates the edge.
-- **Rotate a secret**: Swarm secrets cannot change. Create the new file under a new name in `compose.prod.yaml`, and
-  deploy. A database password also needs `ALTER ROLE` first.
+- **Update:** `deploy/stack/deploy.sh <version>`. It runs the migration job at the new version, waits for it, then updates the
+  application one task at a time, new before old. A task not healthy within 20 s rolls the update back.
+- **Roll back:** `deploy/stack/deploy.sh <previous version>`. Nothing to undo in the schema.
+- **Edge configuration:** edit `deploy/edge/nginx.conf`, deploy again.
+- **Rotate a secret:** create the file under a new name in `compose.prod.yaml`, deploy. A database password needs
+  `ALTER ROLE` first.
 
 ## Operate
 
-- Logs: `docker service logs shortener_shortener` (JSON). Rotated at 10 MB, three files.
-- Scale: `docker service scale shortener_shortener=3`. Rate limits and the DPoP replay cache are per task, so the
-  effective limit grows with the count. Postgres allows ten connections per task, so keep `tasks x 10` below its
-  `max_connections`.
-- Prometheus is not published, because it has no login. Look at it from its node:
+- **Logs:** `docker service logs shortener_shortener` (JSON; 10 MB, three files).
+- **Scale:** `docker service scale shortener_shortener=3`. Rate limits and the DPoP replay cache are per task. Each task
+  uses ten Postgres connections: keep `tasks x 10` below `max_connections`.
+- **Prometheus** is not published (no login). From its node:
 
   ```bash
   docker exec $(docker ps -q -f name=shortener_prometheus) wget -qO- 'http://127.0.0.1:9090/api/v1/alerts'
   ```
 
-  To see the interface, open an SSH tunnel to the container's address on that node, or publish it behind your own login.
-  Alerts need an Alertmanager: uncomment `alerting` in `deploy/observability/prometheus.stack.yml`.
-- Database: `perf/pg-diagnostics.sql` is what to run when it is slow:
+  For the interface, use an SSH tunnel to the container's address on that node. Alerts need an Alertmanager: uncomment
+  `alerting` in `deploy/observability/prometheus.stack.yml`.
+- **Database diagnostics:**
 
   ```bash
   docker exec -i $(docker ps -q -f name=shortener_postgres) psql -U postgres -d shortener < perf/pg-diagnostics.sql
   ```
-- Backups: none unless you add the [backups and replica overlay](#backups-and-a-replica), or use a managed database.
-- Disk: the database is on the node's local volume `shortener_postgres-data`.
+- **Backups:** none unless you add the [backups and replica overlay](#backups-and-a-replica), or use a managed database.
+- **Disk:** the database is on the node's local volume `shortener_postgres-data`.
 
 ## Rehearse it on one machine
 
-Everything, including a Keycloak with the dev realm and a self-signed certificate:
+Everything, with a dev-realm Keycloak and a self-signed certificate:
 
 ```bash
 ./gradlew bootBuildImage                       # or use a published image
-deploy/stack/local/prepare.sh                  # throwaway secrets and a certificate for localhost; runs deploy/keycloak/dev-setup too
+deploy/stack/local/prepare.sh                  # throwaway secrets and a localhost certificate; runs dev-setup --yes if needed
 docker swarm init --advertise-addr 127.0.0.1 --listen-addr 127.0.0.1:2377
 docker node update --label-add shortener.postgres=true "$(docker node ls -q)"
 COMPOSE_FILES="compose.prod.yaml deploy/stack/local/compose.local.yaml" RESOLVE_IMAGE=never deploy/stack/deploy.sh 0.21.0
 ```
 
-The `--listen-addr` keeps the Swarm manager off the network. `prepare.sh` runs `deploy/keycloak/dev-setup --yes` if it has
-not been run, because the rehearsal's Keycloak needs the dev realm and its password. Smoke test it, trusting the
-certificate as any Java program does:
+`--listen-addr` keeps the manager off the network. Smoke test, trusting the certificate:
 
 ```bash
 keytool -importcert -noprompt -alias local -file secrets/tls_cert -keystore ts.p12 -storetype PKCS12 -storepass changeit
@@ -118,27 +110,25 @@ JAVA_TOOL_OPTIONS="-Djavax.net.ssl.trustStore=$PWD/ts.p12 -Djavax.net.ssl.trustS
   MGMT=http://localhost:8081 perf/smoke.sh https://localhost
 ```
 
-Remove it with `docker stack rm shortener`, then `docker swarm leave --force`.
+Remove it: `docker stack rm shortener`, then `docker swarm leave --force`.
 
-The rehearsal publishes the management port in host mode, which stops a second application task from starting on the
-same node. Drop that `ports` entry from `compose.local.yaml` to run two.
+The rehearsal publishes the management port in host mode, so a second application task cannot start on the same node. Drop
+that `ports` entry from `compose.local.yaml` to run two.
 
 ## Keycloak
 
-For a stack with no identity provider of its own, `compose.prod.keycloak.yaml` adds Keycloak in production mode, behind the edge.
-It is optional. An organization that has an identity provider points `ISSUER_URI` and `JWKS_URI` at it and skips this. Why it is
-built this way: [ADR 0025](adr/0025-keycloak-in-the-stack.md).
+`compose.prod.keycloak.yaml` adds Keycloak in production mode behind the edge, for a stack with no identity provider. With
+your own provider, point `ISSUER_URI` and `JWKS_URI` at it and skip this. [ADR 0025](adr/0025-keycloak-in-the-stack.md).
 
-What you get: a `keycloak` service with a database of its own in the stack's Postgres, a realm with two clients, and the edge
-forwarding the `shortener` realm, its static files and nothing else. The master realm and the administration console are not
-reachable from outside.
+It adds a `keycloak` service with its own database in the stack's Postgres, a realm with two clients, and an edge route for
+the `shortener` realm and its static files only. The master realm and the console are not reachable from outside.
 
-1. **Build the image** on the node, or in a registry if there is more than one node (`KEYCLOAK_IMAGE` says where):
+1. **Build the image** on the node, or push it to a registry (`KEYCLOAK_IMAGE`):
 
    ```bash
    docker build -t shortener-keycloak:26.7.5 deploy/keycloak
    ```
-2. **Make the keys and the realm.** The realm trusts the public key of each client and holds nothing secret:
+2. **Make the keys and the realm.** The realm holds only public keys:
 
    ```bash
    java deploy/keycloak/DpopClient.java keygen demo-client  > demo.keys
@@ -148,93 +138,85 @@ reachable from outside.
    ./gradlew productionRealm -Pdemo=demo-client.public.json -Padmin=admin-client.public.json
    ```
 
-   Keep line 1 of `admin.keys` (the private key) on your machine alone: it can take down any link. Line 1 of `demo.keys` is
-   published with the instance, so that visitors can try it, and they all act as `demo-client`.
-3. **Two more secrets**, mode `0444` like the others: `db_keycloak_password` (the role `keycloak`, created with its database the
-   first time Postgres starts) and `keycloak_admin_password` (the bootstrap administrator of the master realm).
-4. **Settings** in `.env`: `PUBLIC_URL`, the address the world uses, which becomes the issuer, and the issuer and the key
-   endpoint. The application reads keys over the stack's network, not through the edge:
+   Keep line 1 of `admin.keys` private: it can take down any link. Line 1 of `demo.keys` is published so visitors can try the
+   instance as `demo-client`.
+3. **Two more secrets** (`0444`): `db_keycloak_password` (role `keycloak`, created with its database at first Postgres
+   start) and `keycloak_admin_password` (bootstrap administrator of the master realm).
+4. **Settings** in `.env`. The application reads keys over the stack's network, not through the edge:
 
    ```
    PUBLIC_URL=https://shortener.example.com
    ISSUER_URI=https://shortener.example.com/realms/shortener
    JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs
    ```
-5. **Deploy** with `KEYCLOAK=1 deploy/stack/deploy.sh <version>`. Keycloak takes about a minute to be ready.
+5. **Deploy:** `KEYCLOAK=1 deploy/stack/deploy.sh <version>`. Keycloak is ready after about a minute.
 
-Things to know:
+Notes:
 
-- **The realm is imported once**, the first time Keycloak starts, and never again. To change it afterwards use `kcadm.sh` from
-  the node:
+- **The realm is imported once**, at the first start. To change it afterwards use `kcadm.sh` from the node:
 
   ```bash
   docker exec -it $(docker ps -q -f name=shortener_keycloak) /opt/keycloak/bin/kcadm.sh config credentials \
     --config /tmp/kcadm.config --server http://localhost:8080 --realm master --user admin
   ```
 
-  The administration console is the same: it is not on the edge, so reach it from the node, for example through an SSH tunnel.
-- **A bad realm file stops Keycloak starting.** It fails closed, and the log says which field.
-- **Adding it to a stack that already has data:** Postgres runs its initialisation scripts only for a new data directory, so run
-  the script once by hand: `docker exec $(docker ps -q -f name=shortener_postgres) sh /docker-entrypoint-initdb.d/30-keycloak-database.sh`
-  (it needs the file secret to be mounted, so deploy first).
-- **Failed sign-ins are logged** by Keycloak as warnings with the client and the address, and the edge limits the token endpoint to
-  ten requests a second per address.
-- **Back it up with the database.** Keycloak's database holds the realm after import, and its sessions.
-- **Use the standard port.** In a rehearsal on another published port, a call through the edge was refused with
-  `invalid_dpop_proof` while the same call on 443 worked. The cause was not investigated: serve the edge on 80 and 443.
+  The console is not on the edge: reach it from the node, for example through an SSH tunnel.
+- **A bad realm file stops Keycloak starting.** The log names the field.
+- **Adding it to a stack that has data:** run the init script once, after deploying (it needs the mounted secret):
+  `docker exec $(docker ps -q -f name=shortener_postgres) sh /docker-entrypoint-initdb.d/30-keycloak-database.sh`
+- **Failed sign-ins** are logged by Keycloak as warnings with client and address. The edge limits the token endpoint to ten
+  requests a second per address.
+- **Back it up with the database.**
+- **Serve the edge on ports 80 and 443.** On another published port a call was refused with `invalid_dpop_proof` while the
+  same call on 443 worked. The cause was not investigated.
 
 ## Backups and a replica
 
-Without this, losing the database's volume loses every link. `compose.prod.postgres-ha.yaml` adds backups with pgBackRest and a
-streaming replica. It is optional, and why it is built this way is [ADR 0028](adr/0028-postgres-backups-and-a-replica.md).
+`compose.prod.postgres-ha.yaml` adds pgBackRest backups and a streaming replica ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)).
 
-1. **Build the image** on the node, or in a registry if there is more than one (`POSTGRES_IMAGE` says where):
+1. Build the image on the node, or push it to a registry if there is more than one node (`POSTGRES_IMAGE`):
 
    ```bash
    docker build -t shortener-postgres:18.6 deploy/postgres
    ```
-2. **One more secret**, mode `0444`: `db_replicator_password`, the password of `shortener_replicator`.
-3. **A node for the replica**, which is what makes it worth having:
+2. Create the secret `db_replicator_password`, mode `0444`.
+3. Label the node that runs the replica:
 
    ```bash
    docker node update --label-add shortener.postgres-replica=true <node>
    ```
-4. **Deploy**: `POSTGRES_HA=1 deploy/stack/deploy.sh <version>`. On a database that already exists, the initialisation scripts do not
-   run again: create the role by hand (`docker exec <postgres container> sh /docker-entrypoint-initdb.d/35-replication.sh`, then
-   `psql -U postgres -c 'SELECT pg_reload_conf()'`).
-5. **Make the first backup, once**: `deploy/postgres/backup init`. Until it runs the WAL cannot be archived, and the alert for that fires
-   (this is expected, and it clears).
-6. **Schedule the rest** in the manager's crontab, two full backups being kept: a full one on Sundays and a differential one the other
-   days.
+4. Deploy: `POSTGRES_HA=1 deploy/stack/deploy.sh <version>`. On a database that already exists, create the role by hand:
+   `docker exec <postgres container> sh /docker-entrypoint-initdb.d/35-replication.sh`, then
+   `psql -U postgres -c 'SELECT pg_reload_conf()'`.
+5. Make the first backup, once: `deploy/postgres/backup init`. The WAL archiving alert fires until it runs.
+6. Schedule the rest in the manager's crontab. Two full backups are kept:
 
    ```
    17 3 * * 0   /srv/shortener/deploy/postgres/backup full
    17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
    ```
-7. **Prove it restores**, now and every so often: `deploy/postgres/backup restore-test` restores the latest backup into a throwaway container,
-   replays the archived WAL and prints how many links the copy has and when the newest was created. Compare with the database.
+7. Test a restore, now and periodically: `deploy/postgres/backup restore-test` restores the latest backup into a throwaway
+   container and prints how many links the copy has and when the newest was created. Compare them with the database.
 
-What it protects, and does not:
+Limits:
 
-- The repository is a volume on the primary's node: it undoes a bad migration or a mistaken change, to within five minutes, and does not
-  survive losing the node. For that, set `repo1-type` and its options (S3, SFTP) in `deploy/postgres/pgbackrest.conf`, which is a Docker
-  config, so rotate it with a new name. The replica on another node covers a lost primary in the meantime.
-- Nothing checks that a backup ran. `deploy/postgres/backup info` shows the newest. Look at it, or have the cron mail you its failure.
-- The replica is read only and the application does not read from it.
+- The repository is a volume on the primary's node. It restores to within five minutes and does not survive losing the node.
+  For S3 or SFTP, set `repo1-type` and its options in `deploy/postgres/pgbackrest.conf`, a Docker config: rotate it under a new name.
+- Nothing alerts when no backup ran. Check `deploy/postgres/backup info`, or have cron mail its failures.
+- The replica is read only, and the application does not read from it.
 
-**Losing the primary.** The replica holds everything up to what it had read, usually all of it.
+**Losing the primary:**
 
-1. Check it is the one to promote: `docker exec -u postgres <replica> psql -tAc "select pg_last_wal_replay_lsn(), pg_is_in_recovery()"`.
-2. Stop the primary, so that it cannot come back as a second one: `docker service scale shortener_postgres=0`.
-3. Promote it: `docker exec -u postgres <replica> psql -tAc "select pg_promote(wait => true)"`. It now accepts writes, with the same roles.
-4. Point the application at it: in `.env`, `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`,
-   then `deploy/stack/deploy.sh <version>`. Redirects of links an instance has read keep working meanwhile.
-5. Rebuild a replica from the new primary later, or restore the old primary's volume from a backup and make it the replica.
+1. Check the replica is caught up: `docker exec -u postgres <replica> psql -tAc "select pg_last_wal_replay_lsn(), pg_is_in_recovery()"`.
+2. Stop the primary: `docker service scale shortener_postgres=0`.
+3. Promote the replica: `docker exec -u postgres <replica> psql -tAc "select pg_promote(wait => true)"`.
+4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`, then
+   `deploy/stack/deploy.sh <version>`.
+5. Later, rebuild a replica from the new primary, or restore the old primary's volume from a backup and make it the replica.
 
 ## Without Swarm
 
-`docker compose` runs the same file on one host and honours more of it, including `no-new-privileges`. It has no rolling
-update: `up -d` replaces containers. Migrate first:
+`docker compose` runs the same file on one host. There is no rolling update: `up -d` replaces containers. Migrate first:
 
 ```bash
 docker compose -f compose.prod.yaml up -d postgres
@@ -242,16 +224,14 @@ docker compose -f compose.prod.yaml run --rm migrate
 docker compose -f compose.prod.yaml up -d
 ```
 
-It needs the variables of `.env` (Compose reads that file itself) and the same secret files.
+It needs the variables of `.env` and the same secret files.
 
 ## Managed database
 
-Drop the `postgres` service and the `db_postgres_password` secret. Create the roles with `deploy/postgres/bootstrap.sql`
-as a superuser, give them the passwords in the secret files, and set in `.env`:
+Drop the `postgres` service and the `db_postgres_password` secret. Run `deploy/postgres/bootstrap.sql` as a superuser, give
+the roles the passwords in the secret files, and set in `.env`:
 
 ```
 SPRING_DATASOURCE_URL=jdbc:postgresql://db.example.com:5432/shortener?sslmode=verify-full
 SPRING_FLYWAY_URL=jdbc:postgresql://db.example.com:5432/shortener?sslmode=verify-full
 ```
-
-The database then gets backups, replication and failover from its provider, which this stack provides only through the [overlay above](#backups-and-a-replica).

@@ -7,12 +7,10 @@ import java.time.Duration
  * `shortener.shortlink.redirect-cache.*` settings of the [RedirectCache].
  *
  * - [enabled]: when false, every redirect reads the database.
- * - [ttl]: how long an entry lives. It is also how long another instance can keep following a link
- *   after it was disabled.
- * - [maxEntries]: the cap that gives the cache a known memory ceiling.
- * - [staleIfError]: how long after it was last read a link is still followed when the database cannot
- *   be reached. It is also how long a link disabled elsewhere can keep redirecting during such an
- *   outage. Zero turns it off. It cannot be shorter than [ttl], or it would never outlast an entry.
+ * - [ttl]: how long an entry lives, and how long another instance can keep following a link after it was disabled.
+ * - [maxEntries]: the entry cap.
+ * - [staleIfError]: how long after it was last read a link is still followed when the database cannot be reached, and how
+ *   long a link disabled elsewhere can keep redirecting during such an outage. Zero turns it off. Must not be shorter than [ttl].
  */
 @ConfigurationProperties("shortener.shortlink.redirect-cache")
 data class RedirectCacheProperties(

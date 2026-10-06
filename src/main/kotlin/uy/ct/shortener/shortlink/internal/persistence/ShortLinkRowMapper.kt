@@ -13,11 +13,8 @@ import java.time.OffsetDateTime
 /**
  * Maps a `short_link` row to a [ShortLink].
  *
- * - JDBC returns values of unknown nullability, so each column is read as the schema declares it.
- * - `created_by`, `disabled_at` and `disabled_by` may be NULL, and become [Actor.Unknown] or
- *   [LinkStatus.Active]. The other columns may not.
- * - A NULL where the schema forbids one means the schema and this mapping drifted. It is reported
- *   by column name instead of surfacing later as an anonymous null-pointer error.
+ * - `created_by`, `disabled_at` and `disabled_by` may be NULL and become [Actor.Unknown] or [LinkStatus.Active].
+ * - A NULL in any other column is reported by column name.
  */
 internal object ShortLinkRowMapper : RowMapper<ShortLink> {
 

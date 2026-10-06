@@ -19,13 +19,13 @@ import java.security.spec.ECPrivateKeySpec
 import java.util.Base64
 
 /**
- * The P-256 keys of the dev clients, as JWKs, made and read with what the JDK has.
+ * P-256 keys as JWKs, made and read with the JDK only.
  *
- * - The tools do not use `deploy/keycloak/DpopClient.java`: that file is the reference for people outside the project, and what
- *   the tools need of it (a key, a signature, a proof) is written again here, so that changing one never breaks the other.
- * - [generate] is what `dev-setup` writes for each client: the private JWK, and the public one that goes in the realm. They have
- *   the members the reference client's `keygen` prints, so either can read what the other made.
- * - [readPrivate] reads such a file back, to sign with it.
+ * - [generate] makes a client key: the private JWK and the public one for the realm, with the members `DpopClient keygen` prints.
+ * - [readPrivate] reads the `d` of a private JWK file, to sign with it. A file that is not a private P-256 JWK is a [Failure].
+ * - [newKeyPair] makes the key of one proof, and [publicJwk] is what the proof carries in its header.
+ *
+ * Does not use `deploy/keycloak/DpopClient.java` (docs/adr/0029-tools-in-kotlin.md).
  */
 object ClientKeys {
 
@@ -46,7 +46,6 @@ object ClientKeys {
         return ClientKey(JSON.writeValueAsString(private), JSON.writeValueAsString(public))
     }
 
-    /** A key for a proof: one for each call, so that no token is bound to a key that anyone else has. */
     fun newKeyPair(): KeyPair =
         try {
             KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
@@ -54,10 +53,8 @@ object ClientKeys {
             throw Failure("this JDK cannot make P-256 keys: $problem")
         }
 
-    /** The members of the public JWK of [key] that a proof carries in its header. */
     fun publicJwk(key: KeyPair): Map<String, Any> = linkedMapOf<String, Any>("kty" to "EC", "crv" to "P-256").also { it.putAll(coordinates(key)) }
 
-    /** Only `d` is needed to sign, but the file must be a P-256 key to be one for ES256. */
     fun readPrivate(file: Path): PrivateKey {
         if (!Files.isReadable(file)) throw Failure("could not read the key file $file")
         val jwk = try {
@@ -84,7 +81,6 @@ object ClientKeys {
         return linkedMapOf("x" to base64(point.affineX), "y" to base64(point.affineY))
     }
 
-    /** A coordinate or a scalar of P-256 as the 32 bytes a JWK wants: BigInteger drops leading zeros and may add a sign byte. */
     private fun base64(value: BigInteger): String {
         val bytes = value.toByteArray()
         val fixed = ByteArray(32)

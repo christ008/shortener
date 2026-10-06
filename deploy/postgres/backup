@@ -1,18 +1,17 @@
 #!/bin/sh
-# Backups of the stack's Postgres with pgBackRest (compose.prod.postgres-ha.yaml), and the proof that they restore. It starts
-# programs in the container of the database, so it runs where Docker does: on the manager, from cron or a systemd timer.
+# Backs up the stack's Postgres with pgBackRest (compose.prod.postgres-ha.yaml) and proves a restore. Runs on the manager.
 #
-#   deploy/postgres/backup init           once, after the stack is up: creates the stanza, checks the archive, takes the first full backup
-#   deploy/postgres/backup full           a full backup
-#   deploy/postgres/backup diff           a differential backup, what changed since the last full one
-#   deploy/postgres/backup check          asks the server to archive a WAL segment and the repository to hold it
-#   deploy/postgres/backup info           what the repository holds, and how old the newest backup is
-#   deploy/postgres/backup restore-test   restores the latest backup into a throwaway container and counts the links
+#   deploy/postgres/backup init           create the stanza, check archiving and take the first full backup (once)
+#   deploy/postgres/backup full           full backup
+#   deploy/postgres/backup diff           differential backup
+#   deploy/postgres/backup check          check that a WAL segment is archived and the repository holds it
+#   deploy/postgres/backup info           backups in the repository and the age of the newest
+#   deploy/postgres/backup restore-test   restore the latest backup into a throwaway container and count the links
 #
-# Settings, all optional: PG_CONTAINER, the container of the database (by default the stack's postgres task, STACK=shortener),
-# PG_IMAGE and PGBACKREST_VOLUME, which restore-test reads from that container.
-#
-# A schedule that keeps two full backups and a week of differential ones, in a crontab of the manager:
+# Settings: PG_CONTAINER (default: the stack's postgres task), STACK (default shortener), and for restore-test PG_IMAGE and
+# PGBACKREST_VOLUME (default: read from the container).
+# Exit status: 0 on success, 1 when a step fails or no container is found, 2 for arguments it does not understand.
+# Schedule, in the manager's crontab:
 #   17 3 * * 0   /srv/shortener/deploy/postgres/backup full
 #   17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
 set -eu

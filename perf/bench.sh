@@ -1,9 +1,8 @@
 #!/bin/sh
-# Benchmarks one image of the application against the compose Postgres and Keycloak and records what it did.
+# Runs one image of the application against the compose Postgres and Keycloak under k6, and records the results in OUT_DIR.
 #   [RUNS="name rate duration create_share|..."] [DOCKER_ARGS="..."] perf/bench.sh VARIANT IMAGE OUT_DIR [COMMAND...]
-# The app gets cores 0-1 and the production memory limit, Postgres cores 2-5 and k6 cores 6-9, so that the three
-# do not compete. Needs Postgres, Keycloak and Prometheus (profile observability) running: the compose services, or
-# containers of your own with PGPORT and PG_CONTAINER set. It reads the clock with GNU date (%N), so it runs on Linux.
+# CPUs: the app 0-1 with the production memory limit, Postgres 2-5, k6 6-9. Needs Postgres, Keycloak and Prometheus (profile
+# observability) running: the compose services, or containers of your own with PGPORT and PG_CONTAINER set. Needs GNU date (`%N`).
 set -eu
 
 VARIANT=$1

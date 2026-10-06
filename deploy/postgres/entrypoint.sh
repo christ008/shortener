@@ -1,6 +1,6 @@
 #!/bin/sh
-# The entrypoint of the image, which starts as root like the stock one: it makes the repository of pgBackRest writable by the
-# postgres user, since a volume is created owned by root, and hands over to the stock entrypoint.
+# Entrypoint of the image: makes the pgBackRest repository (PGBACKREST_REPO_PATH, default /var/lib/pgbackrest) writable by the
+# postgres user, then runs the stock entrypoint with its arguments.
 set -eu
 repo=${PGBACKREST_REPO_PATH:-/var/lib/pgbackrest}
 mkdir -p "$repo/log"

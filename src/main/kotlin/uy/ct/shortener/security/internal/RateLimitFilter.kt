@@ -7,14 +7,12 @@ import org.springframework.web.filter.OncePerRequestFilter
 import kotlin.math.max
 
 /**
- * Applies a [RateLimiter] to every request and answers the excess with a 429 problem detail.
+ * Applies a [RateLimiter] to every request and answers the excess with a `429` problem detail.
  *
- * - [keyOf] chooses what is limited, and may return [RateLimitKey.Unlimited] to skip a request.
- * - Used twice in the filter chain: per client IP before authentication, so token guessing is
- *   throttled, and per authenticated client after it.
- * - Actuator paths are never limited, so health probes cannot be throttled.
- * - Each instance needs a distinct [name]: `OncePerRequestFilter` remembers a filtered request by
- *   filter name, so two instances sharing one would skip each other.
+ * - [keyOf] chooses what is limited and may return [RateLimitKey.Unlimited] to skip a request.
+ * - Used per client IP before authentication and per authenticated client after it.
+ * - Actuator paths are never limited.
+ * - [name] must be distinct for each instance in the filter chain.
  */
 class RateLimitFilter(
     private val name: String,

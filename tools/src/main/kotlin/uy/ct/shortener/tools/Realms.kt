@@ -3,24 +3,19 @@ package uy.ct.shortener.tools
 import java.nio.file.Path
 
 /**
- * Makes a Keycloak realm from a template, by putting the public keys of its clients and, for development, the passwords of its
- * users where the template has placeholders. It is the one place that does this: `dev-setup` makes the development realm with it
- * and `production` makes the one a deployment imports. Nothing secret goes into a production realm, because a public key is all
- * Keycloak needs to trust a client.
+ * Makes a Keycloak realm from a template, filling in the public keys of its clients and, for development, the passwords of its users.
  *
  *     ./gradlew productionRealm -Pdemo=FILE -Padmin=FILE [-Poutput=FILE]     the two public keys, line 2 of what keygen prints
  *     tools/run Realms render TEMPLATE OUTPUT [--jwks CLIENT=PUBLIC_JWK_FILE]... [--password USER=ENVIRONMENT_VARIABLE]...
  *     tools/run Realms production DEMO_PUBLIC_JWK_FILE ADMIN_PUBLIC_JWK_FILE [OUTPUT]
  *
- * `render` replaces `@JWKS:CLIENT@` with a key set made of that one key, and `@PASSWORD:USER@` with the value of the environment
- * variable named, so that a password is not on a command line. Every placeholder in the template must be given, and every one
- * given must be in the template, so a typo is an error and not a realm that trusts nothing. A file with a private key (it has a
- * `d`) is refused: a realm is imported into a server and kept.
+ * `render` replaces `@JWKS:CLIENT@` with a key set holding that key, and `@PASSWORD:USER@` with the value of the named
+ * environment variable. Every placeholder in the template must be given and every value given must be in the template. A file
+ * with a private key (it has a `d`) is refused.
  *
- * `production` is `render` for the production template, with `demo-client` and `admin-client`, into
- * `deploy/keycloak/shortener-realm.production.json` unless an output is named. Make the keys with
- * `./gradlew keygen -Pclient=NAME`: line 1 is the private key, which the client keeps, and line 2 the public one, which is what
- * this takes. The private half of `admin-client` can take down any link, so it stays with the operator.
+ * `production` is `render` for the production template with `demo-client` and `admin-client`, into
+ * `deploy/keycloak/shortener-realm.production.json` unless an output is named. `./gradlew keygen -Pclient=NAME` prints the
+ * private key on line 1 and the public key on line 2, which is what this takes.
  */
 object Realms : Tool(
     "Realms",

@@ -1,16 +1,7 @@
-# Backups and a replica for the stack's Postgres. Add it with a second -c / -f file, and POSTGRES_HA=1 for deploy/stack/deploy.sh:
+# Adds pgBackRest backups and a streaming replica to Postgres (docs/DEPLOY.md#backups-and-a-replica).
 #   POSTGRES_HA=1 deploy/stack/deploy.sh <version>
 #   docker compose -f compose.prod.yaml -f compose.prod.postgres-ha.yaml up -d
-#
-# - The image is built from deploy/postgres/Dockerfile: the official one with pgBackRest, `docker build -t shortener-postgres:18.6
-#   deploy/postgres`. On more than one node it must be in a registry, and POSTGRES_IMAGE says where.
-# - The primary archives its WAL to a repository on a volume of its node (deploy/postgres/pgbackrest.conf), at least every five
-#   minutes, so a restore loses at most that. Nothing takes a backup by itself: deploy/postgres/backup does, from cron.
-#   That repository does not survive losing the node. Point repo1 at object storage or another host to get that.
-# - The replica is a streaming copy, on another node when the swarm has one, read only, that the application does not read from.
-#   It is for losing the primary, and nothing promotes it by itself: see docs/DEPLOY.md.
-# - Both need the secret db_replicator_password, and the data directory of the primary to be new, or the role to be made by hand
-#   (deploy/postgres/replication.sh).
+# Needs the image built from deploy/postgres (POSTGRES_IMAGE) and the secret db_replicator_password.
 services:
   postgres:
     image: '${POSTGRES_IMAGE:-shortener-postgres}:${POSTGRES_VERSION:-18.6}'
@@ -20,7 +11,6 @@ services:
       - archive_mode=on
       - -c
       - archive_command=pgbackrest --stanza=shortener archive-push %p
-      # A segment is archived when it is full or after this long, whichever is first: the most a restore can lose on a quiet database.
       - -c
       - archive_timeout=300
       - -c
@@ -29,7 +19,6 @@ services:
       - max_wal_senders=5
       - -c
       - max_replication_slots=5
-      # A replica that is gone must not fill the primary's disk with the WAL it has not read.
       - -c
       - max_slot_wal_keep_size=4GB
     environment:
@@ -44,7 +33,6 @@ services:
   postgres-replica:
     read_only: true
     cap_drop: [ALL]
-    # The entrypoint starts as root to prepare the data directory, then drops to postgres, so it needs these and no more.
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     security_opt: ['no-new-privileges:true']
     init: true
@@ -74,8 +62,6 @@ services:
       replicas: 1
       resources:
         limits: {cpus: '2', memory: 1G}
-      # On a node of its own, the one thing that makes it worth having:
-      #   docker node update --label-add shortener.postgres-replica=true <node>
       placement:
         constraints: ['node.labels.shortener.postgres-replica == true']
       restart_policy: {condition: any, delay: 5s}

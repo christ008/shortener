@@ -12,15 +12,13 @@ import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.ShortLink
 
 /**
- * The record of what clients did to links, for whoever has to answer "who did that".
+ * The record of what clients did to links.
  *
- * - [LoggingAuditTrail] writes one line per create and per disable, and per listing that reaches another client's links,
- *   on the logger `uy.ct.shortener.audit`, and counts each in `shortener.audit.events` tagged with the kind.
- * - A line carries the short code, who acted and the owner, and for a create the target's host. Never the target's
- *   path or query, which can hold a credential.
- * - An administrator acting on another client's link is its own kind, `disabled_by_admin` or `listed_others`, because
- *   that is the one an alert and a reviewer look for.
- * - [NoAuditTrail] records nothing, for tests that are about something else.
+ * - [LoggingAuditTrail] writes one line per create, per disable and per listing that reaches another client's links, on the
+ *   logger `uy.ct.shortener.audit`, and counts each in `shortener.audit.events`, tagged with the kind.
+ * - A line has the short code, who acted, the owner and, for a create, the target's host. Never the target's path or query.
+ * - An administrator acting on another client's link is its own kind: `disabled_by_admin` or `listed_others`.
+ * - [NoAuditTrail] records nothing.
  */
 interface AuditTrail {
 

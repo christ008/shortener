@@ -1,10 +1,9 @@
 #!/bin/sh
-# Starts a streaming replica of the primary. The first time, with an empty data directory, it takes a copy of the primary with
-# pg_basebackup and creates a replication slot there, so that the primary keeps the WAL the replica has not read; after that it
-# only starts, and follows. It authenticates as shortener_replicator, whose password is the file REPLICATOR_PASSWORD_FILE
-# (a Docker secret), through a password file made in memory. The primary is `postgres` unless PRIMARY_HOST says otherwise.
-#
-# A replica is read only. To promote it when the primary is lost, see docs/DEPLOY.md.
+# Starts a read-only streaming replica of PRIMARY_HOST. On an empty data directory it copies the primary with pg_basebackup and
+# creates the slot REPLICATION_SLOT.
+# Settings: REPLICATOR_PASSWORD_FILE (required: the file with the password of shortener_replicator), PRIMARY_HOST (default
+# postgres), REPLICATION_SLOT (default replica1).
+# Promotion is manual: docs/DEPLOY.md.
 set -eu
 primary=${PRIMARY_HOST:-postgres}
 password_file=${REPLICATOR_PASSWORD_FILE:?REPLICATOR_PASSWORD_FILE must name the file with the replication password}

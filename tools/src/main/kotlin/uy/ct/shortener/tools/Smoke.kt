@@ -10,19 +10,18 @@ import java.time.Duration
 import java.util.concurrent.ThreadLocalRandom
 
 /**
- * Exercises every endpoint of a running application with DPoP-bound tokens from the identity provider, as the demo, other and
- * admin clients, and checks the status each should answer. Meant for a native image, where what works on the JVM can still fail
- * for want of reflection metadata, and run on every release against the image that is about to be published.
+ * Exercises every endpoint of a running application with DPoP-bound tokens, as the demo, other and admin clients, and checks
+ * the status each answers.
  *
  *     ./gradlew smoke [-PbaseUrl=http://localhost:8080] [-Pmgmt=http://localhost:8081]
  *     tools/run Smoke [BASE_URL]            with MGMT in the environment for the management port
  *
- * The clients are the dev ones that deploy/keycloak/dev-setup makes, with their keys in deploy/keycloak/dev-keys (KEYS_DIR says
- * another place), and the token endpoint is the local realm's (TOKEN_URL says another, and ISSUER the audience of the assertion). A server with a certificate of
- * your own is trusted as for any Java program, for example with JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=ts.p12. Redirects
- * are not followed: the answer of a redirect is what is checked.
+ * The clients are the dev ones that `deploy/keycloak/dev-setup` makes, with their keys in `deploy/keycloak/dev-keys`
+ * (`KEYS_DIR` says another place). The token endpoint is the local realm's (`TOKEN_URL` says another, and `ISSUER` the
+ * audience of the assertion). A server certificate of your own is trusted as for any Java program, for example with
+ * `JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=ts.p12`. Redirects are not followed.
  *
- * The calls are made by `DpopCalls`, which is not the reference client of `deploy/keycloak`. Exit status: 0 when every check passed, 1 when
+ * The calls are made by `DpopCalls`, not by the reference client `DpopClient`. Exit status: 0 when every check passed, 1 when
  * one did not, 2 for arguments it does not understand.
  */
 object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the environment: the management port, default http://localhost:8081)") {

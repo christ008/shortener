@@ -5,11 +5,11 @@ import org.springframework.data.domain.Pageable
 import java.net.URI
 
 /**
- * Storage for [ShortLink]s, independent of how they are persisted.
+ * Storage for [ShortLink]s.
  *
  * - Short codes are unique.
  * - Every operation throws [StorageUnavailableException] when storage cannot serve it right now.
- * - It knows nothing about who may do what; method security on the service decides that.
+ * - No authorization: method security on the service decides who may do what.
  */
 interface ShortLinkRepository {
 

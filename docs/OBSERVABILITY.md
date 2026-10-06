@@ -1,94 +1,94 @@
 # Observability
 
-What the service reports about itself, what it looks like, and what to alert on. Running it locally:
-`docker compose --profile observability up -d` starts Prometheus, Grafana (<http://localhost:3000>, no login), Tempo and the
-Postgres exporter, and `./gradlew bootRun` uses the `dev` profile, which samples every trace. The production stack has
-its own overlay, see [DEPLOY.md](DEPLOY.md#operate).
+What the service reports, and what to alert on. Locally, `docker compose --profile observability up -d` starts Prometheus,
+Grafana (<http://localhost:3000>, no login), Tempo and the Postgres exporter, and `./gradlew bootRun` uses the `dev` profile
+(100% trace sampling). The production overlay is in [DEPLOY.md](DEPLOY.md#operate).
 
 - [At a glance](#at-a-glance)
 - [Dashboard](#dashboard)
 - [Traces](#traces)
 - [Metrics](#metrics)
 - [Alerts](#alerts)
-- [Health, logs and the database](#health-logs-and-the-database)
+- [Health, database](#health-database)
+- [Logs](#logs)
 - [Not done](#not-done)
 
 ## At a glance
 
 | Signal | Where | Notes |
 |---|---|---|
-| Metrics | `/actuator/prometheus`, management port 8081 | internal, never proxied by the edge |
+| Metrics | `/actuator/prometheus`, management port 8081 | never proxied by the edge |
 | Dashboard | `deploy/observability/grafana/dashboards/shortener.json` | twelve panels |
 | Traces | OTLP over HTTP to Tempo | sampling 0 by default, 100% under `dev`, 5% under `production` |
-| Logs | JSON on stdout (ECS) under `production` | trace and span ids included |
-| Health | `/actuator/health/liveness` and `/readiness`, management port | readiness does not include the database |
-| Alerts | `deploy/observability/alerts.yml` | twelve rules, unit-tested with promtool |
+| Logs | JSON (ECS) on stdout under `production`, with trace and span ids | |
+| Health | `/actuator/health/liveness`, `/readiness`, management port | readiness excludes the database |
+| Alerts | `deploy/observability/alerts.yml` | twelve rules, tested with promtool |
 
 ## Dashboard
 
-The shipped dashboard during a run of 1,500 requests a second, 1% of them creates, with the JVM limited to two cores and
-a 512 MB memory ceiling. The redirect cache answers about 99% of redirects (the hit ratio panel), so the connection pool stays idle.
+The dashboard at 1,500 requests a second (1% creates), with 2 cores and 512 MB. The cache answers about 99% of redirects, so
+the connection pool stays idle.
 
 ![Grafana dashboard](images/dashboard.png)
 
-| Panel | Answers | Main series |
-|---|---|---|
-| Requests per second by status | how much traffic, and how it ends | `http_server_requests_seconds_count` by `status` |
-| Redirect latency | how fast `GET /{shortCode}` is (p50, p95, p99) | `http_server_requests_seconds_bucket`, `uri="/{shortCode}"` |
-| Create latency | how fast `POST /api/short-links` is | the same, `uri="/api/short-links"` |
-| Rejected and failed requests | what is refused: 401, 403, 429, 5xx | `http_server_requests_seconds_count` by `status` |
-| Connection pool | active, idle, pending and maximum connections | `hikaricp_connections_*` |
-| Connection acquire time and timeouts | whether requests wait for the database | `hikaricp_connections_acquire_seconds_max`, `hikaricp_connections_timeout_total` |
-| Heap used and max | memory pressure | `jvm_memory_used_bytes`, `jvm_memory_max_bytes` |
-| GC pause time per second | cost of garbage collection | `jvm_gc_pause_seconds_sum` |
-| CPU usage | process and system CPU | `process_cpu_usage`, `system_cpu_usage` |
-| Live threads | live and peak threads | `jvm_threads_live_threads`, `jvm_threads_peak_threads` |
-| Redirect cache hit ratio | the share of redirects answered from memory | `cache_gets_total` by `result` |
-| Redirect cache size and evictions | whether the cache is full | `cache_size`, `cache_evictions_total` |
+| Panel | Series |
+|---|---|
+| Requests per second by status | `http_server_requests_seconds_count` by `status` |
+| Redirect latency (p50, p95, p99) | `http_server_requests_seconds_bucket`, `uri="/{shortCode}"` |
+| Create latency | the same, `uri="/api/short-links"` |
+| Rejected and failed requests (401, 403, 429, 5xx) | `http_server_requests_seconds_count` by `status` |
+| Connection pool | `hikaricp_connections_*` (active, idle, pending, max) |
+| Connection acquire time and timeouts | `hikaricp_connections_acquire_seconds_max`, `hikaricp_connections_timeout_total` |
+| Heap used and max | `jvm_memory_used_bytes`, `jvm_memory_max_bytes` |
+| GC pause time per second | `jvm_gc_pause_seconds_sum` |
+| CPU usage | `process_cpu_usage`, `system_cpu_usage` |
+| Live threads | `jvm_threads_live_threads`, `jvm_threads_peak_threads` |
+| Redirect cache hit ratio | `cache_gets_total` by `result` |
+| Redirect cache size and evictions | `cache_size`, `cache_evictions_total` |
 
-- A panel stays empty until its event happens, because Prometheus has no series for something that has not occurred.
-- The native image has no JVM garbage collector beans, so its GC panel is empty and its heap maximum reads zero.
-- Route templates, not codes, label the request series, so short codes never become label values (tested).
+- A panel stays empty until its event happens.
+- The native image has no JVM GC beans: its GC panel is empty and its heap maximum reads zero.
+- Request series are labelled by route template, never by short code.
 
 ## Traces
 
-A create request in Tempo: the HTTP span and, under it, the `shortlink.insert` span for the database write.
+A create request in Tempo: the HTTP span, and under it `shortlink.insert`.
 
 ![A create request as a trace in Tempo](images/trace.png)
 
 | Span | Means |
 |---|---|
 | `http <method> <route>` | one per request, named by route (`http get /{shortCode}`), joined to the caller's trace by `traceparent` |
-| `shortlink.load` | a redirect that missed the cache and read the database. A cached redirect has no such span |
-| `shortlink.insert` | one attempt to store a link. A code collision shows as a second insert |
+| `shortlink.load` | a redirect that missed the cache and read the database |
+| `shortlink.insert` | one attempt to store a link; a code collision shows as a second insert |
 
-- `shortlink.load` and `shortlink.insert` are also timers: `shortlink_load_seconds` and `shortlink_insert_seconds`.
-- Trace and span ids are in the logs. Spring Security's per-filter observations are off, which would add a span per filter.
-- The exporter is always built in and its endpoint has a default in `application.yaml`. A native image decides at build
-  time which beans exist, so removing the endpoint, or supplying it only at run time, compiles the exporter out
-  silently. Environment variables still override the value at run time.
+- `shortlink.load` and `shortlink.insert` are also timers: `shortlink_load_seconds`, `shortlink_insert_seconds`.
+- Trace and span ids are in the logs. Per-filter Spring Security observations are off.
+- The OTLP endpoint has a default in `application.yaml`; environment variables override it at run time. Do not remove the
+  default ([INTERNALS.md](INTERNALS.md#observability)).
 - Export of logs and metrics over OTLP is off.
 
 ## Metrics
 
 | Series | Type | Use |
 |---|---|---|
-| `http_server_requests_seconds` | histogram | rate, errors and latency by route and status |
+| `http_server_requests_seconds` | histogram | rate, errors, latency by route and status |
 | `hikaricp_connections_active`, `_idle`, `_pending`, `_max` | gauge | pool use |
-| `hikaricp_connections_acquire_seconds_max` | gauge | the longest wait for a connection |
+| `hikaricp_connections_acquire_seconds_max` | gauge | longest wait for a connection |
 | `hikaricp_connections_timeout_total` | counter | requests that gave up waiting for a connection |
-| `cache_gets_total{cache="shortlink.redirect"}` | counter | hits and misses of the redirect cache |
+| `cache_gets_total{cache="shortlink.redirect"}` | counter | cache hits and misses |
 | `cache_size`, `cache_evictions_total` | gauge, counter | cache fill |
-| `shortlink_redirect_cache_stale_total` | counter | redirects served from an expired entry while the database was down. Should be zero |
-| `shortlink_load_seconds`, `shortlink_insert_seconds` | timer | the database read of a redirect, and each insert attempt |
-| `jvm_*`, `process_*` | | memory, GC, threads and CPU of the JVM |
+| `shortlink_redirect_cache_stale_total` | counter | redirects served from an expired entry while the database was down (should be zero) |
+| `shortlink_load_seconds`, `shortlink_insert_seconds` | timer | database read of a redirect, each insert attempt |
+| `shortener_security_events_total` | counter | `401`, `403`, `429` by `type` |
+| `shortener_audit_events_total` | counter | creates, disables, administrator actions by `type` |
+| `jvm_*`, `process_*` | | memory, GC, threads, CPU |
 | `pg_*` | | the database, from the Postgres exporter |
 
 ## Alerts
 
-`deploy/observability/alerts.yml`, on what the application sees of its database and its cache. The cache answers about 99%
-of redirects, so the pool is idle in normal operation: any of these means the cache is not absorbing the load, or the
-database is slow or gone.
+`deploy/observability/alerts.yml`. In normal operation the pool is idle, so any database alert means the cache is not
+absorbing load, or the database is slow or gone.
 
 | Alert | Fires when | For | Severity |
 |---|---|---|---|
@@ -96,62 +96,57 @@ database is slow or gone.
 | `ShortenerDatabaseConnectionTimeouts` | requests gave up waiting for a connection, or the database could not be reached | 1 m | warning |
 | `ShortenerDatabaseSlowToConnect` | the slowest wait for a connection exceeds 500 ms | 10 m | warning |
 | `ShortenerStorageUnavailable` | more than 1% of requests are answered `503` | 5 m | critical |
-| `ShortenerServingStaleRedirects` | redirects are served from an expired entry because the database cannot be reached | 2 m | warning |
+| `ShortenerServingStaleRedirects` | redirects are served from an expired entry because the database is unreachable | 2 m | warning |
 | `ShortenerAuthenticationFailures` | more than one failed authentication a second | 10 m | warning |
-| `ShortenerForbiddenCalls` | clients with a valid token are denied more than once every five seconds | 10 m | warning |
-| `ShortenerRateLimited` | more than one request a second is answered `429` | 10 m | warning |
-| `ShortenerWalArchivingFailing` | the archive command of Postgres failed in the last ten minutes | 5 m | critical |
+| `ShortenerForbiddenCalls` | valid tokens denied more than once every five seconds | 10 m | warning |
+| `ShortenerRateLimited` | more than one `429` a second | 10 m | warning |
+| `ShortenerWalArchivingFailing` | Postgres failed to archive WAL in the last ten minutes | 5 m | critical |
 | `ShortenerReplicaDisconnected` | the replication slot has no connection | 5 m | warning |
 | `ShortenerReplicaLagging` | the replica is more than 100 MiB behind | 10 m | warning |
 | `ShortenerAdministratorActivity` | more than ten disables or listings of other clients' links in ten minutes | none | warning |
 
-- Each rule has a unit test with simulated series, in `deploy/observability/alerts.test.yml`. CI runs them with promtool:
+Each rule has a test in `deploy/observability/alerts.test.yml`:
 
-  ```bash
-  docker run --rm -v "$PWD/deploy/observability:/rules:ro" -w /rules --entrypoint promtool \
-    prom/prometheus:v3.5.0 test rules alerts.test.yml
-  ```
-- Prometheus evaluates them and shows them in its interface. Sending them somewhere needs an Alertmanager, see
-  `deploy/observability/prometheus.stack.yml`.
-- The database server's own alerts (connections against `max_connections`, backup age, transaction age)
-  depend on how Postgres is run, and are not here.
+```bash
+docker run --rm -v "$PWD/deploy/observability:/rules:ro" -w /rules --entrypoint promtool \
+  prom/prometheus:v3.5.0 test rules alerts.test.yml
+```
 
-## Health, logs and the database
+Prometheus evaluates the rules and shows them in its interface. Delivery needs an Alertmanager (see
+`deploy/observability/prometheus.stack.yml`). Database server alerts (connections against `max_connections`, replication,
+backup age, transaction age) are not included.
+
+## Health, database
 
 | What | Behaviour |
 |---|---|
 | Liveness | the process is up |
-| Readiness | the application's own state only. It excludes the database: every instance shares one, so removing them all from rotation gains nothing, and the health check that restarts unhealthy containers would restart all of them during an outage. An instance answers what it can and gives `503` with `Retry-After` for the rest |
-| Logs | structured ECS JSON under the `production` profile, plain text otherwise |
+| Readiness | the application's own state only; excludes the database ([INTERNALS.md](INTERNALS.md#observability)) |
 | Slow statements | `deploy/postgres/diagnostics.conf` logs statements over 250 ms with their plan, lock waits, sorts that spill to disk and slow autovacuums |
-| Database metrics | `postgres_exporter` as `shortener_exporter`, limited to 25 statements and no query text |
-| When it is slow | `perf/pg-diagnostics.sql`: connections by application and state, what waits for a lock, the costliest statements, cache hit ratio, dead rows, unused indexes and distance from transaction ID wraparound |
+| Database metrics | `postgres_exporter` as `shortener_exporter`: 25 statements, no query text |
+| Diagnostics | `perf/pg-diagnostics.sql`: connections by application and state, lock waits, costliest statements, cache hit ratio, dead rows, unused indexes, distance from transaction ID wraparound |
 
-Every connection reports `shortener-<hostname>` as its application name, so `pg_stat_activity` says who holds what.
-
-## Not done
-
-- Metrics from the nginx edge.
-- A Grafana dashboard for Postgres. The exporter's series are there to build one.
-- Anything that sends the alerts Prometheus fires.
+Every connection reports `shortener-<hostname>` as its application name.
 
 ## Logs
 
-The `production` profile writes JSON (ECS) to the container's output. Three kinds of line matter, decided in
-[ADR 0024](adr/0024-logging-and-audit.md):
+The `production` profile writes ECS JSON to the container output, plain text otherwise. Each line is one JSON object with
+nested ECS names and the request's `traceId`. [ADR 0024](adr/0024-logging-and-audit.md).
 
-| Look for | Logger | Tells you |
+| Look for | Logger | Fields |
 |---|---|---|
-| a failed authentication, a denied call, a limited client | `uy.ct.shortener.security.events` | `event.action`, `event.reason`, `client.ip`, `auth.scheme`, `url.path`, and `owner` for a denied call |
-| a link created or disabled, an administrator acting on others | `uy.ct.shortener.audit` | `event.action`, `shortlink.code`, `actor`, `owner`, and for a create the target's host |
-| the storage failing, what was configured at start | the class that wrote it | the exception type, the settings |
-
-Each line is one JSON object with ECS's nested names (`{"event":{"action":...},"client":{"ip":...}}`) and the `traceId` of
-the request, so a line leads to its trace in Tempo.
+| failed authentication, denied call, limited client | `uy.ct.shortener.security.events` | `event.action`, `event.reason`, `client.ip`, `auth.scheme`, `url.path`, `owner` (denied call) |
+| link created or disabled, administrator acting on others | `uy.ct.shortener.audit` | `event.action`, `shortlink.code`, `actor`, `owner`, target host (create) |
+| storage failing, configuration at start | the class that wrote it | exception type, settings |
 
 ```bash
 docker service logs shortener_shortener 2>&1 | grep '"action":"disabled_by_admin"'
 ```
 
-Tokens, proofs, query strings and targets' paths are never in them. The counters are `shortener_security_events_total` and
-`shortener_audit_events_total`, tagged with `type` only.
+Tokens, proofs, query strings and target paths are never logged.
+
+## Not done
+
+- Metrics from the nginx edge.
+- A Grafana dashboard for Postgres.
+- Delivery of the alerts Prometheus fires.

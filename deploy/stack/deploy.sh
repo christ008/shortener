@@ -1,13 +1,10 @@
 #!/bin/sh
-# Deploys or updates the production stack on Swarm. Run it from the repository root, on a manager, with .env and the
-# secrets in place (docs/DEPLOY.md).
+# Deploys or updates the production stack on Swarm. Run it from the repository root, on a manager, with .env and the secrets in
+# place (docs/DEPLOY.md).
 #
 #   deploy/stack/deploy.sh VERSION [STACK]
 #
-# On an update the migration job goes first, while the application is still on the version it runs now: migrations are
-# written so that the previous version keeps working against the new schema (add, then switch, then remove), so the
-# application is only updated once the job has finished. A first deploy starts everything at once, and the application
-# restarts until the schema exists.
+# On an update the migration job runs first, then the application is updated. A first deploy starts everything at once.
 #
 # Settings, all optional:
 #   COMPOSE_FILES   files to deploy, default "compose.prod.yaml"; OBSERVABILITY=1 adds compose.prod.observability.yaml and
@@ -25,7 +22,7 @@ files=${COMPOSE_FILES:-compose.prod.yaml}
 args=""
 for f in $files; do args="$args -c $f"; done
 
-# Swarm configs cannot change once created, so their names carry a hash of the file.
+# Config names carry a hash of the file.
 NGINX_CONF_HASH=$(sha256sum deploy/edge/nginx.conf | cut -c1-12)
 PROMETHEUS_CONF_HASH=$(cat deploy/observability/prometheus.stack.yml deploy/observability/alerts.yml | sha256sum | cut -c1-12)
 if [ -n "${KEYCLOAK:-}" ]; then

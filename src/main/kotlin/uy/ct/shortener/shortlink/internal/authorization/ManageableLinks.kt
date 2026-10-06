@@ -11,9 +11,8 @@ import uy.ct.shortener.shortlink.ShortLinkRepository
  * Loads a link only if the caller may manage it.
  *
  * - The check runs after the load, with `@PostAuthorize` against [ShortLinkPermissionEvaluator].
- * - Being denied is reported as the link not being found ([NotFoundWhenDenied]), so another
- *   client's link is indistinguishable from a missing one.
- * - A bean of its own, because method security only applies to calls made through a Spring proxy.
+ * - A denial is reported as the link not being found ([NotFoundWhenDenied]).
+ * - Must be a bean of its own: method security applies only to calls made through a Spring proxy.
  */
 @Component
 class ManageableLinks(private val repository: ShortLinkRepository) {

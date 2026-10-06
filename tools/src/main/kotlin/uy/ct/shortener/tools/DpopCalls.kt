@@ -20,27 +20,26 @@ import java.util.Base64
 import java.util.UUID
 
 /**
- * Calls the API the way a client of the project does, with a DPoP-bound token (RFC 9449), for the tools that need to be one.
+ * Calls the API with a DPoP-bound token (RFC 9449), with the JDK only.
  *
- * - The client authenticates to the identity provider with a signed assertion (`private_key_jwt`), and asks for a token bound to a
- *   key made for the call. The API is then called with that token and a proof made for the request.
- * - It is written for the tools and does not use `deploy/keycloak/DpopClient.java`, the reference for people outside the project,
- *   so there are two of them on purpose (see [ClientKeys]).
- * - [tokenUrl] is the token endpoint, and [issuer] is the audience of the assertion: the endpoint without its path, unless said.
- * - A call returns its answer whatever its status, because an error status is an answer. What it throws is a [Failure]: the
- *   identity provider said no, or a server was not there.
+ * - [call] signs in as a client with a signed assertion (`private_key_jwt`), asks [tokenUrl] for a token bound to a new key, and
+ *   calls the API with the token and a proof of the request. It signs in on every call and returns the answer whatever its
+ *   status.
+ * - [token] returns such a token.
+ * - [issuer] is the audience of the assertion: [tokenUrl] without its path, unless given.
+ * - The identity provider refusing, an answer that is not a token, and a server that is not there are a [Failure].
+ *
+ * Does not use `deploy/keycloak/DpopClient.java` (docs/adr/0029-tools-in-kotlin.md).
  */
 class DpopCalls(
     private val tokenUrl: String = DEFAULT_TOKEN_URL,
     private val issuer: String = tokenUrl.removeSuffix(TOKEN_ENDPOINT_PATH),
 ) {
 
-    /** What the API answered to a call. */
     class Answer(val status: Int, val body: String)
 
     private val http: HttpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build()
 
-    /** Makes a call as [client], signing in each time, with a body sent as JSON when there is one. */
     fun call(keyFile: Path, client: String, method: String, url: String, body: String?): Answer {
         val key = ClientKeys.newKeyPair()
         val token = token(keyFile, client, key)
@@ -54,7 +53,6 @@ class DpopCalls(
         return Answer(response.statusCode(), response.body())
     }
 
-    /** A new access token for [client], bound to a key that nobody else has. */
     fun token(keyFile: Path, client: String): String = token(keyFile, client, ClientKeys.newKeyPair())
 
     private fun token(keyFile: Path, client: String, key: KeyPair): String {
@@ -103,7 +101,6 @@ class DpopCalls(
         private val JSON = JsonMapper.builder().build()
         private val BASE64 = Base64.getUrlEncoder().withoutPadding()
 
-        /** The proof for one request: the method, the URL without its query and fragment, and a hash of the token when there is one. */
         fun proof(key: KeyPair, method: String, url: String, accessToken: String?): String {
             val target = uri(url)
             val claims = linkedMapOf<String, Any>(
@@ -116,7 +113,6 @@ class DpopCalls(
             return jws(key.private, linkedMapOf("alg" to "ES256", "typ" to "dpop+jwt", "jwk" to ClientKeys.publicJwk(key)), claims)
         }
 
-        /** A compact JWS signed with ES256, whose signature is the raw r and s of JWS and not the DER of ECDSA. */
         fun jws(key: PrivateKey, header: Map<String, Any>, claims: Map<String, Any>): String {
             val signingInput = BASE64.encodeToString(JSON.writeValueAsBytes(header)) + "." + BASE64.encodeToString(JSON.writeValueAsBytes(claims))
             try {

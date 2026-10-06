@@ -74,21 +74,20 @@ dependencyManagement {
 }
 
 /**
- * Coverage, as a measurement and not a gate: `./gradlew koverHtmlReport koverXmlReport` after `./gradlew test` writes
- * build/reports/kover, and CI keeps it as an artifact. Only the whole suite says what the project covers, and part of it needs
- * Docker.
+ * Coverage report, with no threshold: `./gradlew test koverHtmlReport koverXmlReport` writes build/reports/kover. CI keeps it as
+ * an artifact.
  */
 kover {
     currentProject {
         instrumentation {
-            // Only the classes of the project: the rest are loaded by the tests too, and instrumenting them only fills a log.
+            // Only the classes of the project.
             includedClasses.add("uy.ct.shortener.*")
         }
     }
     reports {
         filters {
             excludes {
-                // The classes that ahead-of-time and native builds generate, and `main`, which no test starts: not what the tests are about.
+                // Generated ahead-of-time and native classes, and `main`.
                 classes("*__*", "*\$\$*", "uy.ct.shortener.ShortenerApplicationKt")
             }
         }
@@ -96,15 +95,11 @@ kover {
 }
 
 /**
- * Mutation testing of the logic of the `shortlink` module, run by hand with `./gradlew mutationTest` (not part of `check`, and not
- * in CI): it changes the code in small ways and runs the tests that cover each change, and a change that no test notices is a
- * behaviour that nothing checks. See the Testing section of docs/INTERNALS.md for what it found.
+ * Mutation testing of the logic of the `shortlink` module, by hand: `./gradlew mutationTest`. Not part of `check` and not in CI.
+ * Results: the Testing section of docs/INTERNALS.md.
  *
- * - Scope: the domain types, the service, the redirect cache, the target-URL policy and the code generator. Not the web and
- *   persistence adapters (tested against HTTP and Postgres, not through mutation), not authorization (a framework's expressions),
- *   not the audit trail, and not configuration, properties and native hints.
- * - Tests: the ones that need no Docker, because it demands a green run before it mutates anything. Mutants that only a test
- *   with a database would kill are reported as surviving, and read as such.
+ * - Scope: the domain types, the service, the redirect cache, the target-URL policy and the code generator.
+ * - Tests: the ones that need no Docker.
  */
 pitest {
     junit5PluginVersion = "1.2.3"
@@ -170,7 +165,7 @@ tasks.withType<Test> {
     )
 }
 
-// `./gradlew test` tests the tools too, which are a build of their own (settings.gradle.kts): CI and a release run only that.
+// `./gradlew test` also runs the tests of the tools (settings.gradle.kts).
 tasks.test {
     dependsOn(gradle.includedBuild("tools").task(":test"))
 }
@@ -189,19 +184,16 @@ tasks.named<org.springframework.boot.gradle.tasks.aot.ProcessAot>("processAot") 
 }
 
 /**
- * The native image is built on BellSoft's Alpaquita (musl) builder, with the build pinned so that a rebuild of the
- * same commit produces the same image.
+ * The native image is built on BellSoft's Alpaquita (musl) builder, pinned for reproducible builds.
  *
- * - Paketo buildpacks are pinned by version, listed in detection order, which replaces the builder's default order.
- *   Liberica, the JDK and native image kit, comes from the builder itself.
- * - BellSoft publishes only the rolling tags `musl` and `glibc` for its builder and run image, so those two are pinned
- *   by digest, the only fixed reference they have.
- * - The `health-checker` buildpack adds `/workspace/health-check` (Tiny Health Checker), which the container
- *   healthcheck runs with `THC_PORT` and `THC_PATH` set.
- * - `-Os` optimizes the native image for size: a binary a fifth smaller for about 10% more CPU per request.
+ * - Paketo buildpacks are pinned by version, in detection order, which replaces the builder's default order. Liberica (the
+ *   JDK and native image kit) comes from the builder.
+ * - The builder and the run image are pinned by digest (BellSoft publishes only the rolling tags `musl` and `glibc`).
+ * - The `health-checker` buildpack adds `/workspace/health-check` (Tiny Health Checker), which the container healthcheck runs
+ *   with `THC_PORT` and `THC_PATH` set.
+ * - `-Os` optimizes for size.
  *
- * To update, bump the version in each reference, or look up a new digest with
- * `docker buildx imagetools inspect <image>:<tag>`.
+ * To update: bump the version in each reference, or look up a digest with `docker buildx imagetools inspect <image>:<tag>`.
  */
 tasks.bootBuildImage {
     val profiling = providers.gradleProperty("nativeProfiling").isPresent
