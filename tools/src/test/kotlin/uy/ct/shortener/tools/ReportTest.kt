@@ -27,7 +27,7 @@ class ReportTest {
 
     private fun run(vararg arguments: String) = run(Report, *arguments)
 
-    private fun expected(name: String) = Files.readString(repositoryRoot.resolve("src/test/resources/report/$name"))
+    private fun expected(name: String) = Files.readString(repositoryRoot.resolve("tools/src/test/resources/report/$name"))
 
     @Test
     fun `the comparison of variants is what the Python report printed, for two sets of results`() {
@@ -60,7 +60,7 @@ class ReportTest {
 
     @Test
     fun `the heap histogram is what the Python one printed for a dump with every kind of record`() {
-        assertThat(run("hprof", "src/test/resources/report/sample.hprof", "8").stdout).isEqualTo(expected("sample.hprof.expected.txt"))
+        assertThat(run("hprof", "tools/src/test/resources/report/sample.hprof", "8").stdout).isEqualTo(expected("sample.hprof.expected.txt"))
     }
 
     @Test
@@ -72,7 +72,7 @@ class ReportTest {
 
     @Test
     fun `a heap dump that ends in the middle of a record is said in words and not a stack trace`() {
-        val whole = Files.readAllBytes(repositoryRoot.resolve("src/test/resources/report/sample.hprof"))
+        val whole = Files.readAllBytes(repositoryRoot.resolve("tools/src/test/resources/report/sample.hprof"))
         val cut = directory.resolve("cut.hprof").also { Files.write(it, whole.copyOf(whole.size / 3)) }
 
         val result = run("hprof", cut.toString())
@@ -83,7 +83,7 @@ class ReportTest {
 
     @Test
     fun `a number that is not a number is a usage error and not a stack trace`() {
-        val sample = repositoryRoot.resolve("src/test/resources/report/sample.hprof").toString()
+        val sample = repositoryRoot.resolve("tools/src/test/resources/report/sample.hprof").toString()
 
         val top = run("hprof", sample, "many")
         val end = run("server", "http://localhost:1", "soon", "60")

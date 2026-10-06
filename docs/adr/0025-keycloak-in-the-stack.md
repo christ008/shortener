@@ -25,7 +25,7 @@ tokens, could not run without building the provider first, and the provider is t
   endpoint is limited to ten requests a second per address. Administering Keycloak is done from the node with `kcadm.sh`.
 - **The issuer is public, the keys are fetched privately**: `KC_HOSTNAME` is the public URL, so tokens carry it as `iss`, and the
   application reads the signing keys from `http://keycloak:8080` over the stack's encrypted network.
-- **A production realm**, `shortener-realm.production.template.json`, made by `tools/Realms.java production` from the public keys of two
+- **A production realm**, `shortener-realm.production.template.json`, made by `tools/run Realms production` from the public keys of two
   clients: `demo-client` (create, read, delete; no custom codes) and `admin-client` (`shortlinks:admin`). No users, TLS required,
   brute-force detection, five-minute tokens, no standard flow, and events on so failed sign-ins are logged. It holds nothing
   secret, so it is a Docker config and not a secret.

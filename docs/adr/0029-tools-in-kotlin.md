@@ -1,0 +1,71 @@
+# 0029. The tools are Kotlin, in a build of their own
+
+- Status: Accepted, 2026-10-06. Supersedes the compute tier of [0026](0026-scripting-standard.md) and the tools of [0027](0027-tools-on-jdk-25.md). What they decided about `sh` for starting programs, and about the DPoP client being one Java file for JDK 17 ([0020](0020-dpop-client-in-java.md)), stands
+- Evidence: `tools/`, `ToolsLauncherTest`, `SmokeTest`, `ReportTest`, `RealmsTest`, `DevSetupTest`
+
+## Problem
+
+[0026](0026-scripting-standard.md) put every script that computes in Java and [0027](0027-tools-on-jdk-25.md) moved the tools to
+JDK 25 as compact source files. What that left, measured on one machine, one run each:
+
+- **A second language in a Kotlin project.** The tools were 1,043 lines of Java (`Cli`, `DevSetup`, `RealmTemplate`, `Realms`,
+  `Report`, `Smoke`) beside the 810-line client, against 2,206 lines of Kotlin in the application.
+- **Tests that start a process for each case.** The tests of three tools ran the tool as a subprocess, inside the application's
+  `./gradlew test`: 9 cases in 17.5 s for `Realms`, 11 in 31 s for `Report` and 5 in 45 s for `DevSetup`. A tool exits and
+  reads the working directory and the environment of the process, so it could not be called from a test any other way. The
+  deployment files that those tests read were inputs of every test task of the application.
+- **What was not tested.** `Smoke`, which decides whether a release is published, had no test and was only tried against a
+  live instance. The questions `dev-setup` asks on a terminal were tried by hand.
+- **A tool reaching into the client.** `Report` read JSON with the reader inside `DpopClient.java`, which is the one file that
+  people outside the project run.
+- **The reason for rejecting Kotlin no longer holds.** [0026](0026-scripting-standard.md) rejected it as "a runtime or a build
+  the project does not otherwise need for tooling". The project builds with Gradle and Kotlin.
+
+## Decision
+
+- **The tools are Kotlin, in `tools/`, a Gradle build of its own.** The application's build is not configured to run a tool,
+  because its toolchain asks for a JDK 25: `./gradlew help` on the application's build fails on a machine without one, and
+  `./gradlew -p tools installDist` built and ran the tools with only a JDK 21. `settings.gradle.kts` includes it so that
+  `./gradlew test` tests the tools too, which is all CI and a release run; it is configured only when one of its tasks is asked for.
+- **They need a JDK 17 or newer**, the baseline of the DPoP client. The bytecode is 17, and `-Xjdk-release=17` makes a call to an
+  API of a newer JDK a compile error: `Console.isTerminal`, which exists from 22, would otherwise compile on a 25 and fail on a 21.
+  They were run on 21 and 25 here. CI builds and runs them on 17 in the `stack` job, which is where this is first checked.
+- **`tools/run TOOL` is still how a tool starts**, with the same names (`Realms`, `DevSetup`, `Smoke`, `Report`), so `perf/*.sh`,
+  the workflows and the shims did not change. It asks Gradle to build only when a source is newer than the last build.
+- **A tool runs against a `Context`** (the root of the repository, the environment, the streams and whoever may be asked), and
+  returns its status. A test calls it in process, with a directory and an environment of its own.
+- **The DPoP client is not touched.** `DpopClient.java` is compiled as it is, for 17 with `-Xlint:all -Werror`, with the tools.
+  `Smoke` calls it as a library, so there is one client and not a copy; `DevSetup` runs it as a process for each key, together,
+  from the same classes.
+- **JSON is Jackson**, which the application already uses.
+
+## Consequences
+
+- Good: the tests run in process. `RealmsTest` took 0.3 to 0.7 s (9 cases, 17.5 s before), `ReportTest` 1.0 to 1.5 s (11 cases,
+  31 s before) and `DevSetupTest` 12 to 18 s (8 cases, 5 and 45 s before: it still starts the client for each key).
+- Good: what had no test has one. `Smoke` runs against a stand-in of the API, and fails on one wrong answer, on no answer at all
+  and on too many arguments. `dev-setup`'s questions run against a prompt that answers from a list. When `tools/run` builds, and
+  when it does not, is tested against a `gradlew` that only records its calls.
+- Good: the output is the same. Each tool was compared with its Java version on the same inputs: `Realms` byte for byte, `DevSetup`
+  in what it prints and writes apart from the keys, which are random, and `Report` on every result the repository holds. A heap dump cut short, and a number that is not a number, are now said
+  in words and not as a stack trace.
+- Good: `Report` no longer depends on the client's internals, and `dev-setup` makes its four keys together.
+- Cost: **the first run builds**. With the dependencies already downloaded and no Gradle daemon running it took 33 s here;
+  downloading them comes on top of that, and was not timed. A run after it takes about 1.1 s, as
+  `java tools/Realms.java` did (1.2 s), because `tools/run` does not ask Gradle again until a source changes. Asking it anyway
+  cost 1.5 s with a warm daemon and 10.7 s with a cold one. JVM flags for a short process gained 5 to 12%, which is not worth a setting.
+- Cost: **`dev-setup`, the first step of the README, needs the Gradle wrapper**, which is more to download than a JDK. A person
+  who only wants to call the API still needs only the client.
+- Cost: versions are written twice, Kotlin and the Spring Boot BOM in `tools/build.gradle.kts` as in the application's build, and
+  Dependabot watches neither here. A test dependency (Nimbus) is pinned by hand because the Boot BOM does not manage it.
+- Cost: `./gradlew devSetup`, which runs `tools/run`, starts a second Gradle, and a tool can no longer be run as `java File.java`.
+- Cost: this replaces [0026](0026-scripting-standard.md) and [0027](0027-tools-on-jdk-25.md) on the day they were accepted.
+
+## Rejected
+
+- Keeping them in Java: the cost is above, and the only thing it had in its favour was starting without a build.
+- A module of the application's build: running a tool would configure the application and need its JDK 25, and the tests of the
+  tools would still belong to it.
+- Moving the DPoP client to Kotlin: it is what people outside the project run with only a JDK 17 and no build
+  ([0020](0020-dpop-client-in-java.md)).
+- Not in the history: Kotlin scripts (`.main.kts`) run without a build. They were not tried.

@@ -24,7 +24,7 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 You need Docker and JDK 25. The client below runs on any JDK 17 or newer.
 
 ```bash
-deploy/keycloak/dev-setup     # once: makes your own dev keys and passwords, and asks what it needs
+deploy/keycloak/dev-setup     # once: makes your own dev keys and passwords, and asks what it needs (builds its tools the first time)
 ./gradlew bootRun
 ```
 

@@ -9,7 +9,7 @@
 # - It has a database of its own in the stack's Postgres (deploy/postgres/keycloak-database.sh), and a role that only it uses.
 # - The edge forwards the shortener realm and its static files, and nothing else (deploy/edge/keycloak.conf): not the master
 #   realm and not the administration console. Administer it from the node, see docs/DEPLOY.md.
-# - The realm is imported the first time it starts, and not again: it comes from tools/Realms.java production (./gradlew productionRealm).
+# - The realm is imported the first time it starts, and not again: it comes from `tools/run Realms production` (./gradlew productionRealm).
 # - The application reads its keys from Keycloak over the stack's network, JWKS_URI=http://keycloak:8080/realms/shortener/
 #   protocol/openid-connect/certs, while ISSUER_URI is the public one, ${PUBLIC_URL}/realms/shortener.
 services:

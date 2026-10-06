@@ -87,10 +87,13 @@ tasks.withType<Test> {
         "compose.prod.observability.yaml",
         "deploy/stack/.env.example",
         "deploy/keycloak/DpopClient.java",
-        "deploy/keycloak/dev-setup",
-        "deploy/keycloak/shortener-realm.template.json",
         "deploy/postgres/bootstrap.sql",
     )
+}
+
+// `./gradlew test` tests the tools too, which are a build of their own (settings.gradle.kts): CI and a release run only that.
+tasks.test {
+    dependsOn(gradle.includedBuild("tools").task(":test"))
 }
 
 tasks.bootRun {

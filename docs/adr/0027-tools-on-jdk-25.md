@@ -1,6 +1,6 @@
 # 0027. The tools run on JDK 25, the client people outside the project run stays on 17
 
-- Status: Accepted, 2026-10-06. Refines [0026](0026-scripting-standard.md), which put every Java script on the JDK 17 baseline
+- Status: Superseded by [0029](0029-tools-in-kotlin.md) for the tools; the client for people outside the project stays one Java file on JDK 17, as decided here. Accepted 2026-10-06. Refines [0026](0026-scripting-standard.md), which put every Java script on the JDK 17 baseline
 - Evidence: `tools/`, `gradle/tooling.gradle.kts`, `RealmsTest`, `ToolingTasksTest`, `DpopClient.java`
 
 ## Problem
