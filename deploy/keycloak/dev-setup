@@ -1,29 +1,7 @@
 #!/bin/sh
 # Makes the cryptographic material and the passwords a local development setup needs, so none of it is committed. The work is
-# tools/DevSetup.java, which says what it writes and how to use it: this only finds a JDK 25 for it.
+# tools/DevSetup.java, which says what it writes and how to use it: this only starts it, on JDK 25.
 #
 #   deploy/keycloak/dev-setup [--yes] [--force] [--show]
-#
-# It runs the java of JAVA_HOME when that is set, and else the one on the PATH. `./gradlew devSetup` runs it with the right one.
 set -eu
-
-here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "$here/../.." && pwd)
-
-java=java
-[ -z "${JAVA_HOME:-}" ] || java=$JAVA_HOME/bin/java
-command -v "$java" >/dev/null 2>&1 || {
-  echo "dev-setup: needs java 25, and found none (see JAVA_HOME and the PATH), or run ./gradlew devSetup" >&2
-  exit 1
-}
-
-# tools/DevSetup.java is a compact source file, which a JDK older than 25 refuses with a message about a preview feature: say
-# what is needed here instead.
-java_major=$("$java" -version 2>&1 | sed -n 's/^[a-z]* version "\(1\.\)\{0,1\}\([0-9]*\).*/\2/p' | head -1)
-if [ -z "$java_major" ] || [ "$java_major" -lt 25 ]; then
-  echo "dev-setup: needs JDK 25, and found ${java_major:-none} (see JAVA_HOME and the PATH), or run ./gradlew devSetup" >&2
-  exit 1
-fi
-
-cd "$root"
-exec "$java" tools/DevSetup.java "$@"
+exec "$(dirname "$0")/../../tools/run" DevSetup "$@"

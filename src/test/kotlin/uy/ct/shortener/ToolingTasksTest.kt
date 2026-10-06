@@ -24,7 +24,7 @@ class ToolingTasksTest {
 
     @Test
     fun `every task names itself in the tooling group, with a description`() {
-        val tasks = Regex("""(?m)^tooling\("(\w+)", "([^"]+)"""").findAll(tooling).toList()
+        val tasks = Regex("""(?m)^tooling\(\s*"(\w+)",\s*"([^"]+)"""").findAll(tooling).toList()
 
         assertThat(tasks.map { it.groupValues[1] }).containsExactly("devSetup", "devPasswords", "keygen", "productionRealm", "dpopCall", "smoke", "stackPrepare")
         tasks.forEach { assertThat(it.groupValues[2]).isNotBlank }
@@ -38,8 +38,9 @@ class ToolingTasksTest {
             "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", // inside Postgres
             "deploy/keycloak/dev-setup", "tools/DevSetup.java", // the script starts the tool, and both are listed through devSetup and devPasswords
             "deploy/keycloak/DpopClient.java", // listed through its tasks
+            "perf/smoke.sh", // the shim of tools/run that the workflows call, listed through smoke
         )
-        val libraries = setOf("tools/Cli.java", "tools/RealmTemplate.java") // shared by the tools, started by none
+        val libraries = setOf("tools/Cli.java", "tools/RealmTemplate.java", "tools/DpopClient.java") // shared by the tools or a link to the client, started by none
         val scripts = listOf("deploy", "tools").flatMap { root ->
             Files.walk(Path.of(root)).use { stream ->
                 stream.filter { Files.isRegularFile(it) }

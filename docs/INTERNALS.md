@@ -475,7 +475,7 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 | Every DPoP request is `401` with no reason | the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class | `DpopRuntimeHints`, plus a startup check that fails if DPoP is required and the filter is missing |
 | Authorized calls fail with `500` | SpEL reads `authentication.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
 
-Unit tests cannot run a native image, so `perf/smoke.sh` exercises every endpoint with real tokens (21 checks).
+Unit tests cannot run a native image, so `perf/smoke.sh` (`tools/Smoke.java`) exercises every endpoint with real tokens (21 checks).
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
 
 ## Deployment

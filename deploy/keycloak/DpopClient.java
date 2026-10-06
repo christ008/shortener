@@ -121,7 +121,7 @@ public final class DpopClient {
         switch (args[0]) {
             case "keygen" -> keygen(args[1]);
             case "token" -> System.out.println(fetchToken(Path.of(args[1]), args[2], newKey()).accessToken());
-            case "call" -> call(Path.of(args[1]), args[2], args[3], args[4], args.length > 5 ? args[5] : null);
+            case "call" -> printCall(Path.of(args[1]), args[2], args[3], args[4], args.length > 5 ? args[5] : null);
             case "login" -> login(args[1], args[2], args[3], args[4], args.length > 5 ? args[5] : null);
             default -> throw new IllegalStateException("unreachable: " + args[0]);
         }
@@ -168,14 +168,43 @@ public final class DpopClient {
         System.out.println(Json.write(publicJwk));
     }
 
-    private void call(Path keyFile, String clientId, String method, String url, String body) throws Exception {
+    private void printCall(Path keyFile, String clientId, String method, String url, String body) throws Exception {
+        Answer answer = answer(keyFile, clientId, method, url, body);
+        System.out.println(answer.status());
+        if (answer.location() != null) System.out.println("Location: " + answer.location());
+        answer.challenges().forEach(header -> System.out.println("WWW-Authenticate: " + header));
+        System.out.println(answer.body());
+    }
+
+    // ---- the client as a library ------------------------------------------------------------------------------------
+
+    /** What the API answered to a call: the status, the {@code Location} if any, the {@code WWW-Authenticate} challenges, the body. */
+    public record Answer(int status, String location, List<String> challenges, String body) {}
+
+    /**
+     * Makes a call as {@code clientId}, the way the {@code call} command does but without a new process, for the tools of
+     * this repository that make many calls. It signs in each time and returns the answer whatever its status: a status that
+     * is an error is an answer, and {@code Failure}s (the identity provider said no, the server is not there) are thrown.
+     */
+    public static Answer call(Path keyFile, String clientId, String method, String url, String body) throws Exception {
+        return Shared.INSTANCE.answer(keyFile, clientId, method, url, body);
+    }
+
+    /** A new access token for {@code clientId}, bound to a key that nobody else has, as the {@code token} command prints it. */
+    public static String token(Path keyFile, String clientId) throws Exception {
+        return Shared.INSTANCE.fetchToken(keyFile, clientId, newKey()).accessToken();
+    }
+
+    private static final class Shared {
+        static final DpopClient INSTANCE = new DpopClient();
+    }
+
+    private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws Exception {
         KeyPair dpopKey = newKey();
         Token token = fetchToken(keyFile, clientId, dpopKey);
         HttpResponse<String> response = send(apiRequest(method, url, body, token.accessToken(), dpopKey));
-        System.out.println(response.statusCode());
-        response.headers().firstValue("Location").ifPresent(location -> System.out.println("Location: " + location));
-        response.headers().allValues("WWW-Authenticate").forEach(header -> System.out.println("WWW-Authenticate: " + header));
-        System.out.println(response.body());
+        return new Answer(response.statusCode(), response.headers().firstValue("Location").orElse(null),
+                response.headers().allValues("WWW-Authenticate"), response.body());
     }
 
     /**

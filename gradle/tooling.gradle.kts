@@ -27,13 +27,14 @@ fun setting(name: String): String =
 
 fun optional(name: String): String? = (findProperty(name) as String?)?.takeIf { it.isNotBlank() }
 
-fun tooling(name: String, what: String, command: () -> List<String>) =
+fun tooling(name: String, what: String, settings: () -> Map<String, String> = { emptyMap() }, command: () -> List<String>) =
     tasks.register<Exec>(name) {
         group = "tooling"
         description = what
         workingDir = rootDir
         doFirst {
             environment("JAVA_HOME", javaHome)
+            environment(settings())
             commandLine(command())
         }
         commandLine("true")
@@ -60,8 +61,11 @@ tooling("dpopCall", "Calls the API with DPoP. -Pkey=FILE -Pclient=NAME -Purl=URL
         listOfNotNull(optional("body"))
 }
 
-tooling("smoke", "Checks every endpoint of a running instance. -Pbase=URL, default http://localhost:8080") {
-    listOf("perf/smoke.sh") + listOfNotNull(optional("base"))
+tooling(
+    "smoke", "Checks every endpoint of a running instance. -PbaseUrl=URL, default http://localhost:8080, and -Pmgmt=URL, default http://localhost:8081",
+    settings = { listOfNotNull(optional("mgmt")?.let { "MGMT" to it }).toMap() },
+) {
+    listOf(java, "tools/Smoke.java") + listOfNotNull(optional("baseUrl"))
 }
 
 tooling("stackPrepare", "Makes throwaway secrets and a certificate to rehearse the production stack on this machine.") {

@@ -39,7 +39,8 @@ In this order, each a change of its own, and none changes behavior:
    in `dev-setup` and the script `make-production-realm`, which is gone. Done 2026-10-06.
 3. `dev-setup`: its prompting, random secrets and `.env` merge moved to `tools/DevSetup.java`, and the realm logic both it and
    `Realms` use to `tools/RealmTemplate.java`. What remains of the script is under 30 lines that find a JDK 25. Done 2026-10-06.
-4. `perf/Smoke.java` for `smoke.sh`, which already calls `DpopClient.java` once per check, and `perf/Report.java` for the three
+4. `tools/Smoke.java` for `smoke.sh`, which called `DpopClient.java` once per check (done 2026-10-06: the 21 checks in one process, 2.4 s
+   against 16 s, run against a live instance), and `tools/Report.java` for the three
    Python scripts.
    Gradle tasks for every script a person runs: done 2026-10-06.
 5. The `bash` scripts of `perf/` (`bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh`) to POSIX `sh`, with what parses

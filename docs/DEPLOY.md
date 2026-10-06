@@ -109,12 +109,12 @@ COMPOSE_FILES="compose.prod.yaml deploy/stack/local/compose.local.yaml" RESOLVE_
 
 The `--listen-addr` keeps the Swarm manager off the network. `prepare.sh` runs `deploy/keycloak/dev-setup --yes` if it has
 not been run, because the rehearsal's Keycloak needs the dev realm and its password. Smoke test it, trusting the
-certificate for both Java and curl:
+certificate as any Java program does:
 
 ```bash
 keytool -importcert -noprompt -alias local -file secrets/tls_cert -keystore ts.p12 -storetype PKCS12 -storepass changeit
 JAVA_TOOL_OPTIONS="-Djavax.net.ssl.trustStore=$PWD/ts.p12 -Djavax.net.ssl.trustStorePassword=changeit" \
-  CURL_OPTS="--cacert secrets/tls_cert" MGMT=http://localhost:8081 perf/smoke.sh https://localhost
+  MGMT=http://localhost:8081 perf/smoke.sh https://localhost
 ```
 
 Remove it with `docker stack rm shortener`, then `docker swarm leave --force`.

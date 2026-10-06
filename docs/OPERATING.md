@@ -219,10 +219,11 @@ client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr
 | `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | create the roles and databases when Postgres first starts | sh | done |
 | `deploy/keycloak/entrypoint.sh` | read Keycloak's secrets from files and start it | sh | done |
 | `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP, make client keys | Java | done |
-| `deploy/keycloak/dev-setup` | find a JDK 25 and start `tools/DevSetup.java` | sh | done: under 30 lines |
+| `deploy/keycloak/dev-setup` | start `tools/DevSetup.java` | sh | done: a 3-line shim of `tools/run` |
 | `tools/DevSetup.java` | make the dev keys, realm, passwords and `.env`, asking on a terminal | Java 25 | done |
 | `tools/Realms.java`, `tools/RealmTemplate.java`, `tools/Cli.java` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Java 25 | done |
-| `perf/smoke.sh` | check every endpoint on a running instance | bash | to `perf/Smoke.java` |
+| `tools/Smoke.java`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Java 25 | done: 2.4 s against 16 s |
+| `tools/run` | find a JDK 25 and start a tool of `tools/` | sh | done |
 | `perf/gc-summary.py`, `hprof-histogram.py`, `report.py` | read GC logs, heap dumps and k6 results | Python | to `perf/Report.java` |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | bash | to POSIX sh |
 | `perf/k6/mixed.js` | the load workload | k6 | stays: it is k6's own language |
@@ -236,7 +237,7 @@ Each script a person runs has a Gradle task, listed by `./gradlew tasks --group 
 | `keygen` | `DpopClient.java keygen` | `-Pclient=NAME` |
 | `productionRealm` | `tools/Realms.java production` | `-Pdemo=FILE -Padmin=FILE`, `-Poutput=FILE` |
 | `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL`, `-Pmethod`, `-Pbody` |
-| `smoke` | `perf/smoke.sh` | `-Pbase=URL` |
+| `smoke` | `tools/Smoke.java` | `-PbaseUrl=URL`, `-Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
 
 The tools run on the toolchain's JDK 25 even when `java` on the PATH is older. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself
