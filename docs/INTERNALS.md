@@ -650,8 +650,8 @@ Notes:
 ## Testing
 
 How the tests are counted, and what coverage and mutation testing say about them. Everything below was measured on 2026-10-06 on
-one machine, on the tree of the commit that adds this section on top of `a99abe2`, **without Docker**: the tests that need
-Postgres (Testcontainers) did not run, so the coverage numbers are partial and say so.
+one machine, at `280200b`, **with Docker**: `./gradlew test koverHtmlReport koverXmlReport` and `./gradlew mutationTest`, on a JDK
+25.0.2 (SDKMAN).
 
 ### What is counted
 
@@ -660,40 +660,41 @@ files and scripts of the repository.
 
 | | Tests | Where | Needs Docker |
 |---|---|---|---|
-| The application: domain, service, cache, policy, web, persistence, security, architecture | 232 | `src/test` | at least 100 (23 classes, every one imports `TestcontainersConfiguration`) |
+| The application: domain, service, cache, policy, web, persistence, security, architecture | 232 | `src/test` | 107 of them (23 classes, every one imports `TestcontainersConfiguration`) |
 | Infrastructure of the repository: `ComposeStackTest` 20, `DpopClientTest` 18, `MigrationConventionsTest` 8, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 52 | `src/test` | none |
 | The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 13, `ClientKeysTest` 5, `DpopCallsTest` 6 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 57 | `tools/src/test` | none |
 | **Total** | **341** | | |
 
-So 232 tests are about the service and 109 are about its tooling and infrastructure. All 341 ran with Docker on 2026-10-06 and
-passed (`./gradlew test`, which runs the tools' tests too). The coverage and mutation figures below are from an earlier run without
-Docker, on 225 application tests: the 125 that need no database ran, and the other 100 did not.
+So 232 tests are about the service and 109 are about its tooling and infrastructure. All 341 ran and passed (`./gradlew test`, which
+runs the tools' tests too). Of the 232, 125 need no database and 107 do.
 
 ### Coverage (Kover)
 
 - **Tool.** Kover 0.9.11, which works with Kotlin 2.3.21 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
   writes `build/reports/kover`, and CI keeps it as the `coverage` artifact. It is a measurement: there is no threshold.
-- **Scope.** The classes of `uy.ct.shortener`, from the 174 tests of the 274 in `src/test` that ran without Docker.
-- **Result, partial.** Lines 60.1% (355 of 591), branches 52.3% (126 of 241), methods 61.0%, classes 72.0%. By package, lines:
+- **Scope.** The classes of `uy.ct.shortener`, from the 284 tests of `src/test`, all of which ran. The tools are a build of their own
+  and are not measured.
+- **Result.** Lines 97.1% (574 of 591), branches 87.6% (211 of 241), methods 93.8% (183 of 195), classes 95.1% (78 of 82). By
+  package, lines:
 
   | Package | Covered |
   |---|---|
-  | `shortlink` (the contract) | 64 of 69, 92.8% |
-  | `shortlink.internal` (service, cache, policy) | 150 of 155, 96.8% |
+  | `shortlink` (the contract) | 68 of 69, 98.6% |
+  | `shortlink.internal` (service, cache, policy) | 153 of 155, 98.7% |
+  | `shortlink.internal.web` | 52 of 53, 98.1% |
+  | `security.internal` | 133 of 136, 97.8% |
   | `shortlink.internal.authorization` | 32 of 33, 97.0% |
-  | `security.internal` | 75 of 136, 55.1% |
-  | `shortlink.internal.persistence` | 27 of 85, 31.8% |
-  | `shortlink.internal.web` | 0 of 53 |
-  | `security` | 0 of 52 |
+  | `shortlink.internal.persistence` | 81 of 85, 95.3% |
+  | `security` | 48 of 52, 92.3% |
+  | `uy.ct.shortener` (the migration runner) | 7 of 8, 87.5% |
 
-  The low rows are the ones whose tests start the application against Postgres, so they say that Docker was missing and not how
-  much of them is tested. **The number for the project is the whole suite's, in the coverage artifact of a CI run**, which was not
-  available when this was written.
+- **How to read it.** Covered is not checked: a line a test runs is a line a test could have asserted nothing about, which is what
+  the mutation score below looks at. The branch figure is the lower one, 30 of 241 not taken.
 
 ### Mutation testing (PIT)
 
 - **Tool.** PIT 1.30.0 with its JUnit 5 plugin, through `info.solidsoft.pitest` 1.19.0. `./gradlew mutationTest` writes
-  `build/reports/pitest`. It is run by hand: it is not part of `check` and not in CI, and a run took between one and two minutes.
+  `build/reports/pitest`. It is run by hand: it is not part of `check` and not in CI, and a run took 25 s here with the classes already compiled.
 - **Scope.** The domain types, `DefaultShortLinkService`, the redirect cache, the target-URL policy and the code generator, which
   is 95 mutants (PIT's default mutators). Not the web and persistence adapters, which are tested against HTTP and Postgres. Not
   authorization, which is a framework's expressions, nor the audit trail, configuration, properties and native hints. It runs the
@@ -711,7 +712,7 @@ Docker, on 225 application tests: the 125 that need no database ran, and the oth
   | `Actor.of` negated (no coverage) | how a stored name becomes a client, or an unknown creator, was covered only by the tests with a database | `a stored name is a client, and an absent one is a creator that is not known` |
   | `CreatedByFilter.Only.client` returning `""` (no coverage) | covered by tests that PIT was not running | no new test: `AuditTrailTest` and `ShortLinkAuthorizationTest`, which need no Docker and read it, were added to the tests PIT runs |
 
-- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%.** Eight survive, and none is behaviour of the
+- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same at `280200b`, with the whole suite around it). Eight survive, and none is behaviour of the
   project: six are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
   `CaffeineRedirectCache` and `AllowedHosts`), and two are in code of the standard library that Kotlin inlines (the early return
   of `none` and `any` for an empty collection, an optimisation whose result is the same), so no test can kill them. PIT can be told
