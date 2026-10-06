@@ -15,8 +15,8 @@ production stack itself is rehearsed on one machine ([DEPLOY.md](DEPLOY.md)); th
 
 ## Goal
 
-Someone with a terminal can follow the README against a real URL: get a token, create a link, follow it, see
-that another client cannot see it. No account of theirs, nothing to install but `openssl` and `curl`.
+Someone with a terminal and a JDK 17 or newer can follow the README against a real URL: get a token, create a link,
+follow it, see that another client cannot see it. No account of theirs, nothing to install but the JDK.
 
 ## The shape
 

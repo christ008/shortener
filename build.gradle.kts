@@ -83,7 +83,7 @@ tasks.withType<Test> {
         "compose.prod.yaml",
         "compose.prod.observability.yaml",
         "deploy/stack/.env.example",
-        "deploy/keycloak/dpop",
+        "deploy/keycloak/DpopClient.java",
         "deploy/keycloak/dev-setup",
         "deploy/keycloak/shortener-realm.template.json",
         "deploy/postgres/bootstrap.sql",

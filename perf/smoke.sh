@@ -13,7 +13,7 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 KEYS=$HERE/deploy/keycloak/dev-keys
 fail=0
 
-call() { "$HERE/deploy/keycloak/dpop" call "$KEYS/$1.jwk.json" "$1" "${@:2}"; }
+call() { java "$HERE/deploy/keycloak/DpopClient.java" call "$KEYS/$1.jwk.json" "$1" "${@:2}"; }
 status() { call "$@" | head -1; }
 check() { # name expected actual
   if [ "$2" = "$3" ]; then printf 'ok    %s\n' "$1"; else printf 'FAIL  %s (expected %s, got %s)\n' "$1" "$2" "$3"; fail=$((fail + 1)); fi
@@ -39,7 +39,7 @@ check "unknown code" 404 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/zzzzzz
 check "another client cannot disable" 404 "$(status other-client DELETE "$BASE/api/short-links/$code")"
 check "owner disables" 204 "$(status demo-client DELETE "$BASE/api/short-links/$code")"
 check "disabled link answers gone" 410 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/$code")"
-check "bearer scheme is refused" 401 "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $("$HERE/deploy/keycloak/dpop" token "$KEYS/demo-client.jwk.json" demo-client)" "$BASE/api/short-links")"
+check "bearer scheme is refused" 401 "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(java "$HERE/deploy/keycloak/DpopClient.java" token "$KEYS/demo-client.jwk.json" demo-client)" "$BASE/api/short-links")"
 check "no credentials" 401 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/short-links")"
 check "protected resource metadata" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/.well-known/oauth-protected-resource")"
 check "readiness" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$MGMT/actuator/health/readiness")"

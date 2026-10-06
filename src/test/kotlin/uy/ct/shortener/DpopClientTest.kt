@@ -8,33 +8,48 @@ import com.nimbusds.jwt.SignedJWT
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.lang.reflect.InvocationTargetException
+import java.math.BigInteger
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.URLClassLoader
 import java.net.URLDecoder
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.Optional
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import javax.tools.Diagnostic
+import javax.tools.DiagnosticCollector
+import javax.tools.JavaFileObject
+import javax.tools.ToolProvider
 
 /**
- * `deploy/keycloak/dpop` is not part of the application, but the local setup, the smoke test of the native image and the
- * README all depend on it, and a call that failed before sending anything went unnoticed because the one script that
- * exercises it only runs on demand. This runs the real script as a subprocess, as the other scripts do, against a
- * stand-in for Keycloak and the API, and checks what it sent with a different implementation (Nimbus): the proof is a
- * valid signature by the key it embeds, made for this method and URL and this token, and the client assertion verifies
- * against the client's public key.
+ * `deploy/keycloak/DpopClient.java` is not part of the application, but the local setup, `dev-setup`, the smoke test of
+ * the native image and the README all depend on it, and a call that failed before sending anything went unnoticed because
+ * the one script that exercises it only runs on demand. This runs the real file as a subprocess, as the scripts do,
+ * against a stand-in for Keycloak and the API, and checks what it sent with a different implementation (Nimbus): the
+ * proof is a valid signature by the key it embeds, made for this method and URL and this token, and the client assertion
+ * verifies against the client's public key. The stand-in also plays the login of a single-page app, with PKCE, a
+ * DPoP-bound code and a rotating, key-bound refresh token, so that `login` is exercised too.
  *
- * It signs with openssl and builds the keys and signatures by hand, so the tests also cover the places that go wrong in
- * such code: a key made by another implementation, keys of its own making, signatures whose integers are shorter or
- * longer than 32 bytes, and many runs in a row.
+ * The client is written for JDK 17, and the tests run on whatever JDK builds the project, so one of them compiles it
+ * with `--release 17` and every lint on, and the rest of what it has no unit to call, such as its JSON reader and the
+ * padding of coordinates, is called on that compiled class. Compiling for 17 is not running on 17, so with
+ * `DPOP_CLIENT_JAVA_HOME` set to a JDK 17 the client runs on that one, which is what CI does.
  */
 class DpopClientTest {
 
@@ -55,7 +70,26 @@ class DpopClientTest {
     private val tokenRequests = CopyOnWriteArrayList<TokenRequest>()
     private lateinit var server: HttpServer
 
+    /** What the stand-in answers to the client's own token request: 200, or a status that makes it refuse. */
+    @Volatile
+    private var clientTokenStatus = 200
+
+    // What the stand-in identity provider remembers of a login, as the real one does.
+    @Volatile
+    private var authorizationRequest: Map<String, String> = emptyMap()
+    private val refreshTokenKeys = ConcurrentHashMap<String, String>()
+    private val usedRefreshTokens = ConcurrentHashMap.newKeySet<String>()
+    private val issued = AtomicInteger()
+
+    private val javaHomeOfTheClient = System.getenv("DPOP_CLIENT_JAVA_HOME")?.takeIf { it.isNotBlank() } ?: System.getProperty("java.home")
+
     private val baseUrl get() = "http://localhost:${server.address.port}"
+
+    private fun headersOf(exchange: HttpExchange) = exchange.requestHeaders.entries.associate { (name, values) -> name.lowercase() to values.first() }
+
+    private fun formOf(text: String) = text.split("&").filter { it.isNotEmpty() }.associate {
+        URLDecoder.decode(it.substringBefore("="), StandardCharsets.UTF_8) to URLDecoder.decode(it.substringAfter("=", ""), StandardCharsets.UTF_8)
+    }
 
     @BeforeEach
     fun startStandIn() {
@@ -63,15 +97,47 @@ class DpopClientTest {
         keyFile = directory.resolve("demo-client.jwk.json").also { Files.writeString(it, clientKey.toJSONString()) }
         server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
         server.createContext("/realms/shortener/protocol/openid-connect/token") { exchange ->
-            val form = String(exchange.requestBody.readAllBytes()).split("&").associate {
-                it.substringBefore("=") to URLDecoder.decode(it.substringAfter("="), StandardCharsets.UTF_8)
+            val form = formOf(String(exchange.requestBody.readAllBytes()))
+            val headers = headersOf(exchange)
+            tokenRequests += TokenRequest(headers, form)
+            when (form["grant_type"]) {
+                "authorization_code" -> issueForCode(exchange, headers, form)
+                "refresh_token" -> issueForRefresh(exchange, headers, form)
+                else -> if (clientTokenStatus == 200) {
+                    reply(exchange, 200, """{"access_token":"stand-in-token","token_type":"DPoP"}""")
+                } else {
+                    reply(exchange, clientTokenStatus, """{"error":"invalid_client"}""")
+                }
             }
-            tokenRequests += TokenRequest(exchange.requestHeaders.entries.associate { (name, values) -> name.lowercase() to values.first() }, form)
-            reply(exchange, 200, """{"access_token":"stand-in-token","token_type":"DPoP"}""")
+        }
+        server.createContext("/realms/shortener/protocol/openid-connect/auth") { exchange ->
+            authorizationRequest = formOf(exchange.requestURI.rawQuery)
+            exchange.responseHeaders.add("Set-Cookie", "KC_SESSION=abc; Path=/; HttpOnly")
+            reply(
+                exchange,
+                200,
+                """<html><body><form id="kc-form-login" onsubmit="login.disabled = true; return true;" """ +
+                    """action="$baseUrl/login-actions/authenticate?session_code=1&amp;tab_id=2" method="post"></form></body></html>""",
+                "text/html",
+            )
+        }
+        server.createContext("/login-actions/authenticate") { exchange ->
+            val form = formOf(String(exchange.requestBody.readAllBytes()))
+            val signedIn = headersOf(exchange)["cookie"] == "KC_SESSION=abc" && exchange.requestURI.rawQuery == "session_code=1&tab_id=2" &&
+                form["username"] == "alice" && form["password"] == "secret"
+            if (signedIn) {
+                exchange.responseHeaders.add(
+                    "Location",
+                    "http://localhost:3000/app/auth/callback?session_state=s&code=the-code&state=${authorizationRequest["state"]}",
+                )
+                exchange.sendResponseHeaders(302, -1)
+                exchange.close()
+            } else {
+                reply(exchange, 200, "<html><body><span>Invalid username or password.</span></body></html>", "text/html")
+            }
         }
         server.createContext("/api") { exchange ->
-            val headers = exchange.requestHeaders.entries.associate { (name, values) -> name.lowercase() to values.first() }
-            received += Request(exchange.requestMethod, exchange.requestURI.toString(), headers, String(exchange.requestBody.readAllBytes()))
+            received += Request(exchange.requestMethod, exchange.requestURI.toString(), headersOf(exchange), String(exchange.requestBody.readAllBytes()))
             reply(exchange, 201, """{"shortCode":"abc"}""")
         }
         server.start()
@@ -80,15 +146,52 @@ class DpopClientTest {
     @AfterEach
     fun stopStandIn() = server.stop(0)
 
-    private fun reply(exchange: HttpExchange, status: Int, body: String) {
+    private fun reply(exchange: HttpExchange, status: Int, body: String, contentType: String = "application/json") {
         val bytes = body.toByteArray()
-        exchange.responseHeaders.add("Content-Type", "application/json")
+        exchange.responseHeaders.add("Content-Type", contentType)
         exchange.sendResponseHeaders(status, bytes.size.toLong())
         exchange.responseBody.use { it.write(bytes) }
     }
 
+    private fun thumbprintOf(headers: Map<String, String>) = SignedJWT.parse(headers.getValue("dpop")).header.jwk.computeThumbprint().toString()
+
+    private fun sha256(text: String) = Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(text.toByteArray()))
+
+    private fun accessTokenFor(jkt: String): String {
+        val encoder = Base64.getUrlEncoder().withoutPadding()
+        val header = encoder.encodeToString("""{"alg":"ES256","typ":"at+jwt"}""".toByteArray())
+        val payload = encoder.encodeToString("""{"sub":"alice","cnf":{"jkt":"$jkt"}}""".toByteArray())
+        return "$header.$payload.stand-in-signature"
+    }
+
+    private fun issueTokens(exchange: HttpExchange, jkt: String) {
+        val refresh = "refresh-${issued.incrementAndGet()}"
+        refreshTokenKeys[refresh] = jkt
+        reply(exchange, 200, """{"access_token":"${accessTokenFor(jkt)}","token_type":"DPoP","refresh_token":"$refresh"}""")
+    }
+
+    private fun issueForCode(exchange: HttpExchange, headers: Map<String, String>, form: Map<String, String>) {
+        val jkt = thumbprintOf(headers)
+        val valid = form["code"] == "the-code" && sha256(form.getValue("code_verifier")) == authorizationRequest["code_challenge"] &&
+            jkt == authorizationRequest["dpop_jkt"]
+        if (valid) issueTokens(exchange, jkt) else reply(exchange, 400, """{"error":"invalid_grant"}""")
+    }
+
+    private fun issueForRefresh(exchange: HttpExchange, headers: Map<String, String>, form: Map<String, String>) {
+        val refresh = form.getValue("refresh_token")
+        val jkt = thumbprintOf(headers)
+        val valid = refreshTokenKeys[refresh] == jkt && !usedRefreshTokens.contains(refresh)
+        if (valid) {
+            usedRefreshTokens += refresh
+            issueTokens(exchange, jkt)
+        } else {
+            reply(exchange, 400, """{"error":"invalid_grant"}""")
+        }
+    }
+
     private fun run(vararg args: String, environment: Map<String, String> = emptyMap()): Output {
-        val process = ProcessBuilder(listOf("sh", "deploy/keycloak/dpop") + args)
+        val java = Path.of(javaHomeOfTheClient, "bin", "java").toString()
+        val process = ProcessBuilder(listOf(java, "deploy/keycloak/DpopClient.java") + args)
             .apply {
                 environment().remove("TRACEPARENT")
                 environment()["TOKEN_URL"] = "$baseUrl/realms/shortener/protocol/openid-connect/token"
@@ -122,9 +225,7 @@ class DpopClientTest {
         assertThat(proof.verify(ECDSAVerifier(proof.header.jwk.toECKey()))).describedAs("signed by the key in its own header").isTrue()
         assertThat(proof.jwtClaimsSet.getStringClaim("htm")).isEqualTo("GET")
         assertThat(proof.jwtClaimsSet.getStringClaim("htu")).describedAs("without the query").isEqualTo("$baseUrl/api/short-links")
-        val tokenHash = Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(MessageDigest.getInstance("SHA-256").digest("stand-in-token".toByteArray()))
-        assertThat(proof.jwtClaimsSet.getStringClaim("ath")).isEqualTo(tokenHash)
+        assertThat(proof.jwtClaimsSet.getStringClaim("ath")).isEqualTo(sha256("stand-in-token"))
     }
 
     @Test
@@ -134,12 +235,14 @@ class DpopClientTest {
         assertThat(output.exitCode).describedAs(output.stderr).isZero()
         val tokenRequest = tokenRequests.single()
         assertThat(tokenRequest.form).containsEntry("grant_type", "client_credentials").containsEntry("client_id", "demo-client")
+            .containsEntry("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 
         val assertion = SignedJWT.parse(tokenRequest.form.getValue("client_assertion"))
         assertThat(assertion.verify(ECDSAVerifier(clientKey.toPublicJWK()))).describedAs("signed by the client's own key").isTrue()
         assertThat(assertion.jwtClaimsSet.issuer).isEqualTo("demo-client")
         assertThat(assertion.jwtClaimsSet.subject).isEqualTo("demo-client")
         assertThat(assertion.jwtClaimsSet.audience).containsExactly("$baseUrl/realms/shortener")
+        assertThat(assertion.jwtClaimsSet.expirationTime.time - assertion.jwtClaimsSet.issueTime.time).describedAs("short lived").isEqualTo(60_000)
 
         val tokenProof = SignedJWT.parse(tokenRequest.headers.getValue("dpop"))
         assertThat(tokenProof.jwtClaimsSet.getStringClaim("htm")).isEqualTo("POST")
@@ -219,70 +322,202 @@ class DpopClientTest {
     }
 
     @Test
-    fun `keeps signing correctly over many runs, whatever the shape of the signature`() {
-        repeat(15) {
-            val output = run("token", keyFile.toString(), "demo-client")
+    fun `signs with a client key whose private scalar starts with a zero byte`() {
+        // About one key in 256 has one, and BigInteger drops it: the case that makes a hand-made encoding fail now and then.
+        var key = ECKeyGenerator(Curve.P_256).keyID("demo-client-key-1").generate()
+        while (key.d.decode()[0] != 0.toByte()) key = ECKeyGenerator(Curve.P_256).keyID("demo-client-key-1").generate()
+        val file = directory.resolve("leading-zero.jwk.json").also { Files.writeString(it, key.toJSONString()) }
 
-            assertThat(output.exitCode).describedAs("run $it: ${output.stderr}").isZero()
-        }
+        val output = call("GET", "/api/short-links", key = file)
 
-        assertThat(tokenRequests).hasSize(15)
-        tokenRequests.forEach { request ->
-            val assertion = SignedJWT.parse(request.form.getValue("client_assertion"))
-            val proof = SignedJWT.parse(request.headers.getValue("dpop"))
-            assertThat(assertion.verify(ECDSAVerifier(clientKey.toPublicJWK()))).isTrue
-            assertThat(proof.verify(ECDSAVerifier(proof.header.jwk.toECKey()))).isTrue
-        }
-        assertThat(tokenRequests.map { it.form.getValue("client_assertion") }).describedAs("a new assertion every time").doesNotHaveDuplicates()
+        assertThat(output.exitCode).describedAs(output.stderr).isZero()
+        val assertion = SignedJWT.parse(tokenRequests.single().form.getValue("client_assertion"))
+        assertThat(assertion.verify(ECDSAVerifier(key.toPublicJWK()))).isTrue()
     }
 
     @Test
-    fun `turns the DER integers of a signature into the 32 byte halves of ES256, whatever their length`() {
-        fun der(r: ByteArray, s: ByteArray): ByteArray {
-            val body = byteArrayOf(0x02, r.size.toByte()) + r + byteArrayOf(0x02, s.size.toByte()) + s
-            return byteArrayOf(0x30, body.size.toByte()) + body
-        }
+    fun `signs a person in with a code bound to its key, refreshes the token, and calls the API as them`() {
+        val output = run("login", "alice", "secret", "GET", "$baseUrl/api/short-links")
 
-        fun escapes(bytes: ByteArray) = bytes.joinToString("") { "\\0%03o".format(it.toInt() and 0xff) }
+        assertThat(output.exitCode).describedAs(output.stderr).isZero()
+        assertThat(output.stdout).contains(
+            "1. signed in as alice; redirected to http://localhost:3000/app/auth/callback with a code",
+            "2. token_type DPoP, refresh token issued",
+            "   bound to this client's key: true",
+            "4. refreshed with the same key; new token bound to it: true, refresh token rotated: true",
+            "   reusing the old refresh token: refused, as rotation requires",
+            "   refreshing with a different key: refused",
+            "5. GET $baseUrl/api/short-links -> 201",
+        )
+        assertThat(output.stdout.single { it.startsWith("   claims ") }).contains(""""sub":"alice"""")
+        assertThat(authorizationRequest)
+            .containsEntry("client_id", "shortener-ui")
+            .containsEntry("response_type", "code")
+            .containsEntry("code_challenge_method", "S256")
+            .containsEntry("redirect_uri", "http://localhost:3000/app/auth/callback")
+        assertThat(tokenRequests.map { it.form["grant_type"] }).containsExactly("authorization_code", "refresh_token", "refresh_token", "refresh_token")
 
-        val high = ByteArray(32) { (0x80 + it).toByte() }
-        val low = ByteArray(32) { (it + 1).toByte() }
+        val request = received.single()
+        val latestAccessToken = request.headers.getValue("authorization").removePrefix("DPoP ")
+        val proof = SignedJWT.parse(request.headers.getValue("dpop"))
+        assertThat(proof.verify(ECDSAVerifier(proof.header.jwk.toECKey()))).isTrue()
+        assertThat(proof.jwtClaimsSet.getStringClaim("ath")).isEqualTo(sha256(latestAccessToken))
+        assertThat(proof.header.jwk.computeThumbprint().toString()).isEqualTo(authorizationRequest["dpop_jkt"])
+        assertThat(request.headers).doesNotContainKey("content-type")
+    }
+
+    @Test
+    fun `says why a login failed, in a line`() {
+        val output = run("login", "alice", "wrong", "GET", "$baseUrl/api/short-links")
+
+        assertThat(output.exitCode).isEqualTo(1)
+        assertThat(output.stderr).contains("DpopClient: the login did not redirect (status 200): Invalid username or password.")
+        assertThat(received).isEmpty()
+    }
+
+    @Test
+    fun `says what the token endpoint answered, in a line, when it refuses the client`() {
+        clientTokenStatus = 401
+
+        val output = call("GET", "/api/short-links")
+
+        assertThat(output.exitCode).isEqualTo(1)
+        assertThat(output.stdout).isEmpty()
+        assertThat(output.stderr).contains("""DpopClient: the token endpoint answered 401: {"error":"invalid_client"}""").doesNotContain("\tat ")
+        assertThat(received).isEmpty()
+    }
+
+    @Test
+    fun `says that the identity provider cannot be reached, in a line`() {
+        val closed = ServerSocket(0).use { it.localPort }
+
+        val output = call("GET", "/api/short-links", environment = mapOf("TOKEN_URL" to "http://localhost:$closed/token"))
+
+        assertThat(output.exitCode).isEqualTo(1)
+        assertThat(output.stderr).contains("DpopClient: could not reach http://localhost:$closed/token").doesNotContain("\tat ")
+    }
+
+    @Test
+    fun `says what is wrong with a key file, in a line`() {
+        val missing = call("GET", "/api/short-links", key = directory.resolve("missing.jwk.json"))
+        val publicOnly = directory.resolve("public.jwk.json").also { Files.writeString(it, clientKey.toPublicJWK().toJSONString()) }
+        val noPrivatePart = call("GET", "/api/short-links", key = publicOnly)
+        val notJson = directory.resolve("not.json").also { Files.writeString(it, "-----BEGIN PRIVATE KEY-----") }
+        val garbage = call("GET", "/api/short-links", key = notJson)
+
+        assertThat(missing.exitCode).isEqualTo(1)
+        assertThat(missing.stderr).contains("DpopClient: could not read the key file")
+        assertThat(noPrivatePart.exitCode).isEqualTo(1)
+        assertThat(noPrivatePart.stderr).contains("is not a private P-256 JWK")
+        assertThat(garbage.exitCode).isEqualTo(1)
+        assertThat(garbage.stderr).contains("DpopClient: not JSON")
+        assertThat(listOf(missing, noPrivatePart, garbage).map { it.stderr }).noneMatch { it.contains("\tat ") }
+        assertThat(tokenRequests).isEmpty()
+    }
+
+    // ---- the JDK 17 baseline ----------------------------------------------------------------------------------------
+
+    @Test
+    fun `compiles for JDK 17 with every lint on and no warning`() {
+        val problems = compileForJdk17(directory.resolve("classes"))
+
+        assertThat(problems).isEmpty()
+        val classFile = Files.readAllBytes(directory.resolve("classes/DpopClient.class"))
+        assertThat(ByteBuffer.wrap(classFile).getShort(6).toInt()).describedAs("class file major version: 61 is Java 17").isEqualTo(61)
+    }
+
+    @Test
+    fun `pads and trims coordinates to the 32 bytes a JWK has`() {
+        val client = compiled.load("DpopClient")
+        fun decoded(value: BigInteger) = Base64.getUrlDecoder().decode(client.invoke("coordinate", value) as String)
+
         val cases = mapOf(
-            "both 32 bytes" to (low to low),
-            "r with the leading zero DER adds for a high bit" to (byteArrayOf(0) + high to low),
-            "r one byte short" to (low.copyOfRange(1, 32) to low),
-            "s of a single byte" to (low to byteArrayOf(5)),
-            "both short" to (low.copyOfRange(2, 32) to low.copyOfRange(1, 32)),
+            "one" to BigInteger.ONE,
+            "a high bit set, so BigInteger adds a sign byte" to BigInteger.TWO.pow(255),
+            "three leading zero bytes" to BigInteger(1, ByteArray(32) { if (it < 3) 0 else 7 }),
+            "all ones" to BigInteger.TWO.pow(256).subtract(BigInteger.ONE),
         )
-        val realOpenssl = ProcessBuilder("sh", "-c", "command -v openssl").start().inputReader().readText().trim()
-        val fakeBin = directory.resolve("bin").also(Files::createDirectories)
-        val fake = fakeBin.resolve("openssl")
-        Files.writeString(
-            fake,
-            "#!/bin/sh\nif [ \"\$1\" = dgst ]; then cat >/dev/null; printf '%b' \"\$FAKE_DER\"; exit 0; fi\nexec $realOpenssl \"\$@\"\n",
-        )
-        fake.toFile().setExecutable(true)
-
-        cases.forEach { (name, pair) ->
-            val (r, s) = pair
-            val process = ProcessBuilder("sh", "-c", ". deploy/keycloak/dpop; sign_es256 unused input")
-                .apply {
-                    environment()["DPOP_AS_LIBRARY"] = "1"
-                    environment()["PATH"] = "$fakeBin:" + environment()["PATH"]
-                    environment()["FAKE_DER"] = escapes(der(r, s))
-                }
-                .start()
-            val signature = process.inputReader().readText().trim()
-            process.waitFor(30, TimeUnit.SECONDS)
-            val raw = Base64.getUrlDecoder().decode(signature)
-
-            val padded = fun(value: ByteArray): ByteArray {
-                val trimmed = value.dropWhile { it == 0.toByte() }.toByteArray()
-                return ByteArray(32 - trimmed.size) + trimmed
-            }
-            assertThat(raw).describedAs(name).hasSize(64)
-            assertThat(raw.copyOfRange(0, 32)).describedAs("$name: r").isEqualTo(padded(r))
-            assertThat(raw.copyOfRange(32, 64)).describedAs("$name: s").isEqualTo(padded(s))
+        cases.forEach { (name, value) ->
+            assertThat(decoded(value)).describedAs(name).hasSize(32)
+            assertThat(BigInteger(1, decoded(value))).describedAs(name).isEqualTo(value)
         }
+    }
+
+    @Test
+    fun `reads and writes the JSON of keys and tokens, and says when it is not JSON`() {
+        val json = compiled.load("DpopClient\$Json")
+
+        val written = json.invoke("write", linkedMapOf("a" to "q\"\\\n\u0001é", "n" to 5L, "list" to listOf(true, null)))
+        assertThat(written).isEqualTo("""{"a":"q\"\\\n\u0001é","n":5,"list":[true,null]}""")
+
+        val parsed = json.invoke("parse", """ { "s" : "a\"bé\\" , "n" : -1.5e2, "nested": {"x": [1, {"y": null}]}, "t": true } """)!!
+        assertThat(parsed.invokeMethod("string", "s")).isEqualTo("a\"bé\\")
+        assertThat(parsed.invokeMethod("string", "n")).describedAs("a number is not a string").isNull()
+        assertThat(parsed.invokeMethod("string", "missing")).isNull()
+
+        listOf("<html>sorry</html>", """{"a":1} x""", """{"a":"unterminated}""", """{"a" 1}""", "", "{,}").forEach { text ->
+            assertThatThrownBy { json.invoke("parse", text) }.describedAs(text).hasMessageStartingWith("not JSON")
+        }
+        assertThatThrownBy { json.invoke("parse", "[1]") }.hasMessageStartingWith("expected a JSON object")
+    }
+
+    @Test
+    fun `finds the action of the login form whatever order its attributes come in`() {
+        val client = compiled.load("DpopClient")
+        fun action(html: String) = (client.invoke("loginFormAction", html) as Optional<*>).orElse(null)
+
+        assertThat(action("""<form id="kc-form-login" onsubmit="x" action="/a?b=1&amp;c=2" method="post">""")).isEqualTo("/a?b=1&c=2")
+        assertThat(action("""<FORM method="post" action="/b" id="kc-form-login">""")).isEqualTo("/b")
+        assertThat(action("""<form id="other" action="/c"><form id="kc-form-login"
+            action="/d">""")).describedAs("not the first form, and a tag over two lines").isEqualTo("/d")
+        assertThat(action("""<form id="other" action="/c">""")).isNull()
+        assertThat(action("no form here")).isNull()
+    }
+
+    // ---- the compiled class, for what has no other way to be called -------------------------------------------------
+
+    private class Compiled(val directory: Path) {
+        private val loader = URLClassLoader(arrayOf(directory.toUri().toURL()), DpopClientTest::class.java.classLoader)
+
+        fun load(name: String): Loaded = Loaded(Class.forName(name, true, loader))
+    }
+
+    private class Loaded(val type: Class<*>) {
+        fun invoke(name: String, vararg arguments: Any?): Any? = invokeOn(null, name, *arguments)
+
+        fun invokeOn(target: Any?, name: String, vararg arguments: Any?): Any? {
+            val method = type.declaredMethods.single { it.name == name && it.parameterCount == arguments.size }
+            method.isAccessible = true
+            try {
+                return method.invoke(target, *arguments)
+            } catch (e: InvocationTargetException) {
+                throw e.targetException
+            }
+        }
+    }
+
+    private fun Any.invokeMethod(name: String, vararg arguments: Any?): Any? = Loaded(javaClass).invokeOn(this, name, *arguments)
+
+    private val compiled: Compiled by lazy {
+        val classes = Files.createDirectories(Path.of("build/tmp/dpop-client-classes"))
+        val problems = compileForJdk17(classes)
+        check(problems.isEmpty()) { "DpopClient.java does not compile for JDK 17:\n" + problems.joinToString("\n") }
+        Compiled(classes)
+    }
+
+    /** The problems, errors and warnings alike, of compiling the client for Java 17, as the baseline requires. */
+    private fun compileForJdk17(output: Path): List<String> {
+        val compiler = ToolProvider.getSystemJavaCompiler() ?: error("the tests need a JDK, not a JRE")
+        val diagnostics = DiagnosticCollector<JavaFileObject>()
+        compiler.getStandardFileManager(diagnostics, null, null).use { files ->
+            Files.createDirectories(output)
+            // No annotation processing: the classpath of the tests holds processors, which have nothing to do with this file.
+            val options = listOf("--release", "17", "-proc:none", "-Xlint:all", "-Werror", "-d", output.toString())
+            val sources = files.getJavaFileObjects(Path.of("deploy/keycloak/DpopClient.java"))
+            compiler.getTask(null, files, diagnostics, options, null, sources).call()
+        }
+        return diagnostics.diagnostics
+            .filter { it.kind != Diagnostic.Kind.NOTE && it.kind != Diagnostic.Kind.OTHER }
+            .map { "${it.kind} line ${it.lineNumber}: ${it.getMessage(null)}" }
     }
 }

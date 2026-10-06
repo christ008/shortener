@@ -21,7 +21,7 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 
 ## Run it locally
 
-You need Docker and JDK 25, and `openssl` and `curl` for the tools below.
+You need Docker and JDK 25, and `openssl`, which `dev-setup` uses for the passwords. The client below runs on any JDK 17 or newer.
 
 ```bash
 deploy/keycloak/dev-setup     # once: makes your own dev keys and passwords, and asks what it needs
@@ -35,10 +35,11 @@ repository, and every developer has different keys.
 
 `bootRun` runs the `dev` profile, starts Postgres and Keycloak from `compose.yaml` with those passwords, and applies the
 Flyway migrations. Clients authenticate with a signed assertion and get tokens bound to their key, so use the client in
-`deploy/keycloak`. It is a shell script that needs only `openssl` and `curl`, and runs on your machine, not in the stack:
+`deploy/keycloak`. It is one Java file that needs only a JDK 17 or newer, with no build step, and it runs on your machine,
+not in the stack:
 
 ```bash
-deploy/keycloak/dpop call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 

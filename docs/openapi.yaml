@@ -7,11 +7,11 @@ info:
   description: |
     Every operation under `/api` needs an access token from the identity provider, and tokens are **bound to the
     client's key** (DPoP, RFC 9449): send `Authorization: DPoP <token>` together with a `DPoP` header holding a proof
-    made for that exact request. A plain `Bearer` token is refused, even a valid one. `deploy/keycloak/dpop`
-    does the whole flow with only `openssl` and `curl`, on your own machine (run `deploy/keycloak/dev-setup` first):
+    made for that exact request. A plain `Bearer` token is refused, even a valid one. `deploy/keycloak/DpopClient.java`
+    does the whole flow with only a JDK 17 or newer, on your own machine (run `deploy/keycloak/dev-setup` first):
 
     ```
-    deploy/keycloak/dpop call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+    java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
       POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
     ```
 
