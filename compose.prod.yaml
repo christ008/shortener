@@ -73,6 +73,8 @@ services:
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: '${ISSUER_URI:?set ISSUER_URI}'
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: '${JWKS_URI:?set JWKS_URI}'
       MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: '${OTLP_ENDPOINT:-http://localhost:4318/v1/traces}'
+      # The hosts links may point to, comma separated. Empty accepts every host: set it on a public instance.
+      SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS: '${ALLOWED_TARGET_HOSTS:-}'
       # The health check runs the Tiny Health Checker that the image carries, against the readiness probe.
       THC_PORT: '8081'
       THC_PATH: /actuator/health/readiness

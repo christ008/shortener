@@ -26,7 +26,7 @@ import uy.ct.shortener.shortlink.ShortLinkService
 import uy.ct.shortener.shortlink.internal.authorization.ManageableLinks
 import uy.ct.shortener.shortlink.internal.authorization.NotFoundWhenDenied
 import uy.ct.shortener.shortlink.internal.authorization.ShortLinkMethodSecurityConfiguration
-import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
+import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopesConfiguration
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertFailsWith
 
@@ -41,7 +41,7 @@ class ShortLinkAuthorizationTest {
     @Configuration
     @EnableMethodSecurity
     @Import(
-        ShortLinkScopes::class,
+        ShortLinkScopesConfiguration::class,
         ShortLinkMethodSecurityConfiguration::class,
         ManageableLinks::class,
         NotFoundWhenDenied::class,
@@ -53,6 +53,9 @@ class ShortLinkAuthorizationTest {
 
         @Bean
         fun redirectCache(): RedirectCache = CaffeineRedirectCache(RedirectCacheProperties(), SimpleMeterRegistry())
+
+        @Bean
+        fun targetUrlPolicy(): TargetUrlPolicy = AnyTarget
 
         @Bean
         fun observations(): ObservationRegistry = ObservationRegistry.NOOP

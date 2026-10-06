@@ -5,6 +5,7 @@ package uy.ct.shortener.shortlink
  *
  * - Generated codes are [GENERATED_LENGTH] base62 characters. Custom codes may be any valid value.
  * - The format is checked on construction, so an invalid code cannot exist.
+ * - [RESERVED] codes would shadow a route of the application, so nobody may choose them. [requireClaimable] says so.
  */
 data class ShortCode(val value: String) {
 
@@ -14,12 +15,17 @@ data class ShortCode(val value: String) {
 
     override fun toString(): String = value
 
+    /** Returns this code, or throws [ShortCodeUnavailableException] if it is one the service keeps for itself. */
+    fun requireClaimable(): ShortCode = if (value in RESERVED) throw ShortCodeUnavailableException(this) else this
+
     companion object {
         const val PATTERN = "[A-Za-z0-9_-]{3,32}"
 
         const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
         const val GENERATED_LENGTH = 7
+
+        val RESERVED = setOf("api", "actuator", "error")
 
         private val REGEX = PATTERN.toRegex()
     }

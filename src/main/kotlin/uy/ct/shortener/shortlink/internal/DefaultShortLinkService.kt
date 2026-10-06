@@ -13,7 +13,6 @@ import uy.ct.shortener.shortlink.ShortCodeExhaustionException
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.ShortCodeUnavailableException
 import uy.ct.shortener.shortlink.ShortLink
-import uy.ct.shortener.shortlink.ShortLinkDisabledException
 import uy.ct.shortener.shortlink.ShortLinkRepository
 import uy.ct.shortener.shortlink.ShortLinkService
 import uy.ct.shortener.shortlink.internal.authorization.ManageableLinks
@@ -31,7 +30,8 @@ import java.net.URI
  *   through [ManageableLinks], so another client's are not found.
  * - Generated codes are retried a bounded number of times. Each attempt is one atomic
  *   insert-if-absent, so a taken code costs one more attempt.
- * - Custom codes that would shadow an application route (`api`, `actuator`, `error`) are reserved.
+ * - Custom codes that would shadow an application route are reserved ([ShortCode.RESERVED]).
+ * - Which hosts a link may point to is the [TargetUrlPolicy]'s decision, so a public instance can restrict it.
  * - A disabled link keeps its code, so it cannot be registered again.
  * - Redirects go through the [RedirectCache]. Every other read, including the ones that decide who
  *   may see or disable a link, reads the repository, so they never see a stale link.
@@ -42,6 +42,7 @@ class DefaultShortLinkService(
     private val codeGenerator: ShortCodeGenerator,
     private val manageableLinks: ManageableLinks,
     private val redirectCache: RedirectCache,
+    private val targetUrlPolicy: TargetUrlPolicy,
     private val observations: ObservationRegistry,
 ) : ShortLinkService {
 
@@ -49,8 +50,10 @@ class DefaultShortLinkService(
     override fun shorten(targetUrl: String, createdBy: String): ShortLink {
         val uri = parseTargetUrl(targetUrl)
         repeat(MAX_GENERATION_ATTEMPTS) {
-            val result = insert(codeGenerator.generate(), uri, createdBy)
-            if (result is InsertResult.Created) return result.link
+            when (val result = insert(codeGenerator.generate(), uri, createdBy)) {
+                is InsertResult.Created -> return result.link
+                InsertResult.Taken -> Unit
+            }
         }
         throw ShortCodeExhaustionException(MAX_GENERATION_ATTEMPTS)
     }
@@ -58,20 +61,17 @@ class DefaultShortLinkService(
     @MayClaim
     override fun claim(shortCode: ShortCode, targetUrl: String, createdBy: String): ShortLink {
         val uri = parseTargetUrl(targetUrl)
-        if (shortCode.value in RESERVED_CODES) throw ShortCodeUnavailableException(shortCode)
-        return when (val result = insert(shortCode, uri, createdBy)) {
+        return when (val result = insert(shortCode.requireClaimable(), uri, createdBy)) {
             is InsertResult.Created -> result.link
             InsertResult.Taken -> throw ShortCodeUnavailableException(shortCode)
         }
     }
 
-    override fun resolve(shortCode: ShortCode): ShortLink {
-        val link = redirectCache
+    override fun resolve(shortCode: ShortCode): ShortLink =
+        redirectCache
             .find(shortCode) { observed("shortlink.load") { repository.findByShortCode(it) } }
             .orThrow(shortCode)
-        if (link.isDisabled) throw ShortLinkDisabledException(shortCode)
-        return link
-    }
+            .requireActive()
 
     @MayRead
     override fun get(shortCode: ShortCode): ShortLink = manageableLinks.get(shortCode)
@@ -97,11 +97,9 @@ class DefaultShortLinkService(
             URI.create(raw).also(ShortLink::requireValidTargetUrl)
         } catch (ex: IllegalArgumentException) {
             throw InvalidTargetUrlException(raw, ex)
-        }
+        }.let(targetUrlPolicy::require)
 
     companion object {
         private const val MAX_GENERATION_ATTEMPTS = 5
-
-        private val RESERVED_CODES = setOf("api", "actuator", "error")
     }
 }

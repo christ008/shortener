@@ -21,6 +21,14 @@ data class ShortLink(
 
     val isDisabled: Boolean get() = status is LinkStatus.Disabled
 
+    val isActive: Boolean get() = !isDisabled
+
+    /** True when [client] is the client that created this link. */
+    fun isCreatedBy(client: String): Boolean = createdBy == Actor.Client(client)
+
+    /** Returns this link, or throws [ShortLinkDisabledException] if it has been disabled. */
+    fun requireActive(): ShortLink = if (isActive) this else throw ShortLinkDisabledException(shortCode)
+
     init {
         requireValidTargetUrl(targetUrl)
     }

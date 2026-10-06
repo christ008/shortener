@@ -14,6 +14,7 @@ import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.ShortCodeUnavailableException
 import uy.ct.shortener.shortlink.ShortLinkDisabledException
 import uy.ct.shortener.shortlink.ShortLinkNotFoundException
+import uy.ct.shortener.shortlink.TargetUrlNotAllowedException
 import uy.ct.shortener.shortlink.internal.authorization.ManageableLinks
 import java.net.URI
 import java.time.Duration
@@ -33,10 +34,14 @@ class DefaultShortLinkServiceTest {
 
     private val ttl = Duration.ofSeconds(30)
 
-    private fun serviceWith(vararg codes: String, observations: ObservationRegistry = ObservationRegistry.NOOP): Pair<DefaultShortLinkService, GeneratorProbe> {
+    private fun serviceWith(
+        vararg codes: String,
+        observations: ObservationRegistry = ObservationRegistry.NOOP,
+        policy: TargetUrlPolicy = AnyTarget,
+    ): Pair<DefaultShortLinkService, GeneratorProbe> {
         val generator = GeneratorProbe(codes.map(::ShortCode))
         val cache = CaffeineRedirectCache(RedirectCacheProperties(ttl = ttl), SimpleMeterRegistry(), ticker, Runnable::run)
-        return DefaultShortLinkService(repository, generator, ManageableLinks(repository), cache, observations) to generator
+        return DefaultShortLinkService(repository, generator, ManageableLinks(repository), cache, policy, observations) to generator
     }
 
     private class GeneratorProbe(private val codes: List<ShortCode>) : ShortCodeGenerator {
@@ -247,5 +252,37 @@ class DefaultShortLinkServiceTest {
         service.shorten("https://example.com", "owner")
 
         TestObservationRegistryAssert.assertThat(observations).hasNumberOfObservationsWithNameEqualTo("shortlink.insert", 2)
+    }
+
+    @Test
+    fun `refuses a target whose host the policy does not accept, before anything is stored`() {
+        val (service, generator) = serviceWith("aaaaaaa", policy = AllowedHosts(listOf("example.com")))
+
+        val failure = assertFailsWith<TargetUrlNotAllowedException> { service.shorten("https://evil.test/phish", "owner") }
+        assertFailsWith<TargetUrlNotAllowedException> { service.claim(ShortCode("my-promo"), "https://evil.test/", "owner") }
+
+        assertThat(failure.body.detail).contains("evil.test").doesNotContain("example.com")
+        assertThat(generator.calls).isZero()
+        assertThat(repository.saved).isEmpty()
+    }
+
+    @Test
+    fun `accepts a target whose host the policy accepts`() {
+        val (service, _) = serviceWith("aaaaaaa", policy = AllowedHosts(listOf("example.com", "*.example.org")))
+
+        assertThat(service.shorten("https://example.com/a", "owner").shortCode).isEqualTo(ShortCode("aaaaaaa"))
+        assertThat(service.claim(ShortCode("sub-link"), "https://docs.example.org/b", "owner").shortCode).isEqualTo(ShortCode("sub-link"))
+    }
+
+    @Test
+    fun `keeps the reserved codes for the application`() {
+        val (service, _) = serviceWith("aaaaaaa")
+
+        ShortCode.RESERVED.forEach { reserved ->
+            assertFailsWith<ShortCodeUnavailableException>("expected '$reserved' to be reserved") {
+                service.claim(ShortCode(reserved), "https://example.com", "owner")
+            }
+        }
+        assertThat(repository.saved).isEmpty()
     }
 }

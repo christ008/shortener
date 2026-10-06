@@ -58,11 +58,7 @@ class ShortLinkController(
         @RequestParam(required = false) createdBy: String?,
         @SortDefault(sort = ["createdAt"], direction = Sort.Direction.DESC) pageable: Pageable,
     ): ShortLinkPageResponse {
-        val filter = when {
-            createdBy != null -> CreatedByFilter.Only(createdBy)
-            authentication.isAdmin() -> CreatedByFilter.Anyone
-            else -> CreatedByFilter.Only(authentication.name)
-        }
+        val filter = CreatedByFilter.of(createdBy, authentication.name, authentication.isAdmin())
         return ShortLinkPageResponse.from(service.list(filter, pageable))
     }
 

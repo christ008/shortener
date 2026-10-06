@@ -44,7 +44,8 @@ paths:
       summary: Create a short link
       description: |
         Without `customCode` the service picks a random 7-character code. With one, the client also needs the `claim`
-        scope. Codes `api`, `actuator` and `error` are reserved.
+        scope. Codes `api`, `actuator` and `error` are reserved. An instance may accept only some target hosts
+        (`shortener.shortlink.target-urls.allowed-hosts`), and answers `400` for any other.
       security:
         - dpop: ['shortlinks:create']
       parameters:
@@ -352,7 +353,7 @@ components:
 
   responses:
     BadRequest:
-      description: Invalid body, parameter or sort property.
+      description: Invalid body, parameter or sort property, or a target whose host this instance does not accept.
       content:
         application/problem+json:
           schema:

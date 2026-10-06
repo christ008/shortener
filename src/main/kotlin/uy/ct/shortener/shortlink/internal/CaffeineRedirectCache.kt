@@ -70,7 +70,7 @@ class CaffeineRedirectCache(
                 loadedHere = true
                 loaded = load(it)
                 remember(it, loaded)
-                (loaded as? LinkLookup.Found)?.link?.takeUnless(ShortLink::isDisabled)
+                loaded.activeLink()
             }
         } catch (unavailable: StorageUnavailableException) {
             return lastKnown.getIfPresent(shortCode)?.let { LinkLookup.Found(it).also { servedStale.increment() } }
@@ -90,8 +90,14 @@ class CaffeineRedirectCache(
 
     /** Keeps the copy a later outage can fall back to, and drops it once the database says the link is gone or disabled. */
     private fun remember(shortCode: ShortCode, lookup: LinkLookup) {
-        val active = (lookup as? LinkLookup.Found)?.link?.takeUnless(ShortLink::isDisabled)
+        val active = lookup.activeLink()
         if (active != null) lastKnown.put(shortCode, active) else lastKnown.invalidate(shortCode)
+    }
+
+    /** The link, if the lookup found one that still redirects. Caffeine takes a missing value as null. */
+    private fun LinkLookup.activeLink(): ShortLink? = when (this) {
+        is LinkLookup.Found -> link.takeIf(ShortLink::isActive)
+        LinkLookup.Missing -> null
     }
 
     /**

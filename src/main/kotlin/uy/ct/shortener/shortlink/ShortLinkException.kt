@@ -10,8 +10,10 @@ import org.springframework.web.ErrorResponseException
  *
  * - Extends Spring's [ErrorResponseException], so Spring MVC renders it with no handler of our own.
  * - Carries its HTTP [status] and a [detail] message, plus response [headers] when the client needs them.
+ * - Sealed: the failures are exactly the subclasses in this package, so a `when` over them is checked for
+ *   completeness and no outside code can add a failure the API contract does not describe.
  */
-abstract class ShortLinkException(
+sealed class ShortLinkException(
     status: HttpStatus,
     detail: String,
     cause: Throwable? = null,

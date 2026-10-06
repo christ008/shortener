@@ -25,9 +25,15 @@ data class ShortLinkResponse(
         fun from(shortLink: ShortLink) = ShortLinkResponse(
             shortCode = shortLink.shortCode.value,
             targetUrl = shortLink.targetUrl.toString(),
-            createdBy = (shortLink.createdBy as? Actor.Client)?.name,
+            createdBy = when (val creator = shortLink.createdBy) {
+                is Actor.Client -> creator.name
+                Actor.Unknown -> null
+            },
             createdAt = shortLink.createdAt,
-            disabledAt = (shortLink.status as? LinkStatus.Disabled)?.at,
+            disabledAt = when (val status = shortLink.status) {
+                is LinkStatus.Disabled -> status.at
+                LinkStatus.Active -> null
+            },
         )
     }
 }

@@ -62,10 +62,10 @@ class SecurityProblemResponder(
         val errorParam = error?.let { """, error="$it"""" }.orEmpty()
         val dpop = """DPoP realm="shortener"$errorParam, algs="$DPOP_ALGORITHMS""""
         val bearer = """Bearer realm="shortener"$errorParam"""
-        val challenges = when {
-            used == AuthScheme.DPOP || dpopRequired -> listOf(dpop)
-            used == AuthScheme.BEARER -> listOf(bearer)
-            else -> listOf(bearer, dpop)
+        val challenges = when (used) {
+            AuthScheme.DPOP -> listOf(dpop)
+            AuthScheme.BEARER -> if (dpopRequired) listOf(dpop) else listOf(bearer)
+            AuthScheme.NONE -> if (dpopRequired) listOf(dpop) else listOf(bearer, dpop)
         }
         return HttpHeaders().apply { addAll(HttpHeaders.WWW_AUTHENTICATE, challenges) }
     }
