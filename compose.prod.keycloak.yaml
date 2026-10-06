@@ -1,17 +1,15 @@
-# An identity provider for compose.prod.yaml, for a stack that has none: Keycloak in production mode, behind the edge. Add it
-# with a second -c / -f file, and KEYCLOAK=1 for deploy/stack/deploy.sh:
+# Keycloak in production mode behind the edge, for a stack with no identity provider. Add it with a second file:
 #   KEYCLOAK=1 deploy/stack/deploy.sh <version>
 #   docker compose -f compose.prod.yaml -f compose.prod.keycloak.yaml up -d
 #
-# - The image is built from deploy/keycloak/Dockerfile (Keycloak for Postgres, optimized, with an entrypoint that reads its
-#   secrets from files): `docker build -t shortener-keycloak:26.7.5 deploy/keycloak`. On more than one node it must be in a
-#   registry, and KEYCLOAK_IMAGE says where.
-# - It has a database of its own in the stack's Postgres (deploy/postgres/keycloak-database.sh), and a role that only it uses.
-# - The edge forwards the shortener realm and its static files, and nothing else (deploy/edge/keycloak.conf): not the master
-#   realm and not the administration console. Administer it from the node, see docs/DEPLOY.md.
-# - The realm is imported the first time it starts, and not again: it comes from `tools/run Realms production` (./gradlew productionRealm).
-# - The application reads its keys from Keycloak over the stack's network, JWKS_URI=http://keycloak:8080/realms/shortener/
-#   protocol/openid-connect/certs, while ISSUER_URI is the public one, ${PUBLIC_URL}/realms/shortener.
+# - Image: built from deploy/keycloak/Dockerfile: `docker build -t shortener-keycloak:26.7.5 deploy/keycloak`. On more than one
+#   node, push it to a registry (KEYCLOAK_IMAGE).
+# - Database: its own, in the stack's Postgres (deploy/postgres/keycloak-database.sh), with a role only it uses.
+# - Edge: forwards the shortener realm and its static files only (deploy/edge/keycloak.conf). Administer from the node
+#   (docs/DEPLOY.md).
+# - Realm: imported at the first start only. Made by `tools/run Realms production` (./gradlew productionRealm).
+# - Keys: read over the stack's network (JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs).
+#   ISSUER_URI is the public ${PUBLIC_URL}/realms/shortener.
 services:
   keycloak:
     read_only: true
@@ -28,7 +26,7 @@ services:
       KC_DB_PASSWORD_FILE: /run/secrets/db_keycloak_password
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/keycloak_admin_password
-      # The address the world uses, and so the issuer of every token. TLS ends at the edge, which says so in X-Forwarded-*.
+      # Public address: the issuer of every token. TLS ends at the edge.
       KC_HOSTNAME: '${PUBLIC_URL:?set PUBLIC_URL, such as https://shortener.example.com}'
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: xforwarded
@@ -42,7 +40,7 @@ services:
       - {type: tmpfs, target: /opt/keycloak/data/tmp, tmpfs: {size: 67108864, mode: 1023}}
     networks: [edge, data]
     healthcheck:
-      # The image has no curl: a request on a TCP connection from bash, to the management port.
+      # No curl in the image: a bash TCP request to the management port.
       test: ['CMD', 'bash', '-c', 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "\"UP\"" <&3']
       interval: 15s
       timeout: 5s
@@ -56,8 +54,7 @@ services:
       restart_policy: {condition: any, delay: 5s}
       update_config: {order: stop-first, failure_action: rollback}
 
-  # Keycloak's database and role, created when the data directory is first initialised. Where it already exists, run the
-  # script by hand, see keycloak-database.sh.
+  # Keycloak's database and role, created at first initialisation. For an existing database run keycloak-database.sh by hand.
   postgres:
     environment:
       SHORTENER_KEYCLOAK_PASSWORD_FILE: /run/secrets/db_keycloak_password
@@ -70,7 +67,7 @@ services:
       - {source: edge-keycloak, target: /etc/nginx/locations/keycloak.conf}
 
 configs:
-  # Swarm configs cannot change once created, so the names carry a hash of the file. deploy/stack/deploy.sh sets them.
+  # Names carry a hash of the file (set by deploy/stack/deploy.sh).
   keycloak-realm:
     name: 'shortener-keycloak-realm-${KEYCLOAK_REALM_HASH:-local}'
     file: ./deploy/keycloak/shortener-realm.production.json

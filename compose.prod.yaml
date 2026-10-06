@@ -1,15 +1,12 @@
-# The production stack, for `docker stack deploy` on Swarm and for `docker compose` on one host. See docs/DEPLOY.md.
+# The production stack, for `docker stack deploy` on Swarm or `docker compose` on one host (docs/DEPLOY.md).
 #
-# - edge        nginx: TLS, redirect to HTTPS, body and time limits. The only service that publishes ports.
+# - edge        nginx: TLS, redirect to HTTPS, limits. The only service that publishes ports.
 # - shortener   the application, two instances behind the edge.
-# - migrate     applies the database migrations as the role that owns the tables, then exits. Only it holds that role's
-#               password, so code execution in the application cannot drop tables.
-# - postgres    the database. Use a managed one instead if you have it: drop this service and the data network's
-#               dependency on it, and point SPRING_DATASOURCE_URL and SPRING_FLYWAY_URL at it.
+# - migrate     one-shot migrations, as the role that owns the tables. Only it holds that role's password.
+# - postgres    the database. For a managed one, drop this service and point SPRING_DATASOURCE_URL and SPRING_FLYWAY_URL at it.
 #
-# Required variables are listed in deploy/stack/.env.example. Secrets are files, see `secrets:` at the end.
-#
-# What Swarm ignores is listed in docs/INTERNALS.md (Hardening), with what to do about it. `docker compose` honours all of it.
+# Variables: deploy/stack/.env.example. Secrets are files (`secrets:` at the end).
+# Swarm ignores some settings: docs/INTERNALS.md (Hardening). `docker compose` honours all of them.
 
 x-logging: &logging
   driver: json-file
@@ -17,8 +14,8 @@ x-logging: &logging
     max-size: 10m
     max-file: '3'
 
-# Every container starts from this: nothing writable except what is mounted, no privileges to gain, no capabilities.
-# Writable memory is mounted with the long `volumes:` syntax: Swarm silently drops the short `tmpfs:` key.
+# Defaults for every container: read-only root, no capabilities, no privilege gain.
+# Writable memory uses the long `volumes:` syntax (Swarm drops the short `tmpfs:` key).
 x-hardened: &hardened
   read_only: true
   cap_drop: [ALL]
@@ -37,7 +34,7 @@ services:
     volumes:
       - {type: tmpfs, target: /tmp, tmpfs: {size: 67108864, mode: 1023}}
     ports:
-      # Host mode keeps the client's address, which ingress mode replaces with the routing mesh's.
+      # Host mode keeps the client's address.
       - {target: 8080, published: 80, protocol: tcp, mode: host}
       - {target: 8443, published: 443, protocol: tcp, mode: host}
     configs:
@@ -66,18 +63,18 @@ services:
       - {type: tmpfs, target: /tmp, tmpfs: {size: 16777216, mode: 1023}}
     environment:
       SPRING_PROFILES_ACTIVE: production
-      # Every file in /run/secrets is a property named like the file: spring.datasource.password.
+      # Each file in /run/secrets is a property named like the file: spring.datasource.password.
       SPRING_CONFIG_IMPORT: 'configtree:/run/secrets/'
       SPRING_DATASOURCE_URL: '${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/shortener}'
       SPRING_DATASOURCE_USERNAME: shortener_app
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: '${ISSUER_URI:?set ISSUER_URI}'
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: '${JWKS_URI:?set JWKS_URI}'
       MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: '${OTLP_ENDPOINT:-http://localhost:4318/v1/traces}'
-      # The hosts links may point to, comma separated. Set this, or ALLOW_ANY_TARGET=true for a private instance.
+      # Hosts links may point to, comma separated. Set this, or ALLOW_ANY_TARGET=true for a private instance.
       SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS: '${ALLOWED_TARGET_HOSTS:-}'
-      # Without a list the application does not start, unless it is told on purpose to accept every host.
+      # The application does not start with neither.
       SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY: '${ALLOW_ANY_TARGET:-false}'
-      # The health check runs the Tiny Health Checker that the image carries, against the readiness probe.
+      # Health check: Tiny Health Checker against the readiness probe.
       THC_PORT: '8081'
       THC_PATH: /actuator/health/readiness
     secrets:
@@ -94,8 +91,7 @@ services:
     stop_grace_period: 30s
     deploy:
       replicas: 2
-      # Every task has its own address in DNS, so the edge and Prometheus see each one, and a task that fails its
-      # health check disappears from it.
+      # One DNS address per task, so the edge and Prometheus see each one. An unhealthy task drops out.
       endpoint_mode: dnsrr
       resources:
         limits: {cpus: '2', memory: 512M}
@@ -114,7 +110,7 @@ services:
       SHORTENER_MIGRATE_ONLY: 'true'
       SPRING_PROFILES_ACTIVE: production
       SPRING_CONFIG_IMPORT: 'configtree:/run/secrets/'
-      # The datasource is here only because the context needs one to start. Flyway has its own connection.
+      # Needed for the context to start. Flyway has its own connection.
       SPRING_DATASOURCE_URL: '${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/shortener}'
       SPRING_DATASOURCE_USERNAME: shortener_app
       SPRING_FLYWAY_URL: '${SPRING_FLYWAY_URL:-jdbc:postgresql://postgres:5432/shortener}'
@@ -134,7 +130,7 @@ services:
   postgres:
     <<: *hardened
     image: 'postgres:18.6'
-    # The entrypoint starts as root to prepare the data directory, then drops to postgres, so it needs these and no more.
+    # Starts as root to prepare the data directory, then drops to postgres.
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     environment:
       POSTGRES_DB: shortener
@@ -142,7 +138,7 @@ services:
       SHORTENER_APP_PASSWORD_FILE: /run/secrets/db_app_password
       SHORTENER_MIGRATOR_PASSWORD_FILE: /run/secrets/db_migrator_password
       SHORTENER_EXPORTER_PASSWORD_FILE: /run/secrets/db_exporter_password
-    # PostgreSQL 18 keeps the data in a versioned directory below /var/lib/postgresql.
+    # PostgreSQL 18 keeps its data in a versioned directory below /var/lib/postgresql.
     volumes:
       - postgres-data:/var/lib/postgresql
       - {type: tmpfs, target: /tmp, tmpfs: {size: 67108864, mode: 1023}}
@@ -166,7 +162,7 @@ services:
       replicas: 1
       resources:
         limits: {cpus: '2', memory: 1G}
-      # The data is on one node's disk, so the database stays on the node labelled for it:
+      # The database stays on the labelled node (local disk):
       #   docker node update --label-add shortener.postgres=true <node>
       placement:
         constraints: ['node.labels.shortener.postgres == true']
@@ -174,14 +170,12 @@ services:
       update_config: {order: stop-first, failure_action: rollback}
 
 networks:
-  # The edge reaches the application here, carrying tokens and proofs. It also gives the application a way out to the
-  # identity provider. On Swarm the overlay's traffic between nodes is encrypted (IPsec: allow UDP 4789 and ESP between
-  # the nodes).
+  # The edge reaches the application here, and the application reaches the identity provider. Encrypted between Swarm nodes
+  # (IPsec: allow UDP 4789 and ESP).
   edge:
     driver_opts:
       encrypted: 'true'
-  # The application, the migration job and the database. No route out, and nothing else attaches. Encrypted between
-  # nodes as well.
+  # The application, the migration job and the database. No route out. Encrypted between nodes.
   data:
     internal: true
     driver_opts:
@@ -191,7 +185,7 @@ volumes:
   postgres-data: {}
 
 configs:
-  # Swarm configs cannot change once created, so the name carries a hash of the file. deploy/stack/deploy.sh sets it.
+  # The name carries a hash of the file (set by deploy/stack/deploy.sh).
   nginx:
     name: 'shortener-nginx-${NGINX_CONF_HASH:-local}'
     file: ./deploy/edge/nginx.conf
@@ -204,10 +198,8 @@ configs:
   postgres-diagnostics:
     file: ./deploy/postgres/diagnostics.conf
 
-# Files under ${SECRETS_DIR}, default ./secrets, which is ignored by Git. deploy/stack/local/prepare.sh makes throwaway
-# ones for a rehearsal. On Swarm they are stored encrypted and mounted in memory at /run/secrets, readable by every user
-# of the container, so the files should be mode 0444 here. They cannot be changed once created: rotate by creating a
-# new one under a new name and updating the stack.
+# Files under ${SECRETS_DIR} (default ./secrets, ignored by Git). deploy/stack/local/prepare.sh makes throwaway ones.
+# Mode 0444: Swarm mounts them in memory at /run/secrets with the file's mode. Immutable: rotate under a new name.
 secrets:
   tls_cert:
     file: '${SECRETS_DIR:-./secrets}/tls_cert'
