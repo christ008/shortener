@@ -26,7 +26,7 @@ interface AuditTrail {
 
     fun created(link: ShortLink, custom: Boolean)
 
-    fun disabled(link: ShortLink, by: String)
+    fun disabled(link: ShortLink, by: Actor.Client)
 
     fun listed(filter: CreatedByFilter)
 }
@@ -34,7 +34,7 @@ interface AuditTrail {
 object NoAuditTrail : AuditTrail {
     override fun created(link: ShortLink, custom: Boolean) = Unit
 
-    override fun disabled(link: ShortLink, by: String) = Unit
+    override fun disabled(link: ShortLink, by: Actor.Client) = Unit
 
     override fun listed(filter: CreatedByFilter) = Unit
 }
@@ -58,11 +58,11 @@ class LoggingAuditTrail(
             .log()
     }
 
-    override fun disabled(link: ShortLink, by: String) {
+    override fun disabled(link: ShortLink, by: Actor.Client) {
         val onBehalf = !link.isCreatedBy(by)
         record(if (onBehalf) DISABLED_BY_ADMIN else DISABLED, if (onBehalf) logger.atWarn() else logger.atInfo(), "Link disabled")
             .addKeyValue("shortlink.code", link.shortCode.value)
-            .addKeyValue("actor", by)
+            .addKeyValue("actor", by.name)
             .addKeyValue("owner", link.createdBy.label())
             .log()
     }

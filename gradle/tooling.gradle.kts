@@ -3,9 +3,9 @@
  * remember a path. Each task only starts the script, which stays the thing that does the work and can still be run by hand
  * (docs/adr/0026-scripting-standard.md). Settings are Gradle properties: `./gradlew keygen -Pclient=my-client`.
  *
- * - The Java tools run on the JDK 25 of the project's toolchain, whichever `java` is first on the PATH, because the tools of
- *   `tools/` are compact source files that older JDKs refuse. `DpopClient.java`, which people outside the project run, is written
- *   for 17 and runs here on 25 as well.
+ * - The tasks run with the JDK 25 of the project's toolchain, whichever `java` is first on the PATH. The tools of `tools/` are
+ *   Kotlin that `tools/run` builds in a build of its own (docs/adr/0029-tools-in-kotlin.md), and need only a JDK 17 or newer.
+ *   `DpopClient.java`, which people outside the project run, is written for 17 and runs here on 25 as well.
  * - A task that needs a setting says which one when it is missing.
  * - `dev-setup` asks questions when it can, and Gradle has no terminal for it, so `devSetup` takes the defaults. Run the script
  *   itself to be asked.
@@ -53,7 +53,7 @@ tooling("keygen", "Makes a client key: line 1 private, line 2 public. -Pclient=N
 }
 
 tooling("productionRealm", "Makes the realm a production Keycloak imports. -Pdemo=FILE -Padmin=FILE of public keys, -Poutput=FILE") {
-    listOf(java, "tools/Realms.java", "production", setting("demo"), setting("admin")) + listOfNotNull(optional("output"))
+    listOf("tools/run", "Realms", "production", setting("demo"), setting("admin")) + listOfNotNull(optional("output"))
 }
 
 tooling("dpopCall", "Calls the API with DPoP. -Pkey=FILE -Pclient=NAME -Purl=URL, and -Pmethod=GET and -Pbody=JSON") {
@@ -65,7 +65,7 @@ tooling(
     "smoke", "Checks every endpoint of a running instance. -PbaseUrl=URL, default http://localhost:8080, and -Pmgmt=URL, default http://localhost:8081",
     settings = { listOfNotNull(optional("mgmt")?.let { "MGMT" to it }).toMap() },
 ) {
-    listOf(java, "tools/Smoke.java") + listOfNotNull(optional("baseUrl"))
+    listOf("tools/run", "Smoke") + listOfNotNull(optional("baseUrl"))
 }
 
 tooling("stackPrepare", "Makes throwaway secrets and a certificate to rehearse the production stack on this machine.") {
@@ -73,6 +73,6 @@ tooling("stackPrepare", "Makes throwaway secrets and a certificate to rehearse t
 }
 
 tooling("report", "Reads results. -Preport=summary|gc|hprof|profile|json -Ptarget=DIRECTORY_OR_FILE, and -Ptop=N for hprof") {
-    listOf(java, "tools/Report.java", setting("report"), setting("target")) + listOfNotNull(optional("top"))
+    listOf("tools/run", "Report", setting("report"), setting("target")) + listOfNotNull(optional("top"))
 }
 

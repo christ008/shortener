@@ -8,6 +8,8 @@ import org.springframework.data.domain.Pageable
  *
  * - Who may call each operation is declared on the implementation with method security. A caller
  *   without the scope is denied (403).
+ * - An operation that acts in a client's name takes it as an [Actor.Client], and method security
+ *   denies the call unless it is the caller's own.
  * - A link that belongs to another client is reported as not found, never forbidden, so its
  *   existence is not revealed.
  * - Other failures are exceptions that carry their HTTP status.
@@ -21,7 +23,7 @@ interface ShortLinkService {
      * @throws ShortCodeExhaustionException if no unique code could be allocated
      * @throws StorageUnavailableException if storage cannot be reached right now
      */
-    fun shorten(targetUrl: String, createdBy: String): ShortLink
+    fun shorten(targetUrl: String, createdBy: Actor.Client): ShortLink
 
     /**
      * Creates a link for [targetUrl] under the chosen [shortCode], owned by [createdBy].
@@ -30,7 +32,7 @@ interface ShortLinkService {
      * @throws ShortCodeUnavailableException if [shortCode] is taken or reserved
      * @throws StorageUnavailableException if storage cannot be reached right now
      */
-    fun claim(shortCode: ShortCode, targetUrl: String, createdBy: String): ShortLink
+    fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ShortLink
 
     /**
      * Returns the link a redirect follows. Public: no caller is involved.
@@ -71,5 +73,5 @@ interface ShortLinkService {
      * @throws ShortLinkNotFoundException if none exists, or it belongs to another client
      * @throws StorageUnavailableException if storage cannot be reached right now
      */
-    fun disable(shortCode: ShortCode, disabledBy: String)
+    fun disable(shortCode: ShortCode, disabledBy: Actor.Client)
 }

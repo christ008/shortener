@@ -36,20 +36,19 @@ class ToolingTasksTest {
             "deploy/stack/deploy.sh", // run on a manager, by hand, with the version as its argument
             "deploy/keycloak/entrypoint.sh", // inside the Keycloak image
             "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", // inside Postgres
-            "deploy/keycloak/dev-setup", "tools/DevSetup.java", // the script starts the tool, and both are listed through devSetup and devPasswords
+            "deploy/keycloak/dev-setup", // the script starts the DevSetup tool, and is listed through devSetup and devPasswords
             "deploy/keycloak/DpopClient.java", // listed through its tasks
             "perf/smoke.sh", // the shim of tools/run that the workflows call, listed through smoke
         )
-        val libraries = setOf("tools/Cli.java", "tools/RealmTemplate.java", "tools/DpopClient.java") // shared by the tools or a link to the client, started by none
         val scripts = listOf("deploy", "tools").flatMap { root ->
             Files.walk(Path.of(root)).use { stream ->
-                stream.filter { Files.isRegularFile(it) }
+                stream.filter { Files.isRegularFile(it) && "/build/" !in it.toString() }
                     .map { it.toString() }
-                    .filter { it.endsWith(".sh") || it.endsWith(".java") || it == "deploy/keycloak/dev-setup" }
+                    .filter { it.endsWith(".sh") || it.endsWith(".java") || it == "deploy/keycloak/dev-setup" || it == "tools/run" }
                     .toList()
             }
         }.toSet()
 
-        assertThat(scripts - paths - withoutTask - libraries).describedAs("scripts under deploy/ and tools/ with neither a task nor a reason").isEmpty()
+        assertThat(scripts - paths - withoutTask).describedAs("scripts under deploy/ and tools/ with neither a task nor a reason").isEmpty()
     }
 }

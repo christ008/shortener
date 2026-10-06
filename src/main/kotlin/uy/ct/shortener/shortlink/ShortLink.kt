@@ -23,8 +23,8 @@ data class ShortLink(
 
     val isActive: Boolean get() = !isDisabled
 
-    /** True when [client] is the client that created this link. */
-    fun isCreatedBy(client: String): Boolean = createdBy == Actor.Client(client)
+    /** True when [client] is the client that created this link. A link of unknown creator was created by no client. */
+    fun isCreatedBy(client: Actor.Client): Boolean = createdBy == client
 
     /** Returns this link, or throws [ShortLinkDisabledException] if it has been disabled. */
     fun requireActive(): ShortLink = if (isActive) this else throw ShortLinkDisabledException(shortCode)

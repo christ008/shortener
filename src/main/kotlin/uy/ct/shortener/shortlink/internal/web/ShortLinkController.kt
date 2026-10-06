@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.util.UriComponentsBuilder
+import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkService
@@ -39,6 +40,8 @@ class ShortLinkController(
 
     private fun Authentication.isAdmin() = authorities.any { it.authority == scopes.admin }
 
+    private fun Authentication.asClient() = Actor.Client(name)
+
     @PostMapping("/api/short-links")
     fun create(
         @Valid @RequestBody request: CreateShortLinkRequest,
@@ -46,8 +49,8 @@ class ShortLinkController(
         uriBuilder: UriComponentsBuilder,
     ): ResponseEntity<ShortLinkResponse> {
         val shortLink = request.customCode
-            ?.let { service.claim(ShortCode(it), request.targetUrl, authentication.name) }
-            ?: service.shorten(request.targetUrl, authentication.name)
+            ?.let { service.claim(ShortCode(it), request.targetUrl, authentication.asClient()) }
+            ?: service.shorten(request.targetUrl, authentication.asClient())
         val location = uriBuilder.replacePath("/{shortCode}").build(shortLink.shortCode.value)
         return ResponseEntity.created(location).body(ShortLinkResponse.from(shortLink))
     }
@@ -68,7 +71,7 @@ class ShortLinkController(
 
     @DeleteMapping("/api/short-links/{shortCode}")
     fun disable(@PathVariable shortCode: ShortCode, authentication: Authentication): ResponseEntity<Void> {
-        service.disable(shortCode, authentication.name)
+        service.disable(shortCode, authentication.asClient())
         return ResponseEntity.noContent().build()
     }
 

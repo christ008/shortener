@@ -30,16 +30,27 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v6
-      - name: Run the tests (Testcontainers starts Postgres)
+      - name: Run the tests (Testcontainers starts Postgres), and those of the tools
         env:
           DPOP_CLIENT_JAVA_HOME: ${{ steps.jdk17.outputs.path }}
         run: ./gradlew test
+      - name: Coverage report (a measurement, not a gate)
+        if: always()
+        run: ./gradlew koverHtmlReport koverXmlReport -x test
+      - name: Keep the coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: build/reports/kover
       - name: Keep the test reports when something fails
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: test-reports
-          path: build/reports/tests/test
+          path: |
+            build/reports/tests/test
+            tools/build/reports/tests/test
 
   stack:
     name: Production stack and alerts
@@ -50,7 +61,8 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '25'  # the baseline of tools/, which dev-setup runs. DpopClient.java, for 17, is tested above
+          java-version: '17'  # the tools of tools/ need only 17, and dev-setup builds them with Gradle. The application needs 25, and this job does not build it
+      - uses: gradle/actions/setup-gradle@v6
       - name: Check the compose files
         run: |
           deploy/keycloak/dev-setup --yes
