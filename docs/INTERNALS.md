@@ -491,6 +491,8 @@ Services:
 - `migrate`: the one-shot migration job.
 - `postgres`: the database, on one node with a local volume. A managed database replaces it by dropping the service.
 - Overlay `compose.prod.observability.yaml`: Prometheus with the alert rules, and the Postgres exporter.
+- Overlay `compose.prod.keycloak.yaml`: Keycloak, for a stack with no identity provider of its own ([DEPLOY.md](DEPLOY.md#keycloak),
+  [ADR 0025](adr/0025-keycloak-in-the-stack.md)).
 
 ```mermaid
 flowchart LR

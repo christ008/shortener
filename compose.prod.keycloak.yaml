@@ -1,0 +1,87 @@
+# An identity provider for compose.prod.yaml, for a stack that has none: Keycloak in production mode, behind the edge. Add it
+# with a second -c / -f file, and KEYCLOAK=1 for deploy/stack/deploy.sh:
+#   KEYCLOAK=1 deploy/stack/deploy.sh <version>
+#   docker compose -f compose.prod.yaml -f compose.prod.keycloak.yaml up -d
+#
+# - The image is built from deploy/keycloak/Dockerfile (Keycloak for Postgres, optimized, with an entrypoint that reads its
+#   secrets from files): `docker build -t shortener-keycloak:26.7.5 deploy/keycloak`. On more than one node it must be in a
+#   registry, and KEYCLOAK_IMAGE says where.
+# - It has a database of its own in the stack's Postgres (deploy/postgres/keycloak-database.sh), and a role that only it uses.
+# - The edge forwards the shortener realm and its static files, and nothing else (deploy/edge/keycloak.conf): not the master
+#   realm and not the administration console. Administer it from the node, see docs/DEPLOY.md.
+# - The realm is imported the first time it starts, and not again: it comes from deploy/keycloak/make-production-realm.
+# - The application reads its keys from Keycloak over the stack's network, JWKS_URI=http://keycloak:8080/realms/shortener/
+#   protocol/openid-connect/certs, while ISSUER_URI is the public one, ${PUBLIC_URL}/realms/shortener.
+services:
+  keycloak:
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    image: '${KEYCLOAK_IMAGE:-shortener-keycloak}:${KEYCLOAK_VERSION:-26.7.5}'
+    user: '1000:0'
+    command: ['start', '--optimized', '--import-realm']
+    environment:
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD_FILE: /run/secrets/db_keycloak_password
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/keycloak_admin_password
+      # The address the world uses, and so the issuer of every token. TLS ends at the edge, which says so in X-Forwarded-*.
+      KC_HOSTNAME: '${PUBLIC_URL:?set PUBLIC_URL, such as https://shortener.example.com}'
+      KC_HTTP_ENABLED: 'true'
+      KC_PROXY_HEADERS: xforwarded
+      KC_LOG_CONSOLE_OUTPUT: json
+      JAVA_OPTS_KC_HEAP: '-XX:MaxRAMPercentage=65'
+    secrets: [db_keycloak_password, keycloak_admin_password]
+    configs:
+      - {source: keycloak-realm, target: /opt/keycloak/data/import/shortener-realm.json, mode: 0444}
+    volumes:
+      - {type: tmpfs, target: /tmp, tmpfs: {size: 67108864, mode: 1023}}
+      - {type: tmpfs, target: /opt/keycloak/data/tmp, tmpfs: {size: 67108864, mode: 1023}}
+    networks: [edge, data]
+    healthcheck:
+      # The image has no curl: a request on a TCP connection from bash, to the management port.
+      test: ['CMD', 'bash', '-c', 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "\"UP\"" <&3']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    stop_grace_period: 30s
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: '1', memory: 1G}
+      restart_policy: {condition: any, delay: 5s}
+      update_config: {order: stop-first, failure_action: rollback}
+
+  # Keycloak's database and role, created when the data directory is first initialised. Where it already exists, run the
+  # script by hand, see keycloak-database.sh.
+  postgres:
+    environment:
+      SHORTENER_KEYCLOAK_PASSWORD_FILE: /run/secrets/db_keycloak_password
+    configs:
+      - {source: postgres-keycloak-database, target: /docker-entrypoint-initdb.d/30-keycloak-database.sh, mode: 0555}
+    secrets: [db_keycloak_password]
+
+  edge:
+    configs:
+      - {source: edge-keycloak, target: /etc/nginx/locations/keycloak.conf}
+
+configs:
+  # Swarm configs cannot change once created, so the names carry a hash of the file. deploy/stack/deploy.sh sets them.
+  keycloak-realm:
+    name: 'shortener-keycloak-realm-${KEYCLOAK_REALM_HASH:-local}'
+    file: ./deploy/keycloak/shortener-realm.production.json
+  edge-keycloak:
+    name: 'shortener-edge-keycloak-${EDGE_KEYCLOAK_CONF_HASH:-local}'
+    file: ./deploy/edge/keycloak.conf
+  postgres-keycloak-database:
+    file: ./deploy/postgres/keycloak-database.sh
+
+secrets:
+  db_keycloak_password:
+    file: '${SECRETS_DIR:-./secrets}/db_keycloak_password'
+  keycloak_admin_password:
+    file: '${SECRETS_DIR:-./secrets}/keycloak_admin_password'

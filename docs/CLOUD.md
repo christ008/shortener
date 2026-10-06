@@ -38,7 +38,7 @@ flowchart LR
 
 - **Edge:** nginx with a Let's Encrypt certificate for one host name.
 - **Identity:** the demo needs an identity provider on the same host, because visitors need tokens. It is Keycloak with a
-  realm made for the demo, behind the edge under `/realms`.
+  realm made for the demo, behind the edge under `/realms/shortener` ([DEPLOY.md](DEPLOY.md#keycloak)).
 - **Database:** the stack's Postgres on the VM's disk, with a nightly `pg_dump` to somewhere else. Nothing in it is
   precious.
 - **Image:** `ghcr.io/christ008/shortener:<version>`, published and signed by the Release workflow. Only amd64 is built,
@@ -55,12 +55,12 @@ flowchart LR
 
 ## What is missing
 
-1. **A Keycloak service for the stack**, in production mode, with its own database, hostname set to the public issuer,
-   behind the edge. The stack today expects an external identity provider.
-2. **An edge route for `/realms`** in `deploy/edge/nginx.conf`, and the request limits that suit it.
-3. **A demo realm.** The dev realm must not be used: it has an `admin-client`, its clients and web users take their
-   keys and passwords from a developer's `.env`, and it does not require TLS. A demo realm has one client that can create,
-   read and disable its own links, and no administrator the public can become.
+1. ~~**A Keycloak service for the stack**~~ Built: `compose.prod.keycloak.yaml`, with its own database, the public issuer, behind
+   the edge, rehearsed on one machine ([DEPLOY.md](DEPLOY.md#keycloak), [ADR 0025](adr/0025-keycloak-in-the-stack.md)).
+2. ~~**An edge route for `/realms`**~~ Built: only the shortener realm and its static files, with a limit on the token endpoint.
+3. ~~**A demo realm.**~~ Built: `make-production-realm` makes it from the public keys of `demo-client`, which can create, read and
+   disable its own links, and `admin-client`, whose key only the operator holds. No users, TLS required, brute-force detection.
+   Not built: the `shortener-ui` client and web users, which wait for the web UI.
 4. **Certificate issuance and renewal**, with a reload of the edge.
 5. **A bootstrap script** that, on a fresh VM, installs Docker, makes the secrets, deploys, and installs the nightly dump.
 6. **Backups and a restore test.** The stack has none.
@@ -72,9 +72,9 @@ The order, once the parts above exist:
 1. Create the VM. Open 22 (from your address only), 80 and 443. Create the DNS record for the host name.
 2. Install Docker, `docker swarm init`, label the node (`shortener.postgres=true`).
 3. Obtain the certificate for the host name and place it, with the key, in the secrets directory.
-4. Make the secrets (database passwords, Keycloak admin) and the `.env`: image version, issuer, key endpoint, and
+4. Make the secrets (database passwords, Keycloak's two), the production realm and the `.env`: image version, `PUBLIC_URL`, issuer, key endpoint, and
    `ALLOWED_TARGET_HOSTS` (the stack does not start without it).
-5. `OBSERVABILITY=1 deploy/stack/deploy.sh <version>`, then check with `docker service ls`.
+5. `KEYCLOAK=1 OBSERVABILITY=1 deploy/stack/deploy.sh <version>`, then check with `docker service ls`.
 6. Run `perf/smoke.sh` against the public URL with the demo client.
 7. Publish the demo client's key and the three commands from the README with the URL.
 8. Check the Prometheus alerts, and set a billing alert at the provider.
@@ -86,7 +86,7 @@ Before anyone is invited:
 
 - **Restrict targets.** Set `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` to a short list, for example `example.com` and
   `*.example.org`. Anything else is refused with `400`. With no list the production stack does not start, unless `ALLOW_ANY_TARGET=true` says on purpose that it redirects to anywhere: never on a public instance.
-- **Use a demo realm,** never the dev one.
+- **Use the production realm** that `make-production-realm` writes, never the dev one.
 - **Keep the limits.** Per address (300 a minute) and per client (60 a minute) are the defaults. Do not raise them.
 - **Expect to take links down.** Keep an administrator client whose key only you hold, and know the call:
   `DELETE /api/short-links/<code>`.

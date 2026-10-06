@@ -8,6 +8,7 @@ what it gives up, is in [INTERNALS.md](INTERNALS.md#deployment).
 - [Update, roll back](#update-roll-back)
 - [Operate](#operate)
 - [Rehearse it on one machine](#rehearse-it-on-one-machine)
+- [Keycloak](#keycloak)
 - [Without Swarm](#without-swarm)
 - [Managed database](#managed-database)
 
@@ -120,6 +121,66 @@ Remove it with `docker stack rm shortener`, then `docker swarm leave --force`.
 
 The rehearsal publishes the management port in host mode, which stops a second application task from starting on the
 same node. Drop that `ports` entry from `compose.local.yaml` to run two.
+
+## Keycloak
+
+For a stack with no identity provider of its own, `compose.prod.keycloak.yaml` adds Keycloak in production mode, behind the edge.
+It is optional. An organization that has an identity provider points `ISSUER_URI` and `JWKS_URI` at it and skips this. Why it is
+built this way: [ADR 0025](adr/0025-keycloak-in-the-stack.md).
+
+What you get: a `keycloak` service with a database of its own in the stack's Postgres, a realm with two clients, and the edge
+forwarding the `shortener` realm, its static files and nothing else. The master realm and the administration console are not
+reachable from outside.
+
+1. **Build the image** on the node, or in a registry if there is more than one node (`KEYCLOAK_IMAGE` says where):
+
+   ```bash
+   docker build -t shortener-keycloak:26.7.5 deploy/keycloak
+   ```
+2. **Make the keys and the realm.** The realm trusts the public key of each client and holds nothing secret:
+
+   ```bash
+   java deploy/keycloak/DpopClient.java keygen demo-client  > demo.keys
+   java deploy/keycloak/DpopClient.java keygen admin-client > admin.keys
+   sed -n 2p demo.keys  > demo-client.public.json
+   sed -n 2p admin.keys > admin-client.public.json
+   deploy/keycloak/make-production-realm demo-client.public.json admin-client.public.json
+   ```
+
+   Keep line 1 of `admin.keys` (the private key) on your machine alone: it can take down any link. Line 1 of `demo.keys` is
+   published with the instance, so that visitors can try it, and they all act as `demo-client`.
+3. **Two more secrets**, mode `0444` like the others: `db_keycloak_password` (the role `keycloak`, created with its database the
+   first time Postgres starts) and `keycloak_admin_password` (the bootstrap administrator of the master realm).
+4. **Settings** in `.env`: `PUBLIC_URL`, the address the world uses, which becomes the issuer, and the issuer and the key
+   endpoint. The application reads keys over the stack's network, not through the edge:
+
+   ```
+   PUBLIC_URL=https://shortener.example.com
+   ISSUER_URI=https://shortener.example.com/realms/shortener
+   JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs
+   ```
+5. **Deploy** with `KEYCLOAK=1 deploy/stack/deploy.sh <version>`. Keycloak takes about a minute to be ready.
+
+Things to know:
+
+- **The realm is imported once**, the first time Keycloak starts, and never again. To change it afterwards use `kcadm.sh` from
+  the node:
+
+  ```bash
+  docker exec -it $(docker ps -q -f name=shortener_keycloak) /opt/keycloak/bin/kcadm.sh config credentials \
+    --config /tmp/kcadm.config --server http://localhost:8080 --realm master --user admin
+  ```
+
+  The administration console is the same: it is not on the edge, so reach it from the node, for example through an SSH tunnel.
+- **A bad realm file stops Keycloak starting.** It fails closed, and the log says which field.
+- **Adding it to a stack that already has data:** Postgres runs its initialisation scripts only for a new data directory, so run
+  the script once by hand: `docker exec $(docker ps -q -f name=shortener_postgres) sh /docker-entrypoint-initdb.d/30-keycloak-database.sh`
+  (it needs the file secret to be mounted, so deploy first).
+- **Failed sign-ins are logged** by Keycloak as warnings with the client and the address, and the edge limits the token endpoint to
+  ten requests a second per address.
+- **Back it up with the database.** Keycloak's database holds the realm after import, and its sessions.
+- **Use the standard port.** In a rehearsal on another published port, a call through the edge was refused with
+  `invalid_dpop_proof` while the same call on 443 worked. The cause was not investigated: serve the edge on 80 and 443.
 
 ## Without Swarm
 

@@ -47,6 +47,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0022](0022-mtls-between-services.md) | Mutual TLS between services (**proposed**) | an unauthenticated peer on a stack network | a CA and a rotation job | needed when exposed, not yet |
 | [0023](0023-production-must-decide-its-targets.md) | Production refuses to start without a target decision | an open redirector by omission | one more variable to set | needed when exposed |
 | [0024](0024-logging-and-audit.md) | Security events, audit trail and notices, each a line and a counter | an attack or a takedown that leaves no trace | local logs with client addresses | needed when exposed |
+| [0025](0025-keycloak-in-the-stack.md) | Keycloak in the stack, optional, behind the edge | the provider decides ownership and admin, and none existed for production | one more service and an image to build | needed when exposed |
 
 0001 is the [format](0001-record-architecture-decisions.md).
 

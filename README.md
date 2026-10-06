@@ -113,7 +113,8 @@ once started`.
 - A migration job that alone holds the credentials of the role that owns the tables, and a Postgres you can replace
   with a managed one.
 - Every container read-only, without capabilities, non-root and bounded. Secrets are files, not variables.
-- An optional overlay with Prometheus, the Postgres exporter and the alert rules.
+- An optional overlay with Prometheus, the Postgres exporter and the alert rules, and another with Keycloak for a stack that has
+  no identity provider.
 
 Runbook: [docs/DEPLOY.md](docs/DEPLOY.md). Design and what it gives up against Kubernetes:
 [docs/INTERNALS.md](docs/INTERNALS.md#deployment).
@@ -146,6 +147,8 @@ mindmap
         the production stack
       compose.prod.observability.yaml
         adds Prometheus and the alert rules
+      compose.prod.keycloak.yaml
+        adds Keycloak behind the edge
       deploy/
         edge and stack scripts, Postgres setup, Keycloak realm template and dev tools, alert rules, Grafana, Tempo
       .github/workflows/
