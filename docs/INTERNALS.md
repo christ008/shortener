@@ -18,6 +18,7 @@ contract (a test keeps it in step with the code).
 - [Deployment](#deployment)
 - [Releasing](#releasing)
 - [Performance](#performance)
+- [Design review](#design-review)
 - [Decisions](#decisions)
 - [Limitations](#limitations)
 
@@ -556,6 +557,52 @@ connection fails until reboot. This took the network down three times.
 - Pause the firewall before saturation tests.
 - When connections start timing out, check `journalctl -k | grep nf_queue`.
 
+## Design review
+
+A pass for what the compiler can check, and against SOLID and Tell, Don't Ask. What changed, and what was left alone on
+purpose.
+
+### Checked by the compiler
+
+| Where | Now | Gives |
+|---|---|---|
+| `ShortLinkException` | `sealed`: the failures are exactly the subclasses in the package | no failure the API contract does not describe can be added from outside; a test lists them |
+| `LinkStatus`, `Actor`, `LinkLookup`, `InsertResult`, `CreatedByFilter`, `RateLimitDecision`, `RateLimitKey` | sealed interfaces | a `when` over them needs every case |
+| `ShortLinkResponse`, `CaffeineRedirectCache` | exhaustive `when` where `as?` casts stood | a new case is a compile error, not a silent `null` |
+| `SecurityProblemResponder` challenge | `when` over `AuthScheme`, not over booleans | each scheme's answer is stated, and a new scheme must be handled |
+| `ShortLinkScopes` | immutable, bound through the constructor | the authorization rules cannot change after start |
+
+Left as they are:
+
+- **Kotlin `internal`.** It means module-wide, and this is one module, so it would hide nothing. The boundaries are held
+  by Spring Modulith and the ArchUnit tests instead.
+- **Value classes** for `ShortCode`. Spring MVC, Jackson and native image support for them is thinner than for data
+  classes, and the gain is one allocation.
+- **Unchecked cast in `NotFoundWhenDenied`.** The first argument of a denied call is a framework-supplied `Object`.
+
+### Tell, don't ask
+
+Callers were pulling fields out of an object to decide something that the object knows. Each now asks the object to do
+it, which puts the rule in one place and lets the type change without its callers.
+
+| Before | Now |
+|---|---|
+| the evaluator compared `link.createdBy` with the caller | `link.isCreatedBy(client)` |
+| the service read `link.isDisabled` and threw | `link.requireActive()` |
+| the service checked `shortCode.value in RESERVED_CODES` | `shortCode.requireClaimable()` |
+| the controller chose the listing filter from the caller's authority | `CreatedByFilter.of(requested, caller, isAdministrator)`, with tests |
+| the service parsed the target and would have had to know which hosts are allowed | a `TargetUrlPolicy` says whether a target is accepted |
+
+### SOLID
+
+| Principle | Finding | Decision |
+|---|---|---|
+| Single responsibility | `DefaultShortLinkService` also opens the observations around two repository calls | kept: the `shortlink.load` observation marks a redirect that missed the cache, and a repository decorator would also observe the reads that decide who may see a link |
+| Open/closed | which targets are accepted was going to be an `if` in the service | `TargetUrlPolicy`: `AnyTarget` and `AllowedHosts`. A new rule is a new implementation |
+| Liskov | the two null objects, `NoRedirectCache` and `AnyTarget`, must honor their contracts | each has tests for its contract |
+| Interface segregation | the repository has four operations, each used by the service or `ManageableLinks` | nothing to split |
+| Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept. The ArchUnit test keeps JDBC and security types out of the contract and accepts Spring Data's paging types. Own paging types would be a copy of them |
+
 ## Decisions
 
 - **Plain JDBC, not JPA.** Two statements dominate and need SQL features JPA hides. Only the persistence adapter knows SQL.
@@ -573,6 +620,8 @@ connection fails until reboot. This took the network down three times.
   cost of a client that can sign. A JDK-only client is provided.
 - **In-process redirect cache.** Caffeine, active links only, short TTL, local eviction on disable. See
   [Redirect cache](#redirect-cache) for what was rejected.
+- **Which hosts a link may point to is a policy.** Empty by default, so a private instance accepts anything; a public
+  one lists the hosts it accepts, so it cannot be used to redirect to arbitrary sites.
 - **Reproducible image.** Everything the build downloads is pinned, by version where one exists and by digest where
   not.
 - **Offset pagination with totals, not cursors.** Listings take `page` and `size` and answer with totals, so a client can

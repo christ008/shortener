@@ -42,6 +42,8 @@ The response carries the short URL in `Location`. Following it needs no token:
 curl -i http://localhost:8080/<shortCode>
 ```
 
+How to run it, try it, test it and look after it: [docs/OPERATING.md](docs/OPERATING.md).
+
 Optional observability: `docker compose --profile observability up -d` starts Prometheus, Grafana and Tempo. Open
 <http://localhost:3000/d/shortener/shortener>. The `dev` profile samples every trace. What you will see is in
 [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md), with screenshots.
@@ -76,6 +78,7 @@ internals in errors or health, 5% trace sampling, DPoP required) and the environ
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
 | `SERVER_TOMCAT_MAXCONNECTIONS` | connections Tomcat accepts before refusing (500); each costs about 150 KB of heap |
+| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts the service shortens links to, `example.com` or `*.example.org` for subdomains. Empty, the default, accepts every host. A public instance should set it, or it redirects to anywhere |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long after it was last read a link is still followed when the database cannot be reached (5m); `0` turns it off |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES` | how long (30s) and how many (100,000) links the redirect cache keeps; `..._ENABLED=false` turns it off |
 
@@ -141,10 +144,14 @@ mindmap
       .github/workflows/
         CI on every push, a release on v* tags, a manual native image build
     docs/
+      OPERATING.md
+        run, try, test and look after it
       INTERNALS.md
         how it works and why
       DEPLOY.md
         the production stack runbook
+      CLOUD.md
+        the plan for a public instance
       OBSERVABILITY.md
         metrics, dashboard, traces and alerts
       openapi.yaml
