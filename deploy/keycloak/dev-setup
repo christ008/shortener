@@ -1,6 +1,5 @@
 #!/bin/sh
-# Makes the cryptographic material and the passwords a local development setup needs, so none of it is committed. The work is
-# the DevSetup tool (tools/), which says what it writes and how to use it: this only starts it.
+# Makes the keys, realm and passwords of a local development setup. Starts the DevSetup tool, which says what it writes.
 #
 #   deploy/keycloak/dev-setup [--yes] [--force] [--show]
 set -eu

@@ -24,20 +24,16 @@ import java.time.Duration
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * [ShortLinkRepository] on plain JDBC through Spring's [JdbcClient], with the SQL written out.
+ * [ShortLinkRepository] on plain JDBC through Spring's [JdbcClient].
  *
- * - Relies on Postgres: `INSERT ... ON CONFLICT DO NOTHING RETURNING` claims a code and reads the
- *   row back in one atomic statement, and the database assigns `created_at`.
+ * - `INSERT ... ON CONFLICT DO NOTHING RETURNING` claims a code and reads the row back in one atomic statement. The database
+ *   assigns `created_at`.
  * - Lists with `LIMIT`/`OFFSET` on indexed columns. One extra row tells whether another page follows.
- * - Sorts codes in byte order (`COLLATE "C"`), not the database's locale, so the order is the same
- *   everywhere.
- * - The schema, including the constraints that mirror [ShortCode] and [ShortLink], lives in the
- *   Flyway migrations.
- * - Storage that cannot serve the request now becomes [StorageUnavailableException], so Spring's
- *   data-access types do not leak out of this adapter, and trying again is the answer. That covers
- *   a failure to get a connection (pool exhausted or database down), a statement past
- *   `statement_timeout` and a lock not obtained within `lock_timeout`. Spring leaves the last one
- *   uncategorised, so it is recognised by its SQLSTATE.
+ * - Sorts codes in byte order (`COLLATE "C"`).
+ * - The schema, including the constraints that mirror [ShortCode] and [ShortLink], is in the Flyway migrations.
+ * - Storage that cannot serve the request becomes [StorageUnavailableException]: a failure to get a connection, a statement
+ *   past `statement_timeout`, or a lock not obtained within `lock_timeout` (recognised by SQLSTATE, which Spring leaves
+ *   uncategorised).
  * - The first such failure in any ten seconds is logged as a warning with its type, never the statement or its parameters.
  */
 @Repository

@@ -36,13 +36,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * A DPoP (RFC 9449) client for the local setup. It authenticates to the identity provider with a signed assertion
- * instead of a secret (private_key_jwt), gets an access token bound to a fresh key, and calls the API with a proof made
- * for each request. It runs on the machine of whoever calls the API and is not part of the service.
+ * A DPoP (RFC 9449) client. It authenticates to the identity provider with a signed assertion (private_key_jwt), gets an
+ * access token bound to a fresh key, and calls the API with a proof made for each request. It runs on the machine of whoever
+ * calls the API and is not part of the service.
  *
- * <p>It needs only a JDK 17 or newer, because it is one source file run by the `java` launcher, and it is written to
- * that baseline: the tests compile it with `--release 17`, so a newer API or language feature fails there and not on
- * somebody's machine.
+ * <p>Needs a JDK 17 or newer. One source file, run by the {@code java} launcher.
  *
  * <pre>
  *   java DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
@@ -54,16 +52,17 @@ import java.util.regex.Pattern;
  *                                                         refreshes it, then calls the API as that user
  * </pre>
  *
- * KEY_FILE is a private JWK (P-256) with the fields `x`, `y` and `d`, as `deploy/keycloak/dev-setup` writes them.
+ * KEY_FILE is a private JWK (P-256) with the fields {@code x}, {@code y} and {@code d}, as {@code deploy/keycloak/dev-setup}
+ * writes them.
  *
- * <p>Settings, all optional and read from the environment: TOKEN_URL, the token endpoint, by default the local realm;
- * ISSUER, by default TOKEN_URL without `/protocol/openid-connect/token`; TRACEPARENT, sent as the W3C trace context of a
- * call, so a sampled trace can be forced; DPOP_DEBUG, which prints a stack trace with an error. For login: CLIENT_ID
- * (shortener-ui), REDIRECT_URI and SCOPE. A server with a certificate of your own is trusted the way it is for any Java
- * program, for example with `java -Djavax.net.ssl.trustStore=ts.p12 DpopClient.java ...` or JAVA_TOOL_OPTIONS.
+ * <p>Settings, all optional, from the environment: TOKEN_URL, the token endpoint (by default the local realm); ISSUER (by
+ * default TOKEN_URL without {@code /protocol/openid-connect/token}); TRACEPARENT, sent as the W3C trace context of a call;
+ * DPOP_DEBUG, which prints a stack trace with an error. For login: CLIENT_ID (shortener-ui), REDIRECT_URI and SCOPE. A server
+ * certificate of your own is trusted as for any Java program, for example with
+ * {@code java -Djavax.net.ssl.trustStore=ts.p12 DpopClient.java ...} or JAVA_TOOL_OPTIONS.
  *
- * <p>Exit status: 0 when it did what was asked (a call that the API answers with an error still counts: the status is the
- * answer), 1 when it could not, with the reason on stderr, 2 for arguments it does not understand.
+ * <p>Exit status: 0 when it did what was asked (an error status from the API is the answer), 1 when it could not, with the
+ * reason on stderr, 2 for arguments it does not understand.
  */
 public final class DpopClient {
 
@@ -182,15 +181,14 @@ public final class DpopClient {
     public record Answer(int status, String location, List<String> challenges, String body) {}
 
     /**
-     * Makes a call as {@code clientId}, the way the {@code call} command does but without a new process, for the tools of
-     * this repository that make many calls. It signs in each time and returns the answer whatever its status: a status that
-     * is an error is an answer, and {@code Failure}s (the identity provider said no, the server is not there) are thrown.
+     * Makes a call as {@code clientId}, as the {@code call} command does, in this process. It signs in each time and returns the
+     * answer whatever its status. A {@code Failure} (the identity provider said no, the server is not there) is thrown.
      */
     public static Answer call(Path keyFile, String clientId, String method, String url, String body) throws Exception {
         return Shared.INSTANCE.answer(keyFile, clientId, method, url, body);
     }
 
-    /** A new access token for {@code clientId}, bound to a key that nobody else has, as the {@code token} command prints it. */
+    /** A new access token for {@code clientId}, bound to a new key, as the {@code token} command prints it. */
     public static String token(Path keyFile, String clientId) throws Exception {
         return Shared.INSTANCE.fetchToken(keyFile, clientId, newKey()).accessToken();
     }
@@ -572,9 +570,8 @@ public final class DpopClient {
     // ---- JSON -------------------------------------------------------------------------------------------------------
 
     /**
-     * Just enough JSON for JWKs, tokens and their claims, with no library: a strict reader into maps, lists, strings,
-     * numbers, booleans and null, and a writer for the same. A response that is not JSON is an error that names it, where
-     * a pattern would find a field in anything.
+     * A strict JSON reader into maps, lists, strings, numbers, booleans and null, and a writer for the same, with no library. A
+     * response that is not JSON is an error that names it.
      */
     static final class Json {
         private final Map<String, Object> members;

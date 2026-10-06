@@ -35,17 +35,15 @@ import uy.ct.shortener.security.internal.SecurityProperties
 import uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver
 
 /**
- * The security filter chain: an OAuth2 resource server, stateless and deny by default.
+ * The security filter chain: an OAuth2 resource server, stateless, deny by default.
  *
- * - Everything under `/api` needs an access token from the identity provider, validated locally against its
- *   published keys (signature, JOSE type, issuer, audience, expiry).
- * - Tokens must be bound to the client's key and sent with a DPoP proof (RFC 9449), unless
- *   `shortener.security.dpop.required` is off, which also accepts plain bearer tokens.
- * - The scopes an operation needs are declared on the operation with method security, enabled here.
- * - Following a short link and the health probes are public. Every other request is denied.
+ * - Everything under `/api` needs an access token from the identity provider, validated locally (signature, JOSE type, issuer, audience, expiry).
+ * - Tokens must be DPoP-bound (RFC 9449), unless `shortener.security.dpop.required` is off, which also accepts bearer tokens.
+ * - The scopes an operation needs are declared on it with method security, enabled here.
+ * - `GET` and `HEAD` of a short link and the health probes are public. Every other request is denied.
  * - Requests are rate limited per client IP, then per authenticated client.
- * - Responses carry restrictive security headers. Authentication, authorization and rate-limit
- *   failures are problem details, and each is also an event: a log line and a counter ([SecurityEvents]).
+ * - Responses carry restrictive security headers. Authentication, authorization and rate-limit failures are problem details
+ *   and events ([SecurityEvents]).
  */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity

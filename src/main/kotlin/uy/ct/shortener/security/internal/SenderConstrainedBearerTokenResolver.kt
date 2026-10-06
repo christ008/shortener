@@ -10,10 +10,7 @@ import org.springframework.security.oauth2.server.resource.web.DefaultBearerToke
 /**
  * Refuses the `Bearer` scheme, for when every access token must be bound to its client's key.
  *
- * - A request under the `DPoP` scheme never reaches this resolver: it takes the DPoP authentication
- *   path.
- * - Refusing is what stops a stolen token from being replayed as a plain bearer token, which is the
- *   point of binding it (RFC 9449, section 7.2).
+ * A request under the `DPoP` scheme never reaches this resolver.
  */
 class SenderConstrainedBearerTokenResolver : BearerTokenResolver {
 

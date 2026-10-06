@@ -1,11 +1,10 @@
 # Threat model
 
-What can go wrong with this service, what stops it, and what does not. It is the security reasoning behind
-[INTERNALS.md](INTERNALS.md#security) and the [decisions](adr/README.md), checked against STRIDE and the OWASP Top 10.
+What can go wrong with this service, what stops it, and what does not, against STRIDE and the OWASP Top 10. Controls
+are described in [INTERNALS.md](INTERNALS.md#security) and the [ADRs](adr/README.md).
 
-**Status: a review of the code and the stack as of 0.20.0, by reading them. Nothing here was tested against a running
-public instance, and no penetration test was done.** Where a control has a test, the test is named. Where a claim is
-inferred from configuration, it says so.
+**Status: a review of the code and the stack as of 0.20.0, by reading them. Nothing was tested against a running public
+instance and there was no penetration test.** A control with a test names it. A claim inferred from configuration says so.
 
 - [Scope and assumptions](#scope-and-assumptions)
 - [What it protects](#what-it-protects)
@@ -22,10 +21,10 @@ inferred from configuration, it says so.
 ## Scope and assumptions
 
 In scope: the application, the production stack (`compose.prod.yaml`, the nginx edge, Postgres), the migration job, the
-release pipeline and how the service uses its identity provider. The web UI and the public cloud instance are plans
-([UI.md](UI.md), [CLOUD.md](CLOUD.md)): the parts of this model that change for them are marked **public**.
+release pipeline and the use of the identity provider. The web UI and the public instance are plans ([UI.md](UI.md),
+[CLOUD.md](CLOUD.md)); what changes for them is marked **public**.
 
-Assumptions, each of which the model depends on:
+Assumptions:
 
 - **A short link is a public capability.** Anyone who knows a code learns its target by following it. The target is not a
   secret and the service does not try to keep it one.
@@ -108,7 +107,7 @@ flowchart LR
 ## STRIDE
 
 Ratings are for a **public** instance with strangers and open creation. A private instance with a few trusted clients
-moves most of them down one level. `F-nn` points to the [findings](#findings).
+rates most of them one level lower. `F-nn` points to the [findings](#findings).
 
 ### E1. The edge (nginx)
 
@@ -194,7 +193,7 @@ moves most of them down one level. `F-nn` points to the [findings](#findings).
 
 ## Abuse of a working service
 
-These need no vulnerability, only the service doing what it is for.
+These need no vulnerability, only the service doing its job.
 
 | Abuse | Effect | What exists | What is missing |
 |---|---|---|---|
@@ -207,25 +206,24 @@ These need no vulnerability, only the service doing what it is for.
 
 ## OWASP Top 10:2025
 
-The edition current at the time of writing. Status: **Covered** (a control and, where possible, a test), **Partial**
-(a control with a stated gap) or **Gap**.
+Status: **Covered** (a control and, where possible, a test), **Partial** (a control with a stated gap) or **Gap**.
 
 | | Category | Status | How it applies here | Findings |
 |---|---|---|---|---|
-| A01 | Broken Access Control | Covered | Deny by default. Scopes on operations, ownership as a rule over them, `404` for what the caller may not see, no IDOR on codes or filters. CSRF does not apply: no cookies. CORS is not configured, so browsers block cross-origin calls. SSRF, now in this category, has no entry point: the service never fetches a target. | the admin scope is powerful, [F-02](#findings) |
-| A02 | Security Misconfiguration | Partial | Hardened containers held by `ComposeStackTest`, production profile, a management port that is never proxied, headers (CSP `default-src 'none'`, `no-referrer`, HSTS). The dev realm is `sslRequired: none` and the realm template says dev only. | any `Host` accepted [F-08](#findings), issuer scheme [F-10](#findings) |
+| A01 | Broken Access Control | Covered | Deny by default. Scopes on operations, ownership over them, `404` for what the caller may not see, no IDOR on codes or filters. No cookies, so no CSRF. CORS is not configured. No SSRF entry point: the service never fetches a target. | the admin scope is powerful, [F-02](#findings) |
+| A02 | Security Misconfiguration | Partial | Hardened containers (`ComposeStackTest`), production profile, management port never proxied, headers (CSP `default-src 'none'`, `no-referrer`, HSTS). The dev realm is `sslRequired: none` and says dev only. | any `Host` accepted [F-08](#findings), issuer scheme [F-10](#findings) |
 | A03 | Software Supply Chain Failures | Partial | Pinned buildpacks and base image, a scan, a signature and an SBOM on release, Dependabot for actions. | [F-05](#findings), [F-06](#findings) |
-| A04 | Cryptographic Failures | Partial | TLS 1.2 and 1.3 at the edge, ES256 assertions, SHA-256 thumbprints, `SecureRandom` for codes, secrets as files. No password is stored by the service. | both overlays are encrypted between nodes; peers are not authenticated, and an external database needs `sslmode` ([F-07](#findings)) |
-| A05 | Injection | Covered | Bound parameters everywhere, the only dynamic SQL is an `ORDER BY` from a whitelist, the code and the target are validated, the target is parsed as a `URI`, no shell or template with user input. The application role cannot run DDL, which limits an injection if one existed. | |
-| A06 | Insecure Design | Partial | This document, the ADRs, abuse cases and the separation of roles are the design response. The weak point was a design default, an instance that accepts every target, which production no longer allows by omission. | [F-04](#findings) |
-| A07 | Authentication Failures | Covered | No passwords in the service, `private_key_jwt`, five-minute sender-bound tokens, the address limit applies before authentication so guessing is throttled, a token in the wrong place is refused. | the provider's own hardening [F-02](#findings) |
+| A04 | Cryptographic Failures | Partial | TLS 1.2 and 1.3 at the edge, ES256 assertions, SHA-256 thumbprints, `SecureRandom` for codes, secrets as files. The service stores no password. | overlays are encrypted between nodes but peers are not authenticated; an external database needs `sslmode` ([F-07](#findings)) |
+| A05 | Injection | Covered | Bound parameters everywhere; the only dynamic SQL is an `ORDER BY` from a whitelist. Code and target are validated and the target parsed as a `URI`. No shell or template takes user input. The application role cannot run DDL. | |
+| A06 | Insecure Design | Partial | This document, the ADRs, abuse cases, separated database roles. Production no longer accepts every target by omission. | [F-04](#findings) |
+| A07 | Authentication Failures | Covered | No passwords in the service, `private_key_jwt`, five-minute sender-bound tokens, address limit before authentication, a token in the wrong place is refused. | the provider's own hardening [F-02](#findings) |
 | A08 | Software or Data Integrity Failures | Partial | Signed images, Flyway checksums, migration rules, a replay cache for proofs. Targets cannot be edited by the application. | [F-06](#findings), no Gradle dependency verification ([F-05](#findings)) |
-| A09 | Security Logging and Alerting Failures | Partial | The edge logs every request as JSON. The application logs a line and a counter for every `401`, `403`, `429`, create, disable and administrator action on others' links, without credentials, and four alerts read them ([ADR 0024](adr/0024-logging-and-audit.md)). | logs stay local and nothing delivers alerts, [F-03](#findings) |
-| A10 | Mishandling of Exceptional Conditions | Covered | Failures close: a token without `owner` is invalid, an empty allowlist entry stops startup, DPoP required without its filter stops startup. Every error is a problem detail without internals. A database failure is `503` and `Retry-After`, an unmapped one is not hidden. Resource limits on connections, pool, statements and locks. | stale redirects in an outage are a chosen trade ([ADR 0012](adr/0012-readiness-excludes-the-database.md)) |
+| A09 | Security Logging and Alerting Failures | Partial | The edge logs every request as JSON. The application logs a line and a counter for every `401`, `403`, `429`, create, disable and administrator action on others' links, without credentials; four alerts read them ([ADR 0024](adr/0024-logging-and-audit.md)). | logs stay local, nothing delivers alerts, [F-03](#findings) |
+| A10 | Mishandling of Exceptional Conditions | Covered | Failures close: a token without `owner` is invalid; an empty allowlist entry, or DPoP required without its filter, stops startup. Every error is a problem detail without internals. A database failure is `503` with `Retry-After`; an unmapped one is not hidden. Limits on connections, pool, statements and locks. | stale redirects in an outage ([ADR 0012](adr/0012-readiness-excludes-the-database.md)) |
 
 ## OWASP API Security Top 10:2023
 
-Added because this is an API. Shorter, since most map to rows above.
+Most rows map to the table above.
 
 | | Risk | Status | Note |
 |---|---|---|---|
@@ -242,8 +240,7 @@ Added because this is an API. Shorter, since most map to rows above.
 
 ## Findings
 
-Each is something to decide, ordered by severity for a public instance. None is a known exploit. They come from reading
-the code and the stack, and the ones marked *known* were already written down as limits.
+Ordered by severity for a public instance. None is a known exploit. *Known* marks limits that were already documented.
 
 | ID | Severity | Finding | Why it matters | Recommendation |
 |---|---|---|---|---|
@@ -263,7 +260,7 @@ the code and the stack, and the ones marked *known* were already written down as
 
 ## Risks accepted
 
-Decided, and why. Revisit the reason, not the decision, when it stops being true.
+Decided. Revisit the reason, not the decision, when it stops being true.
 
 | Risk | Why it is accepted |
 |---|---|
@@ -282,8 +279,7 @@ Decided, and why. Revisit the reason, not the decision, when it stops being true
 
 Update this document when:
 
-- a new component, a new way in or a new kind of data appears (a web UI, previews of targets, analytics, a second
-  service). A web UI adds browser storage of tokens, XSS and CORS. Previews add SSRF.
-- an ADR is accepted or superseded, so that each row still names the control that exists.
-- a finding is fixed. Move it out of the table and record it in the ADR that fixed it.
-- before the first public instance. The findings marked **public** are the list to clear.
+- a component, a way in or a kind of data is added (web UI: browser token storage, XSS, CORS; target previews: SSRF);
+- an ADR is accepted or superseded, so each row still names the control that exists;
+- a finding is fixed: move it out of the table and record it in the ADR that fixed it;
+- before the first public instance: the findings marked **public** are the list to clear.

@@ -51,6 +51,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0026](0026-scripting-standard.md) | sh to start programs, Java to compute, nothing else (**the Java tier is superseded by 0029**) | five languages and a helper written twice | a JDK 17 to run a compute script | needed |
 | [0027](0027-tools-on-jdk-25.md) | Tools on JDK 25, the client for strangers on 17 (**the tools are superseded by 0029**) | no shared code, a second per call, boilerplate | two baselines, by directory | needed |
 | [0029](0029-tools-in-kotlin.md) | The tools are Kotlin, in a build of their own | a second language, tests that start a process per case, a tool with no test | a build on the first run, and Gradle for `dev-setup` | earned |
+| [0030](0030-web-ui-as-a-static-spa.md) | A static single-page app that signs requests with a browser key (**proposed**) | people need a browser front end, and the API takes only DPoP-bound tokens | a DPoP implementation in the browser, an unverified Keycloak assumption | not built |
 
 0001 is the [format](0001-record-architecture-decisions.md).
 

@@ -5,11 +5,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 /**
  * `shortener.shortlink.target-urls.*` settings.
  *
- * - [allowedHosts]: the hosts the service shortens links to. An entry is a host name or `*.` and a domain for its
- *   subdomains, for example `example.com` and `*.example.org`.
- * - [allowAny]: says on purpose that every host is accepted. Without a list and without this, a development setup
- *   accepts every host and the `production` profile refuses to start, so an open redirector is a choice and not an
- *   oversight. Setting both is contradictory and refused.
+ * - [allowedHosts]: the hosts the service shortens links to: a host name, or `*.` and a domain for its subdomains
+ *   (`example.com`, `*.example.org`).
+ * - [allowAny]: accepts every host on purpose. Without a list and without this, development accepts every host and
+ *   `production` refuses to start. Setting both is refused.
  *
  * From the environment: `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS=example.com,*.example.org`, or
  * `SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY=true`.

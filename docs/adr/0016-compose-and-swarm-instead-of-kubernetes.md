@@ -35,4 +35,4 @@ platform had become larger than the problem, and what was never run was only val
 
 - Keeping Kubernetes: its operators and policies cannot be trusted until run, and running them was the cost being avoided.
 - A managed container service: right for an instance meant to last, and costs more
-  ([CLOUD.md](../CLOUD.md#the-managed-alternative)).
+  ([INTERNALS.md](../INTERNALS.md#a-managed-container-service-instead-of-a-vm)).

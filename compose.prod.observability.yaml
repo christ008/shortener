@@ -1,10 +1,8 @@
-# Metrics and alerts for compose.prod.yaml: Prometheus with the alert rules, and the Postgres exporter. Add it to the
-# stack with a second -c / -f file:
+# Prometheus with the alert rules, and the Postgres exporter, for compose.prod.yaml. Add it with a second file:
 #   docker stack deploy -c compose.prod.yaml -c compose.prod.observability.yaml shortener
 #   docker compose -f compose.prod.yaml -f compose.prod.observability.yaml up -d
-# Prometheus is not published, because it has no login and Swarm cannot publish to the loopback address only. Look at it
-# from the node it runs on, see docs/DEPLOY.md.
-# Dashboards: deploy/observability/grafana has the Grafana dashboard of the application.
+# Prometheus is not published (it has no login, and Swarm cannot publish to loopback only): see docs/DEPLOY.md.
+# Grafana dashboard: deploy/observability/grafana.
 services:
   prometheus:
     read_only: true
@@ -47,7 +45,7 @@ services:
     user: '65534:65534'
     command: ['--collector.stat_statements', '--collector.stat_statements.limit=25']
     environment:
-      # shortener_exporter has pg_monitor: it reads statistics and cannot read the data.
+      # pg_monitor: statistics only, no data.
       DATA_SOURCE_URI: 'postgres:5432/shortener?sslmode=disable'
       DATA_SOURCE_USER: shortener_exporter
       DATA_SOURCE_PASS_FILE: /run/secrets/db_exporter_password

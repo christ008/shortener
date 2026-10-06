@@ -8,12 +8,8 @@ import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.CreatedByFilter
 
 /**
- * Native-image hints for the method-security expressions.
- *
- * - Expressions such as `authentication.name`, `#createdBy.name` and `#filter.isLimitedTo(...)` call methods through
- *   the Spring Expression Language, which finds them by reflection on the runtime class.
- * - A native image keeps no such metadata unless it is registered. Without these hints every
- *   authorized call fails with a 500 instead of being decided.
+ * Native-image hints that register for reflection the methods the method-security expressions call: `authentication.name`,
+ * `#createdBy.name` and `#filter.isLimitedTo(...)`.
  */
 class AuthorizationRuntimeHints : RuntimeHintsRegistrar {
 

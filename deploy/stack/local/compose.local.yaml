@@ -1,8 +1,7 @@
-# Added to compose.prod.yaml to rehearse it on one machine: the dev Keycloak with the realm, so the DPoP client in
-# deploy/keycloak can get tokens, and the management port for perf/smoke.sh, published on every interface of this
-# machine. Not for production.
+# Added to compose.prod.yaml to rehearse it on one machine: the dev Keycloak with the realm, and the management port published
+# on every interface for perf/smoke.sh. Not for production.
 #
-#   deploy/stack/local/prepare.sh     (runs deploy/keycloak/dev-setup too, if that has not been done)
+#   deploy/stack/local/prepare.sh     (runs deploy/keycloak/dev-setup too, if needed)
 #   docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml up -d
 #   JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=... perf/smoke.sh https://localhost
 services:

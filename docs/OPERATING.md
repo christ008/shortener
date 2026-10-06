@@ -1,40 +1,39 @@
 # Operating and testing it
 
-How to run the service on your machine, try it, test it, and look after it when it is deployed. Production setup is in
-[DEPLOY.md](DEPLOY.md), what to watch is in [OBSERVABILITY.md](OBSERVABILITY.md), and the design is in
-[INTERNALS.md](INTERNALS.md).
+Run the service locally, call it, test it, and look after it. Production setup is in [DEPLOY.md](DEPLOY.md), what to watch
+is in [OBSERVABILITY.md](OBSERVABILITY.md), the design is in [INTERNALS.md](INTERNALS.md).
 
-- [What you need](#what-you-need)
-- [Three ways to run it](#three-ways-to-run-it)
-- [Try the API](#try-the-api)
+- [Requirements](#requirements)
+- [Run it](#run-it)
+- [Call the API](#call-the-api)
 - [Test it](#test-it)
 - [Look after it](#look-after-it)
+- [Troubleshooting](#troubleshooting)
 - [Scripts](#scripts)
-- [When something is wrong](#when-something-is-wrong)
 
-## What you need
+## Requirements
 
 | For | You need |
 |---|---|
-| Running and testing | Docker and JDK 25 (Gradle finds one, or use SDKMAN) |
-| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 17 or newer, and the Gradle wrapper, which builds them the first time |
-| Building the native image | about 7 GB of free memory, and 3 minutes |
-| The load test | Docker (k6 runs in a container), a few spare cores, and the warning under [Test it](#test-it) |
-| Trying the production stack | `openssl` and `keytool`, both of which come with a JDK and most systems |
+| Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
+| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | JDK 17 or newer, and the Gradle wrapper (builds them the first time) |
+| The native image | about 7 GB free memory, 3 minutes |
+| The load test | Docker (k6 runs in a container), spare cores |
+| The production stack on one machine | `openssl`, `keytool` |
 
-## Three ways to run it
+## Run it
 
 | | Command | Use it for |
 |---|---|---|
-| The JVM, from Gradle | `./gradlew bootRun` | day to day: fast restarts, debugger, the `dev` profile |
-| The native image | `./gradlew bootBuildImage`, then `docker run` | checking what production runs |
-| The production stack | `deploy/stack/local/prepare.sh`, then deploy | rehearsing TLS, the edge, the migration job and rolling updates |
+| JVM | `./gradlew bootRun` | day to day, the `dev` profile |
+| Native image | `./gradlew bootBuildImage`, then `docker run` | what production runs |
+| Production stack | `deploy/stack/local/prepare.sh`, then deploy | TLS, edge, migration job, rolling updates |
 
-**The JVM.** Run `deploy/keycloak/dev-setup` once (see below), then `bootRun`. It starts Postgres and Keycloak from `compose.yaml` and applies the migrations. The app listens on
-`localhost:8080`, health and metrics on `localhost:8081`, Keycloak on `localhost:8180`. The `dev` profile samples every
-trace, shows health details and relaxes the rate limits.
+**JVM.** Run `deploy/keycloak/dev-setup` once, then `bootRun`. It starts Postgres and Keycloak from `compose.yaml` and
+applies the migrations. Ports: app `8080`, management (health, metrics) `8081`, Keycloak `8180`. The `dev` profile samples
+every trace, shows health details and relaxes the rate limits.
 
-**The native image.** Postgres and Keycloak still come from compose:
+**Native image.** Postgres and Keycloak still come from compose:
 
 ```bash
 ./gradlew bootBuildImage
@@ -46,82 +45,69 @@ docker run --rm --network host --memory 512m \
   shortener:$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
 ```
 
-It is ready 0.4 to 0.7 s after `docker run`. This runs without a profile, so it is quiet and uses the plain defaults. Add
-`-e SPRING_PROFILES_ACTIVE=production` to see the production settings.
+It runs without a profile. Add `-e SPRING_PROFILES_ACTIVE=production` for the production settings.
 
-**The production stack** is rehearsed in [DEPLOY.md](DEPLOY.md#rehearse-it-on-one-machine): a self-signed certificate,
-the nginx edge, the migration job and two application tasks, with the same smoke test.
+**Production stack.** See [DEPLOY.md](DEPLOY.md#rehearse-it-on-one-machine).
 
-Stop everything with `docker compose down`. Add `-v` to forget the database.
+Stop everything with `docker compose down`; add `-v` to drop the database.
 
-## Try the API
+## Call the API
 
-**First, once: `deploy/keycloak/dev-setup`.** It makes your own throwaway keys and passwords, because none are committed.
-It shows a banner and asks, offering a random value for each:
+### dev-setup
 
-| It asks for | Used by |
+Run `deploy/keycloak/dev-setup` once. It asks for the values below, offering a random one for each:
+
+| Asks for | Used by |
 |---|---|
-| where the client keys go (default `deploy/keycloak/dev-keys`) | the client below, `perf/smoke.sh`, the load test |
-| the Keycloak console user and password | the Keycloak at <http://localhost:8180> |
-| the passwords of the web users `alice` and `bob` | the client's `login`, and the web UI when it exists |
-| the Postgres password, and those of the roles `shortener_app`, `shortener_migrator` and `shortener_exporter` | `compose.yaml` |
+| where client keys go (default `deploy/keycloak/dev-keys`) | the client, `perf/smoke.sh`, the load test |
+| Keycloak console user and password | Keycloak at <http://localhost:8180> |
+| passwords of web users `alice` and `bob` | the client's `login` |
+| Postgres password, and those of `shortener_app`, `shortener_migrator`, `shortener_exporter` | `compose.yaml` |
 
-It writes a private key for each of the four dev clients, the dev realm that trusts them
-(`deploy/keycloak/shortener-realm.json`, made from `shortener-realm.template.json`), and the passwords to `.env`. All of it
-is ignored by Git. `--yes` takes every default without asking, for scripts and CI. `--force` replaces an existing setup,
-and `--show` prints the passwords again. Postgres and Keycloak keep the passwords they first started with, so after a
-new setup remove their data with `docker compose down -v`.
+It writes a private key for each of the four dev clients, the dev realm (`deploy/keycloak/shortener-realm.json`, from
+`shortener-realm.template.json`) and the passwords to `.env`. Git ignores all of it.
 
-Clients sign in with a signed assertion and get tokens bound to a key (DPoP), so `curl` alone cannot call the API. The
-client in `deploy/keycloak` does it:
+| Option | Effect |
+|---|---|
+| `--yes` | take every default, ask nothing |
+| `--force` | replace an existing setup |
+| `--show` | print the passwords |
+
+After a new setup run `docker compose down -v`: Postgres and Keycloak keep the passwords they first started with.
+
+### DPoP client
+
+`curl` cannot call the API: tokens are bound to a key. Use `deploy/keycloak/DpopClient.java`, which needs only a JDK 17 or
+newer, runs on the caller's machine (it must reach the token endpoint and the API) and is not deployed:
 
 ```bash
 java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 
-**Where the client runs.** On the machine of whoever calls the API: a laptop, a CI runner, an operator's host, or a
-visitor's computer. It is a client, not a part of the service, so it is never deployed in the stack. It only needs to
-reach two URLs over HTTP or HTTPS: the identity provider's token endpoint (`TOKEN_URL`, by default the local Keycloak) and
-the API. Against another instance, set `TOKEN_URL` (and `ISSUER` if it differs).
-
-**What it needs.** A JDK 17 or newer, and nothing else: it is one source file that the `java` launcher compiles and runs
-(a second or two per run), with no library and no build step. It is written to the JDK 17 baseline, with records, text
-blocks and switch expressions but nothing newer, and the tests compile it with `--release 17` and every lint on, so a
-newer API fails there and not on somebody's machine. It keeps its own small JSON reader, strict, so a response that is
-not JSON is reported as such, and every failure is one line on stderr (`DpopClient: the token endpoint answered 401: ...`)
-with exit status 1. `DPOP_DEBUG=1` adds the stack trace. An answer from the API with an error status is not a failure:
-the status is printed, as it is the answer.
-
-| To | Do |
-|---|---|
-| trust a certificate of your own | `java -Djavax.net.ssl.trustStore=ts.p12 -Djavax.net.ssl.trustStorePassword=changeit deploy/keycloak/DpopClient.java ...`, or the same in `JAVA_TOOL_OPTIONS` |
-| call another instance | `TOKEN_URL=https://auth.example.com/realms/x/protocol/openid-connect/token java deploy/keycloak/DpopClient.java ...` |
-| force a sampled trace | `TRACEPARENT=00-<trace id>-<span id>-01 java deploy/keycloak/DpopClient.java ...` |
-| make a key for a new client | `java deploy/keycloak/DpopClient.java keygen my-client`: the first line is the private JWK, the second the public one |
-
-`DpopClientTest` runs the file against a stand-in for Keycloak and the API, and checks what it sent with a different
-implementation (Nimbus), so the signatures are known to verify, with keys made by Nimbus and by the client itself,
-including a key whose private scalar starts with a zero byte. The stand-in plays the login of a single-page app too (PKCE,
-a DPoP-bound code, a rotating refresh token bound to the key), so `login` is tested, and it checks the one-line errors.
-The same test compiles the client with `--release 17` and runs it, and CI runs the client on a JDK 17 through
-`DPOP_CLIENT_JAVA_HOME`, so the baseline is run and not only compiled. `perf/smoke.sh` runs it against the real Keycloak.
-
-| Dev client | Scopes | What it is for |
-|---|---|---|
-| `demo-client` | create, claim, read, delete | the normal case |
-| `other-client` | create, read, delete | a second owner: it cannot see `demo-client`'s links (`404`) |
-| `admin-client` | admin | reading and disabling any client's links |
-| `no-scope-client` | none | being refused (`403`) |
-
 | Command | Does |
 |---|---|
-| `call KEY CLIENT METHOD URL [BODY]` | gets a token and makes one request |
+| `call KEY CLIENT METHOD URL [BODY]` | gets a token, makes one request |
 | `token KEY CLIENT` | prints a token and the key it is bound to |
-| `keygen CLIENT` | makes a key pair for a new client |
-| `login USER PASSWORD METHOD URL [BODY]` | signs a person in the way a browser app would (`alice` or `bob`, with the password `dev-setup` made) |
+| `keygen CLIENT` | prints a key pair: line 1 private JWK, line 2 public JWK |
+| `login USER PASSWORD METHOD URL [BODY]` | signs a person in as a browser app would (`alice` or `bob`) |
 
-Useful requests, with the client shown after the key file:
+| Setting | Effect |
+|---|---|
+| `TOKEN_URL`, `ISSUER` | another identity provider (`ISSUER` defaults to `TOKEN_URL` without `/protocol/openid-connect/token`) |
+| `TRACEPARENT=00-<trace id>-<span id>-01` | force a sampled trace |
+| `DPOP_DEBUG=1` | print the stack trace of an error |
+| `-Djavax.net.ssl.trustStore=ts.p12 -Djavax.net.ssl.trustStorePassword=...` (or `JAVA_TOOL_OPTIONS`) | trust a certificate of your own |
+
+Exit status: `0` when it did what was asked (an error status from the API is the answer, so it counts), `1` when it
+could not (one line on stderr), `2` for bad arguments.
+
+| Dev client | Scopes | Is for |
+|---|---|---|
+| `demo-client` | create, claim, read, delete | the normal case |
+| `other-client` | create, read, delete | a second owner: cannot see `demo-client`'s links (`404`) |
+| `admin-client` | admin | reading and disabling any client's links |
+| `no-scope-client` | none | being refused (`403`) |
 
 | To | Request |
 |---|---|
@@ -129,124 +115,112 @@ Useful requests, with the client shown after the key file:
 | list your links | `GET /api/short-links?page=0&size=20&sort=createdAt,desc` |
 | read one | `GET /api/short-links/<code>` |
 | disable one | `DELETE /api/short-links/<code>` |
-| see every client's | `GET /api/short-links` as `admin-client`, or `?createdBy=<client>` |
+| list every client's | `GET /api/short-links` as `admin-client`, or `?createdBy=<client>` |
 
-`docs/openapi.yaml` is the full contract. The dev keys and passwords are yours alone, and the dev realm must never be used anywhere real.
+Contract: [openapi.yaml](openapi.yaml).
 
 ## Test it
 
-| Level | Command | Takes | Needs |
-|---|---|---|---|
-| Everything | `./gradlew test` | about 1 minute | Docker (Testcontainers starts Postgres) |
-| One class | `./gradlew test --tests '*ShortLinkAuthorizationTest'` | seconds | |
-| The API contract | `./gradlew test --tests '*OpenApiContractTest'` | seconds | fails if `docs/openapi.yaml` drifts from the code |
-| The production stack's rules | `./gradlew test --tests '*ComposeStackTest'` | seconds | fails if hardening is loosened |
-| The alert rules | `promtool` in a container, see [OBSERVABILITY.md](OBSERVABILITY.md#alerts) | seconds | Docker |
-| Every endpoint, on the image | `perf/smoke.sh` | seconds | a running instance and the dev Keycloak |
-| Load | `perf/bench.sh`, see below | minutes | Docker, spare cores |
+| Level | Command | Needs |
+|---|---|---|
+| Everything (about 1 minute) | `./gradlew test` | Docker (Testcontainers starts Postgres) |
+| One class | `./gradlew test --tests '*ShortLinkAuthorizationTest'` | |
+| API contract | `./gradlew test --tests '*OpenApiContractTest'` | |
+| Stack hardening | `./gradlew test --tests '*ComposeStackTest'` | |
+| Alert rules | `promtool` in a container, see [OBSERVABILITY.md](OBSERVABILITY.md#alerts) | Docker |
+| Every endpoint, on the image | `perf/smoke.sh` | a running instance, the dev Keycloak |
+| Load | `perf/bench.sh` | Docker, spare cores |
 
-What the tests cover:
+The suite has unit tests (in-memory repository), integration tests (real Postgres, stand-in identity provider),
+architecture tests, and tests of the deployment files (stack, profiles, alert rules, release version).
 
-- Unit tests of the domain types, the cache, the rate limiter and the services, with an in-memory repository.
-- Integration tests against a real Postgres and a stand-in identity provider, for security, DPoP, ownership, errors, the
-  database limits and the outage behavior.
-- Architecture tests that hold the module and layer boundaries.
-- Tests of the files that deploy it: the stack, the profiles, the alert rules and the release version.
-
-**The smoke test** matters for the native image, where something that works on the JVM can fail for want of reflection
-metadata. Run it against the container above:
+**Smoke test.** Run it against the native image:
 
 ```bash
-perf/smoke.sh                                  # http://localhost:8080, management on 8081
+perf/smoke.sh                   # http://localhost:8080, management on 8081
 ```
 
-Against the stack, give it the address, the certificate and the management port; see DEPLOY.md.
+Against the stack: give it the address, the certificate and the management port ([DEPLOY.md](DEPLOY.md#rehearse-it-on-one-machine)).
 
-**Load tests.** `perf/bench.sh VARIANT IMAGE OUT_DIR` runs one image with 2 cores and 512 MB against Postgres and k6
-(`perf/run-all.sh` compares the JVM and native). Stay at or below 5,000 requests a second. Overload runs open thousands
-of connections, which an application firewall that inspects new connections (Safing Portmaster, for one) can fail to keep
-up with, and then every new connection on the machine fails until reboot. Check `journalctl -k | grep nf_queue` if
-connections start timing out.
+**Load test.** `perf/bench.sh VARIANT IMAGE OUT_DIR` runs one image with 2 cores and 512 MB against Postgres and k6.
+`perf/run-all.sh` compares the JVM and the native image.
+
+> Stay at or below 5,000 requests a second. Overload runs can take down the network of a machine with an application
+> firewall that inspects new connections. See [INTERNALS.md](INTERNALS.md#running-load-tests-safely).
 
 ## Look after it
 
-When it is deployed, with the commands of [DEPLOY.md](DEPLOY.md):
+Commands of [DEPLOY.md](DEPLOY.md), on a deployed stack:
 
 | To | Do |
 |---|---|
-| see that it is healthy | `docker service ls`; `curl https://<host>/<unknown code>` answers `404` |
-| read the logs | `docker service logs shortener_shortener` |
-| update | `deploy/stack/deploy.sh <version>`; it migrates first and rolls back a task that does not become healthy |
+| check health | `docker service ls`; `curl https://<host>/<unknown code>` answers `404` |
+| read logs | `docker service logs shortener_shortener` |
+| update | `deploy/stack/deploy.sh <version>` |
 | roll back | `deploy/stack/deploy.sh <previous version>` |
-| scale | `docker service scale shortener_shortener=3`, mindful that limits and the DPoP replay cache are per task |
-| take a link down | `DELETE /api/short-links/<code>` as an administrator. Other instances stop serving it within the cache TTL (30 s) |
-| add a client | create it in the identity provider with the scopes it needs and the `owner` claim mapper, then give it a key |
-| restrict where links may point | set `ALLOWED_TARGET_HOSTS` in `.env` and deploy. The stack does not start with neither it nor `ALLOW_ANY_TARGET=true` |
-| look at the database | `perf/pg-diagnostics.sql`, see DEPLOY.md |
-| rotate a secret | a new secret under a new name, then deploy; Swarm secrets cannot change |
+| scale | `docker service scale shortener_shortener=3` (limits and the DPoP replay cache are per task) |
+| take a link down | `DELETE /api/short-links/<code>` as an administrator (other instances stop within 30 s) |
+| add a client | create it in the identity provider with its scopes and the `owner` claim mapper, then give it a key |
+| restrict target hosts | set `ALLOWED_TARGET_HOSTS` in `.env`, deploy |
+| inspect the database | `perf/pg-diagnostics.sql` ([DEPLOY.md](DEPLOY.md#operate)) |
+| rotate a secret | create it under a new name, deploy |
 
-What to watch is the nine alerts in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). The two that mean "the database is in
-trouble" are `ShortenerStorageUnavailable` and `ShortenerServingStaleRedirects`. The service keeps redirecting links it
-has read, for five minutes, while the database is down, and answers `503` with `Retry-After` for the rest.
+Alerts are listed in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). `ShortenerStorageUnavailable` and
+`ShortenerServingStaleRedirects` mean the database is in trouble: the service keeps redirecting links it has read for five
+minutes, and answers `503` with `Retry-After` for the rest.
 
-## When something is wrong
+## Troubleshooting
 
-| You see | It means | Do |
+| You see | Cause | Do |
 |---|---|---|
-| `401` with `error="invalid_token"` | the token is bad, expired, for another audience, or sent as `Bearer` while DPoP is required | send `Authorization: DPoP <token>` with a proof; check the issuer and audience |
-| `401` with `error="invalid_dpop_proof"` | the proof does not match the request: method, URL (behind a proxy, the forwarded host and scheme), token or time | make a fresh proof per request; check the edge passes `X-Forwarded-*` |
-| `403` with `insufficient_scope` | the token lacks the scope | give the client the scope |
-| `404` for a link you know exists | it belongs to another client | use that client, or an administrator |
-| `429` | rate limit, per address (300 a minute) or per client (60) | wait `Retry-After`; the limits are per instance |
-| `503` with `Retry-After` | no database connection, a statement over 5 s, or a lock over 2 s | check Postgres; `perf/pg-diagnostics.sql` |
-| `400` "not accepted by this service" | the target's host is not on the allowlist | add the host, or use another |
-| `409` creating a code | the code is taken, or reserved (`api`, `actuator`, `error`) | choose another |
-| the app exits at start with `permission denied` | the schema is behind and the application role cannot change it | run the migration job first |
-| native build ends with exit 137 | the machine ran out of memory | close other work; it needs about 7 GB free |
-| `docker ps` shows nothing you started | Docker Desktop switched the CLI to its own daemon | `DOCKER_CONTEXT=default`, and `DOCKER_HOST=unix:///var/run/docker.sock` for Gradle |
-| `The configuration of the pool is sealed` | an environment variable was spelled with a separator inside a word | `..._CONNECTIONTIMEOUT`, not `..._CONNECTION_TIMEOUT` |
+| `401`, `error="invalid_token"` | bad or expired token, wrong audience, or `Bearer` while DPoP is required | send `Authorization: DPoP <token>` with a proof; check issuer and audience |
+| `401`, `error="invalid_dpop_proof"` | proof does not match the request: method, URL, token or time | make a fresh proof per request; behind a proxy, check `X-Forwarded-*` |
+| `403`, `insufficient_scope` | token lacks the scope | give the client the scope |
+| `404` for a link that exists | it belongs to another client | use that client, or an administrator |
+| `429` | rate limit: 300 a minute per address, 60 per client | wait `Retry-After`; limits are per instance |
+| `503` with `Retry-After` | no database connection, a statement over 5 s, or a lock over 2 s | check Postgres, `perf/pg-diagnostics.sql` |
+| `400` "not accepted by this service" | target host not on the allowlist | add the host |
+| `409` creating a code | code taken or reserved (`api`, `actuator`, `error`) | choose another |
+| app exits at start with `permission denied` | schema behind, and the application role cannot change it | run the migration job first |
+| native build exits with 137 | out of memory | free about 7 GB |
+| `docker ps` shows nothing you started | Docker Desktop switched the CLI to its own daemon | `DOCKER_CONTEXT=default`; for Gradle `DOCKER_HOST=unix:///var/run/docker.sock` |
+| `The configuration of the pool is sealed` | environment variable spelled with a separator inside a word | `..._CONNECTIONTIMEOUT`, not `..._CONNECTION_TIMEOUT` |
 
 ## Scripts
 
-Every script is one of two kinds. **sh** starts programs in order and is POSIX `sh` checked with `shellcheck --shell=sh`
-([ADR 0026](adr/0026-scripting-standard.md)). Whatever computes (parses, templates, signs, checks, reports) is **Kotlin**, in the
-tools of `tools/`, a Gradle build of its own that `tools/run` builds the first time and when a source changes
-([ADR 0029](adr/0029-tools-in-kotlin.md)). They need a JDK 17 or newer, and have tests that run in process: `./gradlew test` runs them with the
-application's, and `./gradlew -p tools test` alone. The one exception is the client that strangers run, `DpopClient.java`: a single Java file
-for JDK 17 or newer, with no build ([ADR 0020](adr/0020-dpop-client-in-java.md)), which the tools compile as it is. Nothing else is added. Bash is on its way out.
+Scripts that start programs are POSIX `sh`. Scripts that compute are Kotlin tools in `tools/`, built by `tools/run` the
+first time and when a source changes (JDK 17 or newer). The one exception is `DpopClient.java`, a single Java file for
+JDK 17 or newer with no build. `perf/bench.sh`, `run-all.sh`, `profile.sh` and `tune-connections.sh` are bash. See [ADR 0026](adr/0026-scripting-standard.md),
+[0029](adr/0029-tools-in-kotlin.md) and [0020](adr/0020-dpop-client-in-java.md).
 
-| Script | Is for | Kind | Status |
-|---|---|---|---|
-| `deploy/stack/deploy.sh` | deploy or update the stack on a manager | sh | done |
-| `deploy/stack/local/prepare.sh` | make throwaway secrets and a certificate for a rehearsal | sh | done |
-| `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | create the roles and databases when Postgres first starts | sh | done |
-| `deploy/keycloak/entrypoint.sh` | read Keycloak's secrets from files and start it | sh | done |
-| `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP, make client keys | Java | done |
-| `deploy/keycloak/dev-setup` | start the `DevSetup` tool | sh | done: a 3-line shim of `tools/run` |
-| `tools/run` | build the tools when a source changed, check the JDK is 17 or newer, and start one | sh | done |
-| `DevSetup` (`tools/src/main/kotlin`) | make the dev keys, realm, passwords and `.env`, asking on a terminal | Kotlin | done |
-| `Realms`, `RealmTemplate` and the shared `Cli` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Kotlin | done |
-| `Smoke`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Kotlin | done: 2.4 s against 16 s (measured when it was Java) |
-| `Report` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Kotlin | done: the Python scripts are gone, and its output is theirs on every committed result |
-| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | bash | to POSIX sh |
-| `perf/k6/mixed.js` | the load workload | k6 | stays: it is k6's own language |
-| `gradlew` | the Gradle wrapper | generated | not ours |
+| Script | Is for | Kind |
+|---|---|---|
+| `deploy/stack/deploy.sh` | deploy or update the stack on a manager | sh |
+| `deploy/stack/local/prepare.sh` | throwaway secrets and certificate for a rehearsal | sh |
+| `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | roles and databases at first Postgres start | sql, sh |
+| `deploy/keycloak/entrypoint.sh` | read Keycloak's secrets from files, start it | sh |
+| `deploy/keycloak/dev-setup`, `perf/smoke.sh` | start `DevSetup` and `Smoke` | sh |
+| `tools/run TOOL [ARGS]` | build the tools if needed, start one | sh |
+| `DevSetup` | dev keys, realm, passwords, `.env` | Kotlin |
+| `Realms` | realm from a template and public keys | Kotlin |
+| `Smoke` | check every endpoint of a running instance | Kotlin |
+| `Report` | read GC logs, heap dumps and bench results; query Prometheus | Kotlin |
+| `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
+| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test, profile | bash |
+| `perf/k6/mixed.js` | the load workload | k6 |
 
-Each script a person runs has a Gradle task, listed by `./gradlew tasks --group tooling`:
+Gradle tasks (`./gradlew tasks --group tooling`):
 
 | Task | Runs | Settings |
 |---|---|---|
-| `devSetup`, `devPasswords` | `dev-setup --yes` (`--force` with `-Pforce`), and `--show` | |
+| `devSetup`, `devPasswords` | `dev-setup --yes` (`--force` with `-Pforce`), `--show` | |
 | `keygen` | `DpopClient.java keygen` | `-Pclient=NAME` |
-| `productionRealm` | `tools/run Realms production` | `-Pdemo=FILE -Padmin=FILE`, `-Poutput=FILE` |
-| `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL`, `-Pmethod`, `-Pbody` |
-| `smoke` | `tools/run Smoke` | `-PbaseUrl=URL`, `-Pmgmt=URL` |
+| `productionRealm` | `tools/run Realms production` | `-Pdemo=FILE -Padmin=FILE -Poutput=FILE` |
+| `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL -Pmethod -Pbody` |
+| `smoke` | `tools/run Smoke` | `-PbaseUrl=URL -Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
-| `report` | `tools/run Report` | `-Preport=summary\|gc\|hprof\|profile\|json`, `-Ptarget=PATH`, `-Ptop=N` |
+| `report` | `tools/run Report` | `-Preport=summary\|gc\|hprof\|profile\|json -Ptarget=PATH -Ptop=N` |
 
-The tasks run with the toolchain's JDK 25 even when `java` on the PATH is older, and `tools/run` needs only a JDK 17 or newer, so it also works by hand on a machine without a 25. The first run
-builds the tools, which takes about half a minute, and the ones after it only start them. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself
-to be asked. The scripts that run inside the stack, and `deploy.sh`, which runs on a manager, have no task.
-
-CI lints the `deploy` scripts and `tools/run` as `sh`, and the `perf` scripts as `bash` until they are rewritten.
-
+The tasks run with the project's JDK 25 toolchain. `devSetup` takes the defaults because Gradle has no terminal: run the
+script to be asked. `tools/run` works by hand with any JDK 17 or newer. Tests: `./gradlew test` (with the application's) or
+`./gradlew -p tools test`.

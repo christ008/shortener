@@ -27,16 +27,13 @@ import java.net.URI
 /**
  * Default [ShortLinkService].
  *
- * - Access rules are the `May...` annotations, enforced by method security. Links are reached
- *   through [ManageableLinks], so another client's are not found.
- * - Generated codes are retried a bounded number of times. Each attempt is one atomic
- *   insert-if-absent, so a taken code costs one more attempt.
- * - Custom codes that would shadow an application route are reserved ([ShortCode.RESERVED]).
- * - Which hosts a link may point to is the [TargetUrlPolicy]'s decision, so a public instance can restrict it.
- * - A disabled link keeps its code, so it cannot be registered again.
- * - What clients create, disable and list across clients goes to the [AuditTrail].
- * - Redirects go through the [RedirectCache]. Every other read, including the ones that decide who
- *   may see or disable a link, reads the repository, so they never see a stale link.
+ * - Access rules are the `May...` annotations, enforced by method security. Links are reached through [ManageableLinks].
+ * - Generated codes are retried a bounded number of times, each attempt one atomic insert-if-absent.
+ * - Custom codes may not be [ShortCode.RESERVED].
+ * - Which hosts a link may point to is the [TargetUrlPolicy]'s decision.
+ * - A disabled link keeps its code.
+ * - Creates, disables and listings across clients go to the [AuditTrail].
+ * - Redirects go through the [RedirectCache]. Every other read uses the repository.
  */
 @Service
 class DefaultShortLinkService(

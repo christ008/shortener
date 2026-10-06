@@ -18,10 +18,7 @@ interface RedirectCache {
     fun evict(shortCode: ShortCode)
 }
 
-/**
- * A [RedirectCache] that never caches. It stands in when the cache is turned off, so callers have no
- * "is there a cache" case to handle.
- */
+/** A [RedirectCache] that never caches: it keeps nothing and always loads. Used when the cache is turned off. */
 object NoRedirectCache : RedirectCache {
 
     override fun find(shortCode: ShortCode, load: (ShortCode) -> LinkLookup): LinkLookup = load(shortCode)
