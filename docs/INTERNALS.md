@@ -378,12 +378,28 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 - A `PermissionEvaluator` lets a caller manage a link only if it created it, or is an administrator.
 - A denied link read becomes `404` through `@HandleAuthorizationDenied`.
 
+Wiring that is easy to break:
+
+- `ShortLinkScopes` is bound through its constructor, so it is immutable after start, and its defaults are `@DefaultValue`s:
+  Kotlin default arguments would add a no-argument constructor that Spring rejects. A blank scope name stops startup, because
+  it would make an operation unreachable or open to the wrong tokens.
+- Constructor-bound properties cannot be components, so `ShortLinkScopesConfiguration` gives the object the bean name `scopes`
+  that the expressions use (`@scopes.read`). It is the primary bean of its type.
+- `ManageableLinks` is a bean of its own because method security applies only to calls made through a Spring proxy.
+- `ShortLinkPermissionEvaluator` resolves the scopes lazily, because method security needs it while the context is starting.
+  The method-security handler is a static infrastructure bean for the same reason: it must not force other beans to
+  initialise early.
+
 ### Rate limiting
 
 - Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): 300 requests a minute per IP before
   authentication, 60 a minute per client after it.
 - State is per instance, so the effective limit is the limit times the replicas. A global limit needs a shared store.
+- Buckets live in a size-bounded Caffeine cache and expire once idle for a full refill period, so a flood of distinct keys
+  cannot exhaust memory.
 - Actuator paths are never limited, so health checks cannot be starved.
+- Each `RateLimitFilter` instance needs a distinct name: `OncePerRequestFilter` remembers a filtered request by filter name,
+  so two instances sharing one would skip each other.
 
 ### Identity provider and OAuth 2.1
 
@@ -471,7 +487,8 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 
 | Failure | Cause | Fix |
 |---|---|---|
-| Rate limiter cannot build its cache | Caffeine picks generated classes by name | `CaffeineRuntimeHints` registers them |
+| Rate limiter cannot build its cache | Caffeine generates one cache class and one entry class per feature combination (`SSMSA` is strong keys, strong values, size bound, expire-after-access), picks one by name and instantiates it reflectively. Nothing registers them, and the community metadata covers only the combinations in Caffeine's own tests | `CaffeineRuntimeHints` registers every generated class on the classpath, so the hints follow the Caffeine version |
+| A property or profile set only when the container starts has no effect | a native image fixes its beans when it is built, and that build runs under `production` | no `@ConditionalOnProperty` or `@Profile` for these: `MigrateOnlyRunner` reads `shortener.migrate-only` when it runs, and `TargetUrlPolicyConfiguration` reads the profile when it creates the bean ([ADR 0023](adr/0023-production-must-decide-its-targets.md)) |
 | `management.server.port` ignored | read at AOT time | set it in `application.yaml`, not the environment |
 | Tomcat missing a reflection entry | `server.tomcat.mbeanregistry.enabled=true` | removed |
 | Every DPoP request is `401` with no reason | the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class | `DpopRuntimeHints`, plus a startup check that fails if DPoP is required and the filter is missing |
@@ -547,6 +564,8 @@ flowchart LR
 - Caps bodies at 16 KiB, sets header, body and proxy timeouts, and caps connections per address. Never proxies the
   management port.
 - Resolves `shortener` every 5 s, so tasks that come and go are followed without a reload.
+- Swarm configs cannot change once created, so `deploy.sh` puts a hash of each file in the config's name (nginx, Prometheus,
+  the Keycloak realm and edge file). A changed file is a new config, and Swarm updates the service that uses it.
 
 ### Rollouts
 
@@ -590,6 +609,13 @@ sequenceDiagram
 - Secrets and configs are immutable: rotating one means a new name and a stack update.
 - The database is one instance on one node, with no replication and no backups unless you add them.
 - Prometheus cannot be published to the loopback address only, so it is not published at all.
+
+### A managed container service instead of a VM
+
+For an instance meant to last, a container service with a managed Postgres has nothing to patch and no disk to lose. It costs
+more, mainly for the database, and needs reshaping: the edge becomes the platform's load balancer, the migration job becomes a
+one-off task before each release, Keycloak needs its own service and database, and the stack's network isolation becomes the
+provider's. It is not worth it for a demo ([CLOUD.md](CLOUD.md)).
 
 ### Verified
 
@@ -754,7 +780,8 @@ Two changes closed it:
   It trades about 1% failed requests for flat memory and latency. Creates still queue for seconds at that load, so a
   limit is protection, not capacity.
 
-Not yet tested: turning off Spring Security observations. Tooling: `perf/profile.sh`, `tools/run Report` (`gc` and `hprof`),
+Spring Security's per-filter observations are off (`management.observations.enable.spring.security=false`); their effect on
+allocation was not measured. Tooling: `perf/profile.sh`, `tools/run Report` (`gc` and `hprof`),
 `perf/tune-connections.sh`.
 
 ### Running load tests safely

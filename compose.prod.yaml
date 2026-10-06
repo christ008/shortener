@@ -9,7 +9,7 @@
 #
 # Required variables are listed in deploy/stack/.env.example. Secrets are files, see `secrets:` at the end.
 #
-# What Swarm ignores is listed in docs/DEPLOY.md, with what to do about it. `docker compose` honours all of it.
+# What Swarm ignores is listed in docs/INTERNALS.md (Hardening), with what to do about it. `docker compose` honours all of it.
 
 x-logging: &logging
   driver: json-file
