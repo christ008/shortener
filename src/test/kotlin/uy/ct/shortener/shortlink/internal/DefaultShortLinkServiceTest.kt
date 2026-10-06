@@ -38,10 +38,11 @@ class DefaultShortLinkServiceTest {
         vararg codes: String,
         observations: ObservationRegistry = ObservationRegistry.NOOP,
         policy: TargetUrlPolicy = AnyTarget,
+        audit: AuditTrail = NoAuditTrail,
     ): Pair<DefaultShortLinkService, GeneratorProbe> {
         val generator = GeneratorProbe(codes.map(::ShortCode))
         val cache = CaffeineRedirectCache(RedirectCacheProperties(ttl = ttl), SimpleMeterRegistry(), ticker, Runnable::run)
-        return DefaultShortLinkService(repository, generator, ManageableLinks(repository), cache, policy, observations) to generator
+        return DefaultShortLinkService(repository, generator, ManageableLinks(repository), cache, policy, observations, audit) to generator
     }
 
     private class GeneratorProbe(private val codes: List<ShortCode>) : ShortCodeGenerator {
@@ -284,5 +285,40 @@ class DefaultShortLinkServiceTest {
             }
         }
         assertThat(repository.saved).isEmpty()
+    }
+
+    private class RecordingAuditTrail : AuditTrail {
+        val calls = mutableListOf<String>()
+
+        override fun created(link: uy.ct.shortener.shortlink.ShortLink, custom: Boolean) {
+            calls += "created ${link.shortCode} custom=$custom"
+        }
+
+        override fun disabled(link: uy.ct.shortener.shortlink.ShortLink, by: String) {
+            calls += "disabled ${link.shortCode} by=$by"
+        }
+
+        override fun listed(filter: uy.ct.shortener.shortlink.CreatedByFilter) {
+            calls += "listed $filter"
+        }
+    }
+
+    @Test
+    fun `audits a generated create, a custom create, a disable and a listing, and a refused create not at all`() {
+        val audit = RecordingAuditTrail()
+        val (service, _) = serviceWith("aaaaaaa", audit = audit, policy = AllowedHosts(listOf("example.com")))
+
+        service.shorten("https://example.com/a", "owner")
+        service.claim(ShortCode("custom1"), "https://example.com/b", "owner")
+        assertFailsWith<TargetUrlNotAllowedException> { service.shorten("https://evil.test/", "owner") }
+        service.disable(ShortCode("custom1"), "owner")
+        service.list(uy.ct.shortener.shortlink.CreatedByFilter.Anyone, org.springframework.data.domain.PageRequest.of(0, 10))
+
+        assertThat(audit.calls).containsExactly(
+            "created aaaaaaa custom=false",
+            "created custom1 custom=true",
+            "disabled custom1 by=owner",
+            "listed Anyone",
+        )
     }
 }

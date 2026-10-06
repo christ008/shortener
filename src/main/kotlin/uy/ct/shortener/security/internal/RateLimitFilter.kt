@@ -28,13 +28,13 @@ class RateLimitFilter(
     override fun shouldNotFilter(request: HttpServletRequest) = request.requestURI.startsWith("/actuator")
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
-        val decision = when (val key = keyOf(request)) {
-            RateLimitKey.Unlimited -> RateLimitDecision.Allowed
-            is RateLimitKey.Of -> limiter.tryAcquire(key.value)
-        }
-        when (decision) {
-            RateLimitDecision.Allowed -> chain.doFilter(request, response)
-            is RateLimitDecision.Limited -> responder.tooManyRequests(request, response, max(1, decision.retryAfter.plusMillis(999).seconds))
+        when (val key = keyOf(request)) {
+            RateLimitKey.Unlimited -> chain.doFilter(request, response)
+            is RateLimitKey.Of -> when (val decision = limiter.tryAcquire(key.value)) {
+                RateLimitDecision.Allowed -> chain.doFilter(request, response)
+                is RateLimitDecision.Limited ->
+                    responder.tooManyRequests(request, response, max(1, decision.retryAfter.plusMillis(999).seconds), name, key.value)
+            }
         }
     }
 }

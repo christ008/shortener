@@ -33,6 +33,7 @@ import java.net.URI
  * - Custom codes that would shadow an application route are reserved ([ShortCode.RESERVED]).
  * - Which hosts a link may point to is the [TargetUrlPolicy]'s decision, so a public instance can restrict it.
  * - A disabled link keeps its code, so it cannot be registered again.
+ * - What clients create, disable and list across clients goes to the [AuditTrail].
  * - Redirects go through the [RedirectCache]. Every other read, including the ones that decide who
  *   may see or disable a link, reads the repository, so they never see a stale link.
  */
@@ -44,6 +45,7 @@ class DefaultShortLinkService(
     private val redirectCache: RedirectCache,
     private val targetUrlPolicy: TargetUrlPolicy,
     private val observations: ObservationRegistry,
+    private val audit: AuditTrail,
 ) : ShortLinkService {
 
     @MayCreate
@@ -51,7 +53,7 @@ class DefaultShortLinkService(
         val uri = parseTargetUrl(targetUrl)
         repeat(MAX_GENERATION_ATTEMPTS) {
             when (val result = insert(codeGenerator.generate(), uri, createdBy)) {
-                is InsertResult.Created -> return result.link
+                is InsertResult.Created -> return result.link.also { audit.created(it, custom = false) }
                 InsertResult.Taken -> Unit
             }
         }
@@ -62,7 +64,7 @@ class DefaultShortLinkService(
     override fun claim(shortCode: ShortCode, targetUrl: String, createdBy: String): ShortLink {
         val uri = parseTargetUrl(targetUrl)
         return when (val result = insert(shortCode.requireClaimable(), uri, createdBy)) {
-            is InsertResult.Created -> result.link
+            is InsertResult.Created -> result.link.also { audit.created(it, custom = true) }
             InsertResult.Taken -> throw ShortCodeUnavailableException(shortCode)
         }
     }
@@ -77,13 +79,17 @@ class DefaultShortLinkService(
     override fun get(shortCode: ShortCode): ShortLink = manageableLinks.get(shortCode)
 
     @MayList
-    override fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink> = repository.list(filter, pageable)
+    override fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink> {
+        audit.listed(filter)
+        return repository.list(filter, pageable)
+    }
 
     @MayDisable
     override fun disable(shortCode: ShortCode, disabledBy: String) {
-        manageableLinks.get(shortCode)
+        val link = manageableLinks.get(shortCode)
         repository.disable(shortCode, disabledBy)
         redirectCache.evict(shortCode)
+        audit.disabled(link, disabledBy)
     }
 
     private fun insert(shortCode: ShortCode, uri: URI, createdBy: String): InsertResult =

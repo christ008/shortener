@@ -1,5 +1,7 @@
 package uy.ct.shortener.shortlink.internal.persistence
 
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.dao.QueryTimeoutException
 import org.springframework.jdbc.UncategorizedSQLException
@@ -18,6 +20,8 @@ import uy.ct.shortener.shortlink.ShortLink
 import uy.ct.shortener.shortlink.ShortLinkRepository
 import uy.ct.shortener.shortlink.StorageUnavailableException
 import java.net.URI
+import java.time.Duration
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * [ShortLinkRepository] on plain JDBC through Spring's [JdbcClient], with the SQL written out.
@@ -34,6 +38,7 @@ import java.net.URI
  *   a failure to get a connection (pool exhausted or database down), a statement past
  *   `statement_timeout` and a lock not obtained within `lock_timeout`. Spring leaves the last one
  *   uncategorised, so it is recognised by its SQLSTATE.
+ * - The first such failure in any ten seconds is logged as a warning with its type, never the statement or its parameters.
  */
 @Repository
 class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepository {
@@ -112,19 +117,34 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
         return (requested.ifEmpty { listOf("created_at DESC") } + "$SHORT_CODE_IN_BYTE_ORDER ${direction.name}").joinToString()
     }
 
+    private val lastUnavailableLogged = AtomicLong(System.nanoTime() - UNAVAILABLE_LOG_INTERVAL_NANOS)
+
     private inline fun <T> reportingUnavailability(statement: () -> T): T =
         try {
             statement()
         } catch (ex: DataAccessResourceFailureException) {
-            throw StorageUnavailableException(ex)
+            throw unavailable(ex)
         } catch (ex: QueryTimeoutException) {
-            throw StorageUnavailableException(ex)
+            throw unavailable(ex)
         } catch (ex: UncategorizedSQLException) {
             if (ex.sqlException?.sqlState != LOCK_NOT_AVAILABLE) throw ex
-            throw StorageUnavailableException(ex)
+            throw unavailable(ex)
         }
 
+    private fun unavailable(cause: RuntimeException): StorageUnavailableException {
+        val now = System.nanoTime()
+        val last = lastUnavailableLogged.get()
+        if (now - last >= UNAVAILABLE_LOG_INTERVAL_NANOS && lastUnavailableLogged.compareAndSet(last, now)) {
+            LOGGER.warn("Storage unavailable ({}), answering 503; further failures are logged at most every 10 seconds", cause.javaClass.simpleName)
+        }
+        return StorageUnavailableException(cause)
+    }
+
     private companion object {
+        val LOGGER: Logger = LoggerFactory.getLogger(JdbcShortLinkRepository::class.java)
+
+        val UNAVAILABLE_LOG_INTERVAL_NANOS = Duration.ofSeconds(10).toNanos()
+
         /** `lock_not_available`, what Postgres reports for a lock that `lock_timeout` gave up on. */
         const val LOCK_NOT_AVAILABLE = "55P03"
 

@@ -61,6 +61,9 @@ class ShortLinkAuthorizationTest {
         fun observations(): ObservationRegistry = ObservationRegistry.NOOP
 
         @Bean
+        fun audit(): AuditTrail = NoAuditTrail
+
+        @Bean
         fun generator(): ShortCodeGenerator {
             val next = AtomicInteger()
             return ShortCodeGenerator { ShortCode("gen%04d".format(next.incrementAndGet())) }

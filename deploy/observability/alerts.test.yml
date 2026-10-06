@@ -117,3 +117,60 @@ tests:
         eval_time: 10m
         exp_samples: []
 
+  - name: failed authentications fire when sustained above one a second, and a trickle never does
+    interval: 1m
+    input_series:
+      - series: 'shortener_security_events_total{application="shortener", instance="a", type="unauthenticated"}'
+        values: '0+120x30'
+      - series: 'shortener_security_events_total{application="shortener", instance="b", type="forbidden"}'
+        values: '0+3x30'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerAuthenticationFailures", alertstate="firing"})
+        eval_time: 8m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="ShortenerAuthenticationFailures", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: count(ALERTS{alertname="ShortenerForbiddenCalls", alertstate="firing"})
+        eval_time: 25m
+        exp_samples: []
+
+  - name: forbidden calls and rate limiting fire when sustained
+    interval: 1m
+    input_series:
+      - series: 'shortener_security_events_total{application="shortener", instance="a", type="forbidden"}'
+        values: '0+30x30'
+      - series: 'shortener_security_events_total{application="shortener", instance="a", type="rate_limited"}'
+        values: '0+90x30'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerForbiddenCalls", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: count(ALERTS{alertname="ShortenerRateLimited", alertstate="firing"})
+        eval_time: 20m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+
+  - name: a burst of administrator takedowns fires at once, and ordinary disabling and creating never does
+    interval: 1m
+    input_series:
+      - series: 'shortener_audit_events_total{application="shortener", instance="a", type="disabled_by_admin"}'
+        values: '0 0 0 15 15 15 15 15'
+      - series: 'shortener_audit_events_total{application="shortener", instance="a", type="disabled"}'
+        values: '0+50x7'
+      - series: 'shortener_audit_events_total{application="shortener", instance="a", type="created"}'
+        values: '0+200x7'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerAdministratorActivity", alertstate="firing"})
+        eval_time: 2m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="ShortenerAdministratorActivity", alertstate="firing"})
+        eval_time: 4m
+        exp_samples:
+          - labels: '{}'
+            value: 1
