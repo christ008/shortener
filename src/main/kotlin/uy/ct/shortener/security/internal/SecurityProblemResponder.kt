@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.core.AuthenticationException
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException
 import org.springframework.security.oauth2.core.OAuth2ErrorCodes
 import org.springframework.security.web.AuthenticationEntryPoint
@@ -23,14 +24,17 @@ import org.springframework.web.servlet.HandlerExceptionResolver
  * - The challenge names `DPoP` with the proof algorithms accepted (RFC 9449), and `Bearer` as well
  *   unless [dpopRequired], or unless the request already used one scheme.
  * - A 429 carries `Retry-After`.
+ * - Each failure is reported to [events], when there is one, with the OAuth error code and never the exception's message.
  */
 class SecurityProblemResponder(
     private val resolver: HandlerExceptionResolver,
     private val dpopRequired: Boolean = false,
+    private val events: SecurityEvents? = null,
 ) : AuthenticationEntryPoint, AccessDeniedHandler {
 
     override fun commence(request: HttpServletRequest, response: HttpServletResponse, authException: AuthenticationException) {
         val error = (authException as? OAuth2AuthenticationException)?.error?.errorCode
+        events?.unauthenticated(request, error ?: if (AuthScheme.of(request) == AuthScheme.NONE) "missing_credentials" else "invalid_credentials")
         respond(
             request, response,
             SecurityProblem(HttpStatus.UNAUTHORIZED, "A valid access token is required", challenge(AuthScheme.of(request), error)),
@@ -38,6 +42,7 @@ class SecurityProblemResponder(
     }
 
     override fun handle(request: HttpServletRequest, response: HttpServletResponse, accessDeniedException: AccessDeniedException) {
+        events?.forbidden(request, SecurityContextHolder.getContext().authentication?.name, OAuth2ErrorCodes.INSUFFICIENT_SCOPE)
         respond(
             request, response,
             SecurityProblem(
@@ -48,7 +53,8 @@ class SecurityProblemResponder(
         )
     }
 
-    fun tooManyRequests(request: HttpServletRequest, response: HttpServletResponse, retryAfterSeconds: Long) {
+    fun tooManyRequests(request: HttpServletRequest, response: HttpServletResponse, retryAfterSeconds: Long, limit: String = "", key: String = "") {
+        events?.rateLimited(request, limit, key)
         val headers = HttpHeaders().apply { set(HttpHeaders.RETRY_AFTER, retryAfterSeconds.toString()) }
         respond(request, response, SecurityProblem(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded, retry in $retryAfterSeconds seconds", headers))
     }

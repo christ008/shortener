@@ -1,6 +1,8 @@
 package uy.ct.shortener.security
 
+import io.micrometer.core.instrument.MeterRegistry
 import jakarta.servlet.DispatcherType
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerProperties
@@ -27,6 +29,7 @@ import uy.ct.shortener.security.internal.DpopRuntimeHints
 import uy.ct.shortener.security.internal.RateLimitFilter
 import uy.ct.shortener.security.internal.RateLimitKey
 import uy.ct.shortener.security.internal.RateLimiter
+import uy.ct.shortener.security.internal.SecurityEvents
 import uy.ct.shortener.security.internal.SecurityProblemResponder
 import uy.ct.shortener.security.internal.SecurityProperties
 import uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver
@@ -42,7 +45,7 @@ import uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver
  * - Following a short link and the health probes are public. Every other request is denied.
  * - Requests are rate limited per client IP, then per authenticated client.
  * - Responses carry restrictive security headers. Authentication, authorization and rate-limit
- *   failures are problem details.
+ *   failures are problem details, and each is also an event: a log line and a counter ([SecurityEvents]).
  */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
@@ -56,8 +59,9 @@ class SecurityConfiguration {
         properties: SecurityProperties,
         idp: OAuth2ResourceServerProperties,
         @Qualifier("handlerExceptionResolver") exceptionResolver: HandlerExceptionResolver,
+        meters: MeterRegistry,
     ): SecurityFilterChain {
-        val responder = SecurityProblemResponder(exceptionResolver, properties.dpop.required)
+        val responder = SecurityProblemResponder(exceptionResolver, properties.dpop.required, SecurityEvents(meters))
         val ipLimit = RateLimitFilter("ip", RateLimiter(properties.rateLimit.perIp), responder) { RateLimitKey.Of(it.remoteAddr) }
         val clientLimit = RateLimitFilter("client", RateLimiter(properties.rateLimit.perClient), responder) { authenticatedClient() }
 
@@ -97,6 +101,10 @@ class SecurityConfiguration {
             }
             .addFilterBefore(ipLimit, BearerTokenAuthenticationFilter::class.java)
             .addFilterAfter(clientLimit, BearerTokenAuthenticationFilter::class.java)
+        LoggerFactory.getLogger(SecurityConfiguration::class.java).info(
+            "Security configured: dpop.required={}, rate limit per ip={} and per client={} a minute, access tokens of type '{}'",
+            properties.dpop.required, properties.rateLimit.perIp.capacity, properties.rateLimit.perClient.capacity, properties.accessTokenType,
+        )
         val chain = http.build()
         check(!properties.dpop.required || chain.filters.any { it is AuthenticationFilter }) {
             "DPoP is required but its authentication filter is not in the security chain. " +

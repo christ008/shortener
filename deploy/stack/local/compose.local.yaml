@@ -7,6 +7,8 @@
 #   JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=... perf/smoke.sh https://localhost
 services:
   shortener:
+    environment:
+      SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY: 'true'
     ports:
       - {target: 8081, published: 8081, protocol: tcp, mode: host}
     deploy:

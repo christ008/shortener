@@ -15,6 +15,8 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import io.micrometer.core.instrument.MeterRegistry
+import uy.ct.shortener.LogCapture
 import uy.ct.shortener.TestIdp
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.WithTestIdp
@@ -36,6 +38,9 @@ class SecurityIntegrationTest {
 
     @LocalManagementPort
     var managementPort: Int = 0
+
+    @Autowired
+    lateinit var meters: MeterRegistry
 
     private fun headers(authorization: String? = null) = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
@@ -63,6 +68,21 @@ class SecurityIntegrationTest {
         assertThat(response.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
         assertThat(response.headers.getFirst(HttpHeaders.WWW_AUTHENTICATE)).isEqualTo("""Bearer realm="shortener"""")
         assertThat(response.body).contains(""""status":401""")
+    }
+
+    @Test
+    fun `a rejected token is logged and counted by its error code, without the token`() {
+        val before = meters.counter(SecurityEvents.METRIC, "type", "unauthenticated").count()
+        LogCapture(SecurityEvents.LOGGER_NAME).use { log ->
+            val response = create(bearer("not.a.SECRET-TOKEN"))
+
+            assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+            val line = log.events.single()
+            assertThat(line.fields).containsEntry("event.action", "unauthenticated").containsEntry("event.reason", "invalid_token")
+                .containsEntry("url.path", "/api/short-links")
+            assertThat(line.toString()).doesNotContain("SECRET")
+        }
+        assertThat(meters.counter(SecurityEvents.METRIC, "type", "unauthenticated").count()).isEqualTo(before + 1)
     }
 
     @Test

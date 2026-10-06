@@ -21,12 +21,14 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 
 ## Run it locally
 
-You need Docker and JDK 25, and `openssl`, which `dev-setup` uses for the passwords. The client below runs on any JDK 17 or newer.
+You need Docker and JDK 25. The client below runs on any JDK 17 or newer.
 
 ```bash
 deploy/keycloak/dev-setup     # once: makes your own dev keys and passwords, and asks what it needs
 ./gradlew bootRun
 ```
+
+Every script of the repository has a Gradle task: `./gradlew tasks --group tooling` lists them.
 
 `dev-setup` shows a banner, then asks for the few things a development setup needs (the Keycloak console password, the
 passwords of the two web users and of Postgres), offering a random value for each. It writes a private key for each dev
@@ -85,7 +87,7 @@ internals in errors or health, 5% trace sampling, DPoP required) and the environ
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default; `false` also accepts plain bearer tokens (development and tests only) |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests per minute per IP (300) and per client (60) |
 | `SERVER_TOMCAT_MAXCONNECTIONS` | connections Tomcat accepts before refusing (500); each costs about 150 KB of heap |
-| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts the service shortens links to, `example.com` or `*.example.org` for subdomains. Empty, the default, accepts every host. A public instance should set it, or it redirects to anywhere |
+| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts the service shortens links to, `example.com` or `*.example.org` for subdomains. Under `production` the service does not start without this or `SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY=true`, which accepts every host on purpose. A public instance must set the list, or it redirects to anywhere |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long after it was last read a link is still followed when the database cannot be reached (5m); `0` turns it off |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES` | how long (30s) and how many (100,000) links the redirect cache keeps; `..._ENABLED=false` turns it off |
 
@@ -113,7 +115,8 @@ once started`.
 - A migration job that alone holds the credentials of the role that owns the tables, and a Postgres you can replace
   with a managed one.
 - Every container read-only, without capabilities, non-root and bounded. Secrets are files, not variables.
-- An optional overlay with Prometheus, the Postgres exporter and the alert rules.
+- An optional overlay with Prometheus, the Postgres exporter and the alert rules, and another with Keycloak for a stack that has
+  no identity provider.
 
 Runbook: [docs/DEPLOY.md](docs/DEPLOY.md). Design and what it gives up against Kubernetes:
 [docs/INTERNALS.md](docs/INTERNALS.md#deployment).
@@ -146,6 +149,8 @@ mindmap
         the production stack
       compose.prod.observability.yaml
         adds Prometheus and the alert rules
+      compose.prod.keycloak.yaml
+        adds Keycloak behind the edge
       deploy/
         edge and stack scripts, Postgres setup, Keycloak realm template and dev tools, alert rules, Grafana, Tempo
       .github/workflows/
@@ -155,6 +160,10 @@ mindmap
         run, try, test and look after it
       INTERNALS.md
         how it works and why
+      adr/
+        architecture decision records, from the problem to the cost
+      THREAT_MODEL.md
+        STRIDE, OWASP Top 10 and the open findings
       DEPLOY.md
         the production stack runbook
       CLOUD.md

@@ -288,6 +288,9 @@ Rejected:
 
 ## Security
 
+The threats this section answers, checked against STRIDE and the OWASP Top 10, and what is still open, are in
+[THREAT_MODEL.md](THREAT_MODEL.md).
+
 ### Filter chain
 
 Stateless and deny by default, in this order: IP rate limit, authentication, client rate limit, authorization.
@@ -472,7 +475,7 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 | Every DPoP request is `401` with no reason | the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class | `DpopRuntimeHints`, plus a startup check that fails if DPoP is required and the filter is missing |
 | Authorized calls fail with `500` | SpEL reads `authentication.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
 
-Unit tests cannot run a native image, so `perf/smoke.sh` exercises every endpoint with real tokens (21 checks).
+Unit tests cannot run a native image, so `perf/smoke.sh` (`tools/Smoke.java`) exercises every endpoint with real tokens (21 checks).
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
 
 ## Deployment
@@ -488,6 +491,8 @@ Services:
 - `migrate`: the one-shot migration job.
 - `postgres`: the database, on one node with a local volume. A managed database replaces it by dropping the service.
 - Overlay `compose.prod.observability.yaml`: Prometheus with the alert rules, and the Postgres exporter.
+- Overlay `compose.prod.keycloak.yaml`: Keycloak, for a stack with no identity provider of its own ([DEPLOY.md](DEPLOY.md#keycloak),
+  [ADR 0025](adr/0025-keycloak-in-the-stack.md)).
 
 ```mermaid
 flowchart LR
@@ -521,7 +526,7 @@ flowchart LR
 | Writable memory | long `volumes:` syntax with a size | applied. The short `tmpfs:` key is silently dropped |
 | Resources | memory and CPU limits, rotated logs | applied |
 | Secrets | Docker secrets, read as files by Spring's `configtree:` | applied: in memory at `/run/secrets` |
-| Network | `data` has no route out, and encrypts across nodes on Swarm | applied |
+| Network | `data` has no route out. `edge` and `data` encrypt across nodes on Swarm (IPsec overlay) | applied, one node only verified |
 | Exposure | only the edge publishes, in host mode so it sees client addresses | applied |
 | Health | Tiny Health Checker on the readiness probe; Swarm replaces unhealthy tasks | applied |
 
@@ -673,8 +678,8 @@ Two changes closed it:
   It trades about 1% failed requests for flat memory and latency. Creates still queue for seconds at that load, so a
   limit is protection, not capacity.
 
-Not yet tested: turning off Spring Security observations. Tooling: `perf/profile.sh`, `perf/gc-summary.py`,
-`perf/hprof-histogram.py`, `perf/tune-connections.sh`.
+Not yet tested: turning off Spring Security observations. Tooling: `perf/profile.sh`, `tools/Report.java` (`gc` and `hprof`),
+`perf/tune-connections.sh`.
 
 ### Running load tests safely
 
@@ -734,6 +739,8 @@ it, which puts the rule in one place and lets the type change without its caller
 | Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept. The ArchUnit test keeps JDBC and security types out of the contract and accepts Spring Data's paging types. Own paging types would be a copy of them |
 
 ## Decisions
+
+Each has a record with its problem, cost and alternatives in [adr/](adr/README.md). The list below is the summary.
 
 - **Plain JDBC, not JPA.** Two statements dominate and need SQL features JPA hides. Only the persistence adapter knows SQL.
 - **Spring facilities over bespoke code.** Method security with a `PermissionEvaluator`, `Pageable` and `Page`, Spring

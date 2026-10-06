@@ -10,7 +10,8 @@
 # restarts until the schema exists.
 #
 # Settings, all optional:
-#   COMPOSE_FILES   files to deploy, default "compose.prod.yaml"; OBSERVABILITY=1 adds compose.prod.observability.yaml
+#   COMPOSE_FILES   files to deploy, default "compose.prod.yaml"; OBSERVABILITY=1 adds compose.prod.observability.yaml and
+#                   KEYCLOAK=1 adds compose.prod.keycloak.yaml
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
 #   WAIT            seconds to wait for the migration job, default 300
 set -eu
@@ -19,12 +20,18 @@ version=${1:?usage: deploy/stack/deploy.sh VERSION [STACK]}
 stack=${2:-shortener}
 files=${COMPOSE_FILES:-compose.prod.yaml}
 [ -z "${OBSERVABILITY:-}" ] || files="$files compose.prod.observability.yaml"
+[ -z "${KEYCLOAK:-}" ] || files="$files compose.prod.keycloak.yaml"
 args=""
 for f in $files; do args="$args -c $f"; done
 
 # Swarm configs cannot change once created, so their names carry a hash of the file.
 NGINX_CONF_HASH=$(sha256sum deploy/edge/nginx.conf | cut -c1-12)
 PROMETHEUS_CONF_HASH=$(cat deploy/observability/prometheus.stack.yml deploy/observability/alerts.yml | sha256sum | cut -c1-12)
+if [ -n "${KEYCLOAK:-}" ]; then
+  KEYCLOAK_REALM_HASH=$(sha256sum deploy/keycloak/shortener-realm.production.json | cut -c1-12)
+  EDGE_KEYCLOAK_CONF_HASH=$(sha256sum deploy/edge/keycloak.conf | cut -c1-12)
+  export KEYCLOAK_REALM_HASH EDGE_KEYCLOAK_CONF_HASH
+fi
 export NGINX_CONF_HASH PROMETHEUS_CONF_HASH
 
 deploy() {

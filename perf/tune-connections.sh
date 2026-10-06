@@ -16,8 +16,8 @@ for limit in "${LIMITS[@]}"; do
 done
 
 printf '\n\033[1m== comparison (%s)\033[0m\n\n' "$OUT"
-python3 perf/report.py "$OUT"
+tools/run Report summary "$OUT"
 for limit in "${LIMITS[@]}"; do
   printf '\n-- GC with max-connections=%s\n' "$limit"
-  python3 perf/gc-summary.py "$OUT/maxconn-$limit/app.log" | head -4
+  tools/run Report gc "$OUT/maxconn-$limit/app.log" | head -4
 done

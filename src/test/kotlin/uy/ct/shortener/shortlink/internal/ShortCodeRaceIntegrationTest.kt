@@ -45,7 +45,7 @@ class ShortCodeRaceIntegrationTest {
                 ShortCode("retry%02d".format(n))
             }
         }
-        val service = DefaultShortLinkService(repository, generator, ManageableLinks(repository), CaffeineRedirectCache(RedirectCacheProperties(), SimpleMeterRegistry()), AnyTarget, ObservationRegistry.NOOP)
+        val service = DefaultShortLinkService(repository, generator, ManageableLinks(repository), CaffeineRedirectCache(RedirectCacheProperties(), SimpleMeterRegistry()), AnyTarget, ObservationRegistry.NOOP, NoAuditTrail)
 
         val pool = Executors.newFixedThreadPool(threads)
         val results = try {

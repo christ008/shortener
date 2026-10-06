@@ -16,14 +16,34 @@ import java.nio.file.Path
  *   application cannot drop them, and only it is a job that migrates and stops.
  * - Writable memory uses the long `volumes:` syntax, because Swarm silently drops the short `tmpfs:` key.
  * - The database network has no route out, and the images are pinned to a version.
+ * - Keycloak, when the stack has one, is held to the same rules, is not published, and is the only service that holds its
+ *   passwords besides the database that creates its role.
  */
 class ComposeStackTest {
 
     private val migratorSecret = "db_migrator_password"
 
-    private val files = listOf("compose.prod.yaml", "compose.prod.observability.yaml").map(::load)
+    private val files = listOf("compose.prod.yaml", "compose.prod.observability.yaml", "compose.prod.keycloak.yaml").map(::load)
 
-    private val services: Map<String, Map<String, Any?>> = files.flatMap { it.map("services").entries }.associate { it.key to it.value.asMap() }
+    private val services: Map<String, Map<String, Any?>> = files
+        .flatMap { it.map("services").entries }
+        .groupBy({ it.key }, { it.value.asMap() })
+        .mapValues { (_, parts) -> parts.reduce(::merged) }
+
+    /** What Compose does with a service named in two files: maps merge, lists add up, and the later scalar wins. */
+    @Suppress("UNCHECKED_CAST")
+    private fun merged(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> =
+        (base.keys + overlay.keys).associateWith { key ->
+            val a = base[key]
+            val b = overlay[key]
+            when {
+                a == null -> b
+                b == null -> a
+                a is Map<*, *> && b is Map<*, *> -> merged(a as Map<String, Any?>, b as Map<String, Any?>)
+                a is List<*> && b is List<*> -> a + b
+                else -> b
+            }
+        }
 
     @Suppress("UNCHECKED_CAST")
     private fun load(path: String): Map<String, Any?> = Yaml().load<Map<String, Any?>>(Files.readString(Path.of(path)))
@@ -135,6 +155,14 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `both networks are encrypted between nodes, since the edge carries tokens and the data network carries rows`() {
+        val networks = files.first().map("networks")
+        listOf("edge", "data").forEach { name ->
+            assertThat(networks.map(name).map("driver_opts")["encrypted"]).describedAs("$name network encrypted").isEqualTo("true")
+        }
+    }
+
+    @Test
     fun `the services the stack depends on have a health check, and the application's is the readiness probe`() {
         listOf("edge", "shortener", "postgres").forEach { name ->
             assertThat(services.getValue(name).map("healthcheck")["test"]).describedAs("$name health check").isNotNull
@@ -158,5 +186,42 @@ class ComposeStackTest {
             assertThat(environment["SPRING_CONFIG_IMPORT"]).describedAs("$name config import").isEqualTo("configtree:/run/secrets/")
             assertThat(environment.keys).describedAs("$name must not carry passwords in the environment").noneMatch { it.endsWith("PASSWORD") }
         }
+    }
+
+    @Test
+    fun `keycloak is not published, runs optimized from files and keeps its secrets to itself`() {
+        val keycloak = services.getValue("keycloak")
+        val environment = environmentOf(keycloak)
+
+        assertThat(keycloak.list("ports")).isEmpty()
+        assertThat(keycloak.list("command")).contains("--optimized")
+        assertThat(environment.keys).describedAs("keycloak must not carry passwords in the environment").noneMatch { it.endsWith("PASSWORD") }
+        assertThat(environment.keys).contains("KC_DB_PASSWORD_FILE", "KC_BOOTSTRAP_ADMIN_PASSWORD_FILE")
+        assertThat(environment["KC_HTTP_ENABLED"]).describedAs("TLS ends at the edge").isEqualTo("true")
+        assertThat(environment["KC_PROXY_HEADERS"]).isEqualTo("xforwarded")
+        assertThat(secretsOf(keycloak)).containsExactlyInAnyOrder("db_keycloak_password", "keycloak_admin_password")
+        services.filterKeys { it !in setOf("keycloak", "postgres") }.forEach { (name, service) ->
+            assertThat(secretsOf(service)).describedAs("secrets of $name").doesNotContain("db_keycloak_password", "keycloak_admin_password")
+        }
+        assertThat(secretsOf(services.getValue("postgres"))).contains("db_keycloak_password").doesNotContain("keycloak_admin_password")
+    }
+
+    @Test
+    fun `keycloak writes only to memory, and reaches the database and the edge but is not the way out`() {
+        val keycloak = services.getValue("keycloak")
+
+        assertThat(keycloak.list("volumes").filterIsInstance<Map<*, *>>().map { it["target"] })
+            .containsExactlyInAnyOrder("/tmp", "/opt/keycloak/data/tmp")
+        assertThat(keycloak.list("networks")).containsExactlyInAnyOrder("edge", "data")
+    }
+
+    @Test
+    fun `the edge forwards only the shortener realm and its static files to keycloak`() {
+        val conf = Files.readAllLines(Path.of("deploy/edge/keycloak.conf")).filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+        val locations = Regex("""(?m)^location\s+(?:=\s+|~\s+)?(\S+)""").findAll(conf).map { it.groupValues[1] }.toList()
+
+        assertThat(locations).containsExactly("/realms/shortener/protocol/openid-connect/token", "^/(realms/shortener|resources)/")
+        assertThat(conf).doesNotContain("/admin").doesNotContain("realms/master")
+        assertThat(conf).contains("limit_req zone=token")
     }
 }

@@ -9,13 +9,14 @@ How to run the service on your machine, try it, test it, and look after it when 
 - [Try the API](#try-the-api)
 - [Test it](#test-it)
 - [Look after it](#look-after-it)
+- [Scripts](#scripts)
 - [When something is wrong](#when-something-is-wrong)
 
 ## What you need
 
 | For | You need |
 |---|---|
-| Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN), and `openssl` for `dev-setup` |
+| Running and testing | Docker and JDK 25 (Gradle finds one, or use SDKMAN) |
 | Building the native image | about 7 GB of free memory, and 3 minutes |
 | The load test | Docker (k6 runs in a container), a few spare cores, and the warning under [Test it](#test-it) |
 | Trying the production stack | `openssl` and `keytool`, both of which come with a JDK and most systems |
@@ -179,11 +180,11 @@ When it is deployed, with the commands of [DEPLOY.md](DEPLOY.md):
 | scale | `docker service scale shortener_shortener=3`, mindful that limits and the DPoP replay cache are per task |
 | take a link down | `DELETE /api/short-links/<code>` as an administrator. Other instances stop serving it within the cache TTL (30 s) |
 | add a client | create it in the identity provider with the scopes it needs and the `owner` claim mapper, then give it a key |
-| restrict where links may point | set `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` and deploy |
+| restrict where links may point | set `ALLOWED_TARGET_HOSTS` in `.env` and deploy. The stack does not start with neither it nor `ALLOW_ANY_TARGET=true` |
 | look at the database | `perf/pg-diagnostics.sql`, see DEPLOY.md |
 | rotate a secret | a new secret under a new name, then deploy; Swarm secrets cannot change |
 
-What to watch is the five alerts in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). The two that mean "the database is in
+What to watch is the nine alerts in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). The two that mean "the database is in
 trouble" are `ShortenerStorageUnavailable` and `ShortenerServingStaleRedirects`. The service keeps redirecting links it
 has read, for five minutes, while the database is down, and answers `503` with `Retry-After` for the rest.
 
@@ -203,3 +204,45 @@ has read, for five minutes, while the database is down, and answers `503` with `
 | native build ends with exit 137 | the machine ran out of memory | close other work; it needs about 7 GB free |
 | `docker ps` shows nothing you started | Docker Desktop switched the CLI to its own daemon | `DOCKER_CONTEXT=default`, and `DOCKER_HOST=unix:///var/run/docker.sock` for Gradle |
 | `The configuration of the pool is sealed` | an environment variable was spelled with a separator inside a word | `..._CONNECTIONTIMEOUT`, not `..._CONNECTION_TIMEOUT` |
+
+## Scripts
+
+Every script is one of two kinds, decided in [ADR 0026](adr/0026-scripting-standard.md): **sh** starts programs in order and
+is POSIX `sh` checked with `shellcheck --shell=sh`, and **Java** computes (parses, templates, signs, checks, reports) and is one
+source file run with `java File.java`: the tools of `tools/` on JDK 25, as compact source files that share `tools/Cli.java`, and the
+client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr/0027-tools-on-jdk-25.md)). Nothing else is added. Python and bash are on their way out.
+
+| Script | Is for | Kind | Status |
+|---|---|---|---|
+| `deploy/stack/deploy.sh` | deploy or update the stack on a manager | sh | done |
+| `deploy/stack/local/prepare.sh` | make throwaway secrets and a certificate for a rehearsal | sh | done |
+| `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | create the roles and databases when Postgres first starts | sh | done |
+| `deploy/keycloak/entrypoint.sh` | read Keycloak's secrets from files and start it | sh | done |
+| `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP, make client keys | Java | done |
+| `deploy/keycloak/dev-setup` | start `tools/DevSetup.java` | sh | done: a 3-line shim of `tools/run` |
+| `tools/DevSetup.java` | make the dev keys, realm, passwords and `.env`, asking on a terminal | Java 25 | done |
+| `tools/Realms.java`, `tools/RealmTemplate.java`, `tools/Cli.java` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Java 25 | done |
+| `tools/Smoke.java`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Java 25 | done: 2.4 s against 16 s |
+| `tools/run` | find a JDK 25 and start a tool of `tools/` | sh | done |
+| `tools/Report.java` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Java 25 | done: the Python scripts are gone, and its output is theirs on every committed result |
+| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | bash | to POSIX sh |
+| `perf/k6/mixed.js` | the load workload | k6 | stays: it is k6's own language |
+| `gradlew` | the Gradle wrapper | generated | not ours |
+
+Each script a person runs has a Gradle task, listed by `./gradlew tasks --group tooling`:
+
+| Task | Runs | Settings |
+|---|---|---|
+| `devSetup`, `devPasswords` | `dev-setup --yes` (`--force` with `-Pforce`), and `--show` | |
+| `keygen` | `DpopClient.java keygen` | `-Pclient=NAME` |
+| `productionRealm` | `tools/Realms.java production` | `-Pdemo=FILE -Padmin=FILE`, `-Poutput=FILE` |
+| `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL`, `-Pmethod`, `-Pbody` |
+| `smoke` | `tools/Smoke.java` | `-PbaseUrl=URL`, `-Pmgmt=URL` |
+| `stackPrepare` | `deploy/stack/local/prepare.sh` | |
+| `report` | `tools/Report.java` | `-Preport=summary\|gc\|hprof\|profile\|json`, `-Ptarget=PATH`, `-Ptop=N` |
+
+The tools run on the toolchain's JDK 25 even when `java` on the PATH is older. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself
+to be asked. The scripts that run inside the stack, and `deploy.sh`, which runs on a manager, have no task.
+
+CI lints the `deploy` scripts as `sh`, and the `perf` scripts as `bash` until they are rewritten.
+

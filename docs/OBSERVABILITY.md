@@ -22,7 +22,7 @@ its own overlay, see [DEPLOY.md](DEPLOY.md#operate).
 | Traces | OTLP over HTTP to Tempo | sampling 0 by default, 100% under `dev`, 5% under `production` |
 | Logs | JSON on stdout (ECS) under `production` | trace and span ids included |
 | Health | `/actuator/health/liveness` and `/readiness`, management port | readiness does not include the database |
-| Alerts | `deploy/observability/alerts.yml` | five rules, unit-tested with promtool |
+| Alerts | `deploy/observability/alerts.yml` | nine rules, unit-tested with promtool |
 
 ## Dashboard
 
@@ -97,6 +97,10 @@ database is slow or gone.
 | `ShortenerDatabaseSlowToConnect` | the slowest wait for a connection exceeds 500 ms | 10 m | warning |
 | `ShortenerStorageUnavailable` | more than 1% of requests are answered `503` | 5 m | critical |
 | `ShortenerServingStaleRedirects` | redirects are served from an expired entry because the database cannot be reached | 2 m | warning |
+| `ShortenerAuthenticationFailures` | more than one failed authentication a second | 10 m | warning |
+| `ShortenerForbiddenCalls` | clients with a valid token are denied more than once every five seconds | 10 m | warning |
+| `ShortenerRateLimited` | more than one request a second is answered `429` | 10 m | warning |
+| `ShortenerAdministratorActivity` | more than ten disables or listings of other clients' links in ten minutes | none | warning |
 
 - Each rule has a unit test with simulated series, in `deploy/observability/alerts.test.yml`. CI runs them with promtool:
 
@@ -127,3 +131,24 @@ Every connection reports `shortener-<hostname>` as its application name, so `pg_
 - Metrics from the nginx edge.
 - A Grafana dashboard for Postgres. The exporter's series are there to build one.
 - Anything that sends the alerts Prometheus fires.
+
+## Logs
+
+The `production` profile writes JSON (ECS) to the container's output. Three kinds of line matter, decided in
+[ADR 0024](adr/0024-logging-and-audit.md):
+
+| Look for | Logger | Tells you |
+|---|---|---|
+| a failed authentication, a denied call, a limited client | `uy.ct.shortener.security.events` | `event.action`, `event.reason`, `client.ip`, `auth.scheme`, `url.path`, and `owner` for a denied call |
+| a link created or disabled, an administrator acting on others | `uy.ct.shortener.audit` | `event.action`, `shortlink.code`, `actor`, `owner`, and for a create the target's host |
+| the storage failing, what was configured at start | the class that wrote it | the exception type, the settings |
+
+Each line is one JSON object with ECS's nested names (`{"event":{"action":...},"client":{"ip":...}}`) and the `traceId` of
+the request, so a line leads to its trace in Tempo.
+
+```bash
+docker service logs shortener_shortener 2>&1 | grep '"action":"disabled_by_admin"'
+```
+
+Tokens, proofs, query strings and targets' paths are never in them. The counters are `shortener_security_events_total` and
+`shortener_audit_events_total`, tagged with `type` only.

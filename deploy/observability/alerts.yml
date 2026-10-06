@@ -59,3 +59,43 @@ groups:
         for up to five minutes, instead of failing them. That is the cache doing its job, and also the one sign that nothing
         is failing in front of it: a link disabled elsewhere just before the outage keeps redirecting until that copy expires.
         Treat it as the database being down.'
+- name: shortener-security
+  rules:
+  - alert: ShortenerAuthenticationFailures
+    expr: sum(rate(shortener_security_events_total{application="shortener",type="unauthenticated"}[5m])) > 1
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: More than one failed authentication a second, for ten minutes
+      description: 'Requests are arriving with no token, a bad token or a bad DPoP proof. Read the lines of the logger
+        `uy.ct.shortener.security.events` with `event.action=unauthenticated`: `event.reason` says which, and `client.ip` from where.
+        A client with a broken key or clock looks like this too.'
+  - alert: ShortenerForbiddenCalls
+    expr: sum(rate(shortener_security_events_total{application="shortener",type="forbidden"}[5m])) > 0.2
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: Authenticated clients are being denied, more than once every five seconds for ten minutes
+      description: A client holds a valid token without the scope it is using, over and over. Read the lines with
+        `event.action=forbidden`; `owner` names the client. It is a misconfigured client, or one probing what it may do.
+  - alert: ShortenerRateLimited
+    expr: sum(rate(shortener_security_events_total{application="shortener",type="rate_limited"}[5m])) > 1
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: Requests are being limited, more than one a second for ten minutes
+      description: Some address or client keeps exceeding its limit. The log has one line per key and minute, with
+        `limited.key` and `event.reason` (`limit_ip` or `limit_client`). Sustained, it is a flood or a client that ignores Retry-After.
+  - alert: ShortenerAdministratorActivity
+    expr: sum(increase(shortener_audit_events_total{application="shortener",type=~"disabled_by_admin|listed_others"}[10m])) > 10
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: An administrator acted on other clients' links more than ten times in ten minutes
+      description: A takedown wave is expected during an abuse response, and a stolen administrator key looks the same. Read
+        the lines of the logger `uy.ct.shortener.audit` with `event.action=disabled_by_admin` or `listed_others`, and check
+        `actor` is who you expect.

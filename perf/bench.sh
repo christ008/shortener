@@ -21,7 +21,7 @@ say "== $VARIANT: $IMAGE ${COMMAND[*]:-}"
 docker update --cpuset-cpus 2-5 "$PG_CONTAINER" >/dev/null
 docker rm -f bench-app >/dev/null 2>&1 || true
 
-t0=$(date +%s.%N)
+t0=$(date +%s%N)
 docker run -d --name bench-app --network host --cpuset-cpus 0-1 --cpus 2 --memory 512m \
   -e SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:$PGPORT/mydatabase" \
   -e SPRING_DATASOURCE_USERNAME=myuser -e "SPRING_DATASOURCE_PASSWORD=$PGPASS" \
@@ -31,7 +31,7 @@ until curl -sf -m 2 -o /dev/null localhost:8081/actuator/health/readiness; do
   [ -n "$(docker ps -q -f name=bench-app)" ] || { echo "the application container stopped:"; docker logs bench-app 2>&1 | tail -20; exit 1; }
   sleep 0.05
 done
-ready=$(python3 -c "print(round(($(date +%s.%N) - $t0) * 1000))")
+ready=$((($(date +%s%N) - t0) / 1000000))
 sleep 5
 idle_mem=$(docker stats --no-stream --format '{{.MemUsage}}' bench-app | cut -d/ -f1 | xargs)
 started=$(docker logs bench-app 2>&1 | grep -oE "Started .* in [0-9.]+ seconds" | head -1)
@@ -39,7 +39,7 @@ say "up: ready after ${ready} ms from docker run, ${started}, memory at rest ${i
 docker exec "$PG_CONTAINER" psql -q -U myuser -d mydatabase -c 'TRUNCATE short_link' >/dev/null 2>&1 || true
 
 k6() { # name rate duration share seeds
-  say "load $1: $2 requests/s for $3, $(python3 -c "print(round($4 * 100, 2))")% of them creates"
+  say "load $1: $2 requests/s for $3, a create share of $4"
   docker run --rm -t --network host --cpuset-cpus 6-9 -v "$HERE/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
     -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS=300 -e MAX_VUS=3000 \
     grafana/k6 run --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" --summary-export "/out/$1.k6.json" /scripts/mixed.js 2>&1 | tee "$OUT/$1.k6.txt" || true
@@ -61,16 +61,11 @@ for run in "${RUN_LIST[@]}"; do
   k6 "$1" "$2" "$3" "$4"
   end=$(date +%s); sleep 7
   dur=$((end - start + 7))
-  q() { curl -s -m10 --data-urlencode "query=$1" --data-urlencode "time=$((end + 7))" "$PROM/api/v1/query" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"]["result"];print(d[0]["value"][1] if d else "null")'; }
-  h() { q "histogram_quantile($1, sum by (le) (increase(http_server_requests_seconds_bucket{$2}[${dur}s])))"; }
+  server=$("$ROOT/tools/run" Report server "$PROM" "$end" "$dur")
   [ $first = 1 ] || echo "," >>"$OUT/summary.json"; first=0
-  say "server side for $1 (from Prometheus): redirect p50/p95/p99 = $(h 0.5 'uri="/{shortCode}"' | xargs -I{} python3 -c "print(round(float('{}')*1000,1))" 2>/dev/null) / $(h 0.95 'uri="/{shortCode}"' | xargs -I{} python3 -c "print(round(float('{}')*1000,1))" 2>/dev/null) / $(h 0.99 'uri="/{shortCode}"' | xargs -I{} python3 -c "print(round(float('{}')*1000,1))" 2>/dev/null) ms; container now: $(docker stats --no-stream --format '{{.CPUPerc}} cpu, {{.MemUsage}}' bench-app)"
+  say "server side for $1 (from Prometheus): $server; container now: $(docker stats --no-stream --format '{{.CPUPerc}} cpu, {{.MemUsage}}' bench-app)"
   cat >>"$OUT/summary.json" <<J
-{"name":"$1","rate":$2,"duration":"$3","create_share":$4,"start":$start,"end":$end,
- "server":{"redirect_p50":$(h 0.5 'uri="/{shortCode}"'),"redirect_p95":$(h 0.95 'uri="/{shortCode}"'),"redirect_p99":$(h 0.99 'uri="/{shortCode}"'),
- "create_p50":$(h 0.5 'uri="/api/short-links",method="POST"'),"create_p99":$(h 0.99 'uri="/api/short-links",method="POST"'),
- "hikari_acquire_max":$(q "max_over_time(hikaricp_connections_acquire_seconds_max[${dur}s])"),"hikari_timeouts":$(q "increase(hikaricp_connections_timeout_total[${dur}s])"),
- "gc_pause_seconds":$(q "sum(increase(jvm_gc_pause_seconds_sum[${dur}s]))"),"process_cpu_avg":$(q "avg_over_time(process_cpu_usage[${dur}s])")}}
+{"name":"$1","rate":$2,"duration":"$3","create_share":$4,"start":$start,"end":$end,"server":$server}
 J
 done
 echo "]}" >>"$OUT/summary.json"
@@ -79,4 +74,4 @@ kill $SAMPLER 2>/dev/null || true
 docker logs bench-app >"$OUT/app.log" 2>&1
 docker rm -f bench-app >/dev/null
 say "$VARIANT finished; app log has $(grep -c OutOfMemoryError "$OUT/app.log" || true) OutOfMemoryError lines; results in $OUT"
-python3 -m json.tool "$OUT/summary.json" >/dev/null
+"$ROOT/tools/run" Report json "$OUT/summary.json"
