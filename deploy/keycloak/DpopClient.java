@@ -176,28 +176,10 @@ public final class DpopClient {
         System.out.println(answer.body());
     }
 
-    // ---- the client as a library ------------------------------------------------------------------------------------
+    // ---- a call to the API -------------------------------------------------------------------------------------------
 
     /** What the API answered to a call: the status, the {@code Location} if any, the {@code WWW-Authenticate} challenges, the body. */
-    public record Answer(int status, String location, List<String> challenges, String body) {}
-
-    /**
-     * Makes a call as {@code clientId}, the way the {@code call} command does but without a new process, for the tools of
-     * this repository that make many calls. It signs in each time and returns the answer whatever its status: a status that
-     * is an error is an answer, and {@code Failure}s (the identity provider said no, the server is not there) are thrown.
-     */
-    public static Answer call(Path keyFile, String clientId, String method, String url, String body) throws Exception {
-        return Shared.INSTANCE.answer(keyFile, clientId, method, url, body);
-    }
-
-    /** A new access token for {@code clientId}, bound to a key that nobody else has, as the {@code token} command prints it. */
-    public static String token(Path keyFile, String clientId) throws Exception {
-        return Shared.INSTANCE.fetchToken(keyFile, clientId, newKey()).accessToken();
-    }
-
-    private static final class Shared {
-        static final DpopClient INSTANCE = new DpopClient();
-    }
+    private record Answer(int status, String location, List<String> challenges, String body) {}
 
     private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws Exception {
         KeyPair dpopKey = newKey();
@@ -356,8 +338,6 @@ public final class DpopClient {
         }
         return Optional.empty();
     }
-
-    // ---- the API ----------------------------------------------------------------------------------------------------
 
     /**
      * A request with the token and a proof made for it. A body is sent as JSON, and without one there is no content type.

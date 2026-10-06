@@ -2,11 +2,11 @@
  * The tools of the repository: dev-setup, the realm maker, the smoke test and the report reader (docs/adr/0029-tools-in-kotlin.md).
  *
  * - A build of its own, not a module of the application's, so that running a tool does not configure the application, whose
- *   toolchain asks for JDK 25. The tools need a JDK 17 or newer, the baseline of the DPoP client.
+ *   toolchain asks for JDK 25. The tools need a JDK 17 or newer, the baseline of the reference DPoP client too.
  * - `tools/run` builds them when a source is newer than the last build and starts them, so nobody needs to know this exists.
  *   Tests: `./gradlew -p tools test`.
- * - `DpopClient.java` of deploy/keycloak is compiled with them, as it is, for 17, so that the smoke test calls the one client
- *   there is instead of a copy of it.
+ * - They do not use `deploy/keycloak/DpopClient.java`, the reference client for people outside the project: the keys and the
+ *   DPoP calls they need are written again in Kotlin, with the JDK, so that neither depends on the other.
  * - Versions follow the application's: Kotlin as in ../build.gradle.kts, the rest from the Spring Boot BOM of the same version.
  */
 plugins {
@@ -41,16 +41,6 @@ kotlin {
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
-}
-
-tasks.withType<JavaCompile> {
-    options.release = 17
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
-}
-
-sourceSets.main {
-    java.srcDir("../deploy/keycloak")
-    java.include("DpopClient.java")
 }
 
 application {

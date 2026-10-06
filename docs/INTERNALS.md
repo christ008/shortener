@@ -635,11 +635,11 @@ files and scripts of the repository.
 | | Tests | Where | Needs Docker |
 |---|---|---|---|
 | The application: domain, service, cache, policy, web, persistence, security, architecture | 225 | `src/test` | 100 of them (23 classes, every one imports `TestcontainersConfiguration`) |
-| Infrastructure of the repository: `ComposeStackTest` 17, `DpopClientTest` 18, `MigrationConventionsTest` 8, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 49 | `src/test` | none |
-| The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 10 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 43 | `tools/src/test` | none |
-| **Total** | **317** | | |
+| Infrastructure of the repository: `ComposeStackTest` 20, `DpopClientTest` 18, `MigrationConventionsTest` 8, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 52 | `src/test` | none |
+| The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 10, `ClientKeysTest` 5, `DpopCallsTest` 6 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 54 | `tools/src/test` | none |
+| **Total** | **331** | | |
 
-So 225 tests are about the service and 92 are about its tooling and infrastructure. Of the 225, the 125 that need no database ran
+So 225 tests are about the service and 106 are about its tooling and infrastructure. Of the 225, the 125 that need no database ran
 here and passed; the other 100 failed here only because there was no Docker (their failure is the context that cannot start, and
 Spring's refusal to retry it in the same run), and were not run. `./gradlew test` runs the tools' tests too.
 

@@ -16,7 +16,7 @@ import java.security.SecureRandom
  *
  * It writes, all of it ignored by Git:
  *
- * - `deploy/keycloak/dev-keys/<client>.jwk.json`: a private key for each of the four dev clients (P-256, made by the DPoP client).
+ * - `deploy/keycloak/dev-keys/<client>.jwk.json`: a private key for each of the four dev clients (P-256, made by [ClientKeys]).
  * - `deploy/keycloak/shortener-realm.json`: the dev realm, made from `shortener-realm.template.json` with their public keys.
  * - `.env`: the passwords `compose.yaml` reads, merged into what is already there.
  *
@@ -149,14 +149,12 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
         context.out.println("  Making the keys (P-256, ES256)")
         Files.createDirectories(context.root.resolve(keysDirectory))
         val publicKeys = linkedMapOf<String, String>()
-        // The four keys do not depend on each other, and a process each costs about 0.8 s, so they are made together.
-        val pending = CLIENTS.map { it to startKeygen(it, context) }
-        for ((client, process) in pending) {
-            val pair = finishKeygen(client, process)
+        for (client in CLIENTS) {
+            val pair = ClientKeys.generate(client)
             val file = keysDirectory.resolve("$client.jwk.json")
             // The load test reads the keys from a container that runs as another user, and these are throwaway keys.
-            context.writeAtomically(context.root.resolve(file), pair.privateKey + "\n", "rw-r--r--")
-            publicKeys[client] = RealmTemplate.publicKey(pair.publicKey, "$client's public key")
+            context.writeAtomically(context.root.resolve(file), pair.privateJwk + "\n", "rw-r--r--")
+            publicKeys[client] = RealmTemplate.publicKey(pair.publicJwk, "$client's public key")
             context.out.println("    $file")
         }
 
@@ -181,33 +179,6 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
               ones: docker compose down -v
             """.trimIndent().format(values.getValue("DEV_KEYS_DIR")).let(::indented),
         )
-    }
-
-    /** A new client key as the DPoP client makes it, the one place that knows how: line 1 the private JWK, line 2 the public. */
-    private class ClientKey(val privateKey: String, val publicKey: String)
-
-    /**
-     * Asks the client to make a key, in a process of its own, as it is when a person runs it: the client prints the key and
-     * knows nothing of this. The process starts from the classes this one runs with, which include the client, so nothing is
-     * compiled for it.
-     */
-    private fun startKeygen(client: String, context: Context): Process {
-        val java = ProcessHandle.current().info().command().orElse("java")
-        return ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), "DpopClient", "keygen", client)
-            .directory(context.root.toFile())
-            .redirectError(ProcessBuilder.Redirect.INHERIT)
-            .start()
-    }
-
-    private fun finishKeygen(client: String, process: Process): ClientKey {
-        val lines = String(process.inputStream.readAllBytes()).lines().filter { it.startsWith("{") }
-        try {
-            if (process.waitFor() != 0 || lines.size != 2) throw Failure("DpopClient keygen $client did not print a private and a public key")
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw Failure("interrupted while making the key of $client")
-        }
-        return ClientKey(lines[0], lines[1])
     }
 
     /** The settings of `.env` in the order they are in the file, other lines of the file being ones it does not keep. */

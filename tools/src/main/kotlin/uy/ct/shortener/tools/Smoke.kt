@@ -18,11 +18,11 @@ import java.util.concurrent.ThreadLocalRandom
  *     tools/run Smoke [BASE_URL]            with MGMT in the environment for the management port
  *
  * The clients are the dev ones that deploy/keycloak/dev-setup makes, with their keys in deploy/keycloak/dev-keys (KEYS_DIR says
- * another place), and the token endpoint is the one the DPoP client uses (TOKEN_URL says another). A server with a certificate of
+ * another place), and the token endpoint is the local realm's (TOKEN_URL says another, and ISSUER the audience of the assertion). A server with a certificate of
  * your own is trusted as for any Java program, for example with JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=ts.p12. Redirects
  * are not followed: the answer of a redirect is what is checked.
  *
- * The calls are made by `DpopClient`, which is compiled with the tools, as it is. Exit status: 0 when every check passed, 1 when
+ * The calls are made by `DpopCalls`, which is not the reference client of `deploy/keycloak`. Exit status: 0 when every check passed, 1 when
  * one did not, 2 for arguments it does not understand.
  */
 object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the environment: the management port, default http://localhost:8081)") {
@@ -43,7 +43,8 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
         val base = arguments.firstOrNull() ?: "http://localhost:8080"
         val management = context.setting("MGMT") ?: "http://localhost:8081"
         val keys = context.path(context.setting("KEYS_DIR") ?: "deploy/keycloak/dev-keys")
-        val run = Run(keys, context)
+        val tokenUrl = context.setting("TOKEN_URL") ?: DpopCalls.DEFAULT_TOKEN_URL
+        val run = Run(keys, DpopCalls(tokenUrl, context.setting("ISSUER") ?: tokenUrl.removeSuffix(DpopCalls.TOKEN_ENDPOINT_PATH)), context)
         run.checks(base, management)
         if (run.failed == 0) {
             context.out.println("all checks passed")
@@ -53,7 +54,7 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
         }
     }
 
-    private class Run(private val keys: Path, private val context: Context) {
+    private class Run(private val keys: Path, private val client: DpopCalls, private val context: Context) {
         var failed = 0
             private set
 
@@ -92,18 +93,18 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
             )
         }
 
-        private fun call(client: String, method: String, url: String, body: String?): Reply =
+        private fun call(name: String, method: String, url: String, body: String?): Reply =
             try {
-                val answer = DpopClient.call(keys.resolve("$client.jwk.json"), client, method, url, body)
-                Reply(answer.status(), answer.body())
-            } catch (failure: Exception) {
-                Reply.unreachable(failure)
+                val answer = client.call(keys.resolve("$name.jwk.json"), name, method, url, body)
+                Reply(answer.status, answer.body)
+            } catch (failure: Failure) {
+                Reply(-1, failure.message.orEmpty())
             }
 
-        private fun token(client: String): String =
+        private fun token(name: String): String =
             try {
-                DpopClient.token(keys.resolve("$client.jwk.json"), client)
-            } catch (failure: Exception) {
+                client.token(keys.resolve("$name.jwk.json"), name)
+            } catch (failure: Failure) {
                 "no-token: ${failure.message}"
             }
 

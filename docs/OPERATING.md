@@ -213,7 +213,8 @@ Every script is one of two kinds. **sh** starts programs in order and is POSIX `
 tools of `tools/`, a Gradle build of its own that `tools/run` builds the first time and when a source changes
 ([ADR 0029](adr/0029-tools-in-kotlin.md)). They need a JDK 17 or newer, and have tests that run in process: `./gradlew test` runs them with the
 application's, and `./gradlew -p tools test` alone. The one exception is the client that strangers run, `DpopClient.java`: a single Java file
-for JDK 17 or newer, with no build ([ADR 0020](adr/0020-dpop-client-in-java.md)), which the tools compile as it is. Nothing else is added. Bash is on its way out.
+for JDK 17 or newer, with no build ([ADR 0020](adr/0020-dpop-client-in-java.md)). It is the reference, and the tools do not use it: what they
+need of it (client keys, DPoP calls) is written again in Kotlin with only the JDK ([ADR 0029](adr/0029-tools-in-kotlin.md)). Nothing else is added. Python and bash are gone.
 
 | Script | Is for | Kind | Status |
 |---|---|---|---|
@@ -226,6 +227,7 @@ for JDK 17 or newer, with no build ([ADR 0020](adr/0020-dpop-client-in-java.md))
 | `tools/run` | build the tools when a source changed, check the JDK is 17 or newer, and start one | sh | done |
 | `deploy/postgres/backup` | back up, check and prove a restore of the stack's Postgres, from the manager | sh | done |
 | `DevSetup` (`tools/src/main/kotlin`) | make the dev keys, realm, passwords and `.env`, asking on a terminal | Kotlin | done |
+| `ClientKeys`, `DpopCalls` | make a client key, and sign in and call the API with DPoP, with only the JDK: what `dev-setup` and `Smoke` need of the reference client, written again | Kotlin | done |
 | `Realms`, `RealmTemplate` and the shared `Cli` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Kotlin | done |
 | `Smoke`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Kotlin | done: 2.4 s against 16 s (measured when it was Java) |
 | `Report` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Kotlin | done: the Python scripts are gone, and its output is theirs on every committed result |

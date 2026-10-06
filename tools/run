@@ -36,7 +36,7 @@ stamp=tools/build/.built
 launcher=tools/build/install/tools/bin/tools
 # Gradle takes seconds even when there is nothing to do, so it is asked only when a source is newer than the last build.
 if [ ! -x "$launcher" ] || [ ! -f "$stamp" ] ||
-  [ -n "$(find tools/src/main tools/build.gradle.kts tools/settings.gradle.kts deploy/keycloak/DpopClient.java -newer "$stamp" -print -quit)" ]; then
+  [ -n "$(find tools/src/main tools/build.gradle.kts tools/settings.gradle.kts -newer "$stamp" -print -quit)" ]; then
   ./gradlew --console=plain -q -p tools installDist >&2 || {
     echo "$tool: the tools could not be built (see above)" >&2
     exit 1

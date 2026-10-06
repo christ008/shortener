@@ -36,7 +36,7 @@ class ToolsLauncherTest {
         Files.createDirectories(root.resolve("tools"))
         Files.copy(repositoryRoot.resolve("tools/run"), root.resolve("tools/run"))
         Files.setPosixFilePermissions(root.resolve("tools/run"), PosixFilePermissions.fromString("rwxr-xr-x"))
-        listOf("tools/src/main/Main.kt", "tools/build.gradle.kts", "tools/settings.gradle.kts", "deploy/keycloak/DpopClient.java").forEach {
+        listOf("tools/src/main/Main.kt", "tools/build.gradle.kts", "tools/settings.gradle.kts").forEach {
             Files.createDirectories(root.resolve(it).parent)
             Files.writeString(root.resolve(it), "// $it")
             Files.setLastModifiedTime(root.resolve(it), longAgo)
@@ -100,7 +100,7 @@ class ToolsLauncherTest {
         val java = jdk("21")
         start(java, "Smoke")
 
-        listOf("tools/src/main/Main.kt", "tools/build.gradle.kts", "tools/settings.gradle.kts", "deploy/keycloak/DpopClient.java").forEachIndexed { index, source ->
+        listOf("tools/src/main/Main.kt", "tools/build.gradle.kts", "tools/settings.gradle.kts").forEachIndexed { index, source ->
             Files.setLastModifiedTime(root.resolve(source), FileTime.from(Instant.now().plusSeconds(60)))
             start(java, "Smoke")
 
@@ -109,7 +109,7 @@ class ToolsLauncherTest {
             Files.setLastModifiedTime(root.resolve(source), longAgo)
         }
         start(java, "Smoke")
-        assertThat(builds()).describedAs("and quiet again once nothing is newer").hasSize(5)
+        assertThat(builds()).describedAs("and quiet again once nothing is newer").hasSize(4)
     }
 
     @Test
