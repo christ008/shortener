@@ -700,7 +700,8 @@ Spring's refusal to retry it in the same run), and were not run. `./gradlew test
 - `perf/bench.sh` runs one build in a container with 2 CPUs (cores 0-1) and 512 MB. Postgres uses cores 2-5 and k6 cores
   6-9.
 - k6 uses an arrival-rate executor, so slow responses do not slow the load: 99% redirects on a hot subset, 1% creates
-  signed with DPoP.
+  signed with DPoP. The redirects go to 300 seeded links, 80% of them to the first 60 (`perf/k6/mixed.js`), so after the warm-up
+  nearly every redirect is a cache hit. A workload of many links that the cache has not seen was not run.
 - Each variant warms up 30 s, then runs 1,500, 5,000 and 10,000 requests a second. Server-side percentiles come from
   Prometheus. `perf/run-all.sh` runs the variants.
 - One laptop, one run per rate, database and load generator on the same machine. Treat the numbers as shape, not capacity.
@@ -844,6 +845,12 @@ Each has a record with its problem, cost and alternatives in [adr/](adr/README.m
 
 ## Limitations
 
+- It has not served real traffic. What is said about its behaviour under load comes from a synthetic workload on one machine
+  (see [Performance](#performance)).
+- The migration history creates a table and drops it. `V2__create_event_publication.sql` made Modulith's event publication
+  table, and `V4__jdbc_schema.sql` begins by dropping it, from when the project moved from JPA to plain JDBC. Nothing in the code
+  publishes or listens to events, and the table is not in the schema now. It stays in the history because an applied migration
+  is not edited: Flyway checks its checksum. Anything that wants events again needs a migration that creates the table.
 - A link disabled on one instance can redirect on the others for up to the cache TTL (30 s).
 - Rate limits and the DPoP replay cache are per instance.
 - Beyond capacity (about 5,800 req/s on two cores) the service sheds load, but creates still queue for seconds. nginx

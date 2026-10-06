@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/christ008/shortener/actions/workflows/ci.yml/badge.svg)](https://github.com/christ008/shortener/actions/workflows/ci.yml)
 
-A URL shortener built to production standards.
+A URL shortener that applies production practices. It has not served real traffic: what is said here about its behaviour under load was measured with a synthetic workload, on one machine.
 
 - OAuth2 with sender-constrained (DPoP) tokens and per-client ownership.
 - Plain JDBC on Postgres, virtual threads, an in-memory redirect cache.
@@ -104,7 +104,7 @@ once started`.
 ```
 
 - The build is pinned in `build.gradle.kts`: Paketo buildpacks by version, BellSoft's builder and run image by digest.
-- The image runs as uid 1000, starts in about 0.4 s, and carries `/workspace/health-check` for container health checks.
+- The image runs as uid 1000, is ready 0.4 to 0.7 s after `docker run`, and carries `/workspace/health-check` for container health checks.
 - `perf/smoke.sh` exercises every endpoint with real tokens against a running instance.
 
 ## Deploy
@@ -123,11 +123,21 @@ Runbook: [docs/DEPLOY.md](docs/DEPLOY.md). Design and what it gives up against K
 
 ## Performance
 
-One laptop, app limited to 2 cores and 512 MB:
+These are the shape of the behaviour, not the capacity of the service. How they were measured:
 
-- The JVM and the native image both serve about 5,000 requests a second at a redirect p99 of 1 ms.
-- The native image starts in 0.4 s.
-- The redirect cache and a connection limit keep the native image stable under overload.
+- One laptop, one run per rate. The application ran limited to 2 CPU cores and 512 MB, with Postgres and the load generator (k6)
+  on the same machine, on other cores.
+- The load was 99% redirects and 1% creates. The redirects went to 300 links, 80% of them to the hottest 60, which all fit in the
+  redirect cache, so almost every redirect was answered from memory (about 99% at 1,500 requests a second, on the dashboard in
+  [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)). Redirects of links the cache had not seen were not measured.
+- With the cache, only 1,500 and 5,000 requests a second were run, because saturation runs have taken the development machine's
+  network down. The ceiling was not probed.
+
+What it showed, under those conditions:
+
+- The JVM and the native image served 5,000 requests a second (the native image 4,936) with no failures, at a redirect p99 of 1 ms.
+- The native image was ready 0.4 to 0.7 s after `docker run` over twelve runs, and the JVM 5.4 to 5.6 s over two.
+- The redirect cache and a connection limit kept the native image stable under overload.
 
 Method, numbers and the investigation: [docs/INTERNALS.md](docs/INTERNALS.md#performance). Read the warning there
 before running load tests.

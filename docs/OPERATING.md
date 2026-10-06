@@ -46,7 +46,7 @@ docker run --rm --network host --memory 512m \
   shortener:$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
 ```
 
-It starts in about 0.4 s. This runs without a profile, so it is quiet and uses the plain defaults. Add
+It is ready 0.4 to 0.7 s after `docker run`. This runs without a profile, so it is quiet and uses the plain defaults. Add
 `-e SPRING_PROFILES_ACTIVE=production` to see the production settings.
 
 **The production stack** is rehearsed in [DEPLOY.md](DEPLOY.md#rehearse-it-on-one-machine): a self-signed certificate,
