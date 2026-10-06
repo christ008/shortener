@@ -20,12 +20,12 @@ repositories {
 
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.1"))
+    implementation("tools.jackson.core:jackson-databind")
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.assertj:assertj-core")
     testImplementation("com.nimbusds:nimbus-jose-jwt:10.9.1") // not in the Boot BOM: the version the application resolves, through Spring Security
-    testImplementation("tools.jackson.core:jackson-databind")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
