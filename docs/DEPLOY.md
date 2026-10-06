@@ -144,7 +144,7 @@ reachable from outside.
    java deploy/keycloak/DpopClient.java keygen admin-client > admin.keys
    sed -n 2p demo.keys  > demo-client.public.json
    sed -n 2p admin.keys > admin-client.public.json
-   deploy/keycloak/make-production-realm demo-client.public.json admin-client.public.json
+   ./gradlew productionRealm -Pdemo=demo-client.public.json -Padmin=admin-client.public.json
    ```
 
    Keep line 1 of `admin.keys` (the private key) on your machine alone: it can take down any link. Line 1 of `demo.keys` is

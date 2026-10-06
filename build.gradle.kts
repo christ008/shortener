@@ -20,6 +20,8 @@ repositories {
     mavenCentral()
 }
 
+apply(from = "gradle/tooling.gradle.kts")
+
 extra["springModulithVersion"] = "2.1.1"
 extra["testcontainersVersion"] = "2.0.5"
 

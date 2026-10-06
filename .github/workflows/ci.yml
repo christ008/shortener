@@ -50,7 +50,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'  # the baseline of deploy/keycloak/DpopClient.java, which dev-setup runs
+          java-version: '25'  # the baseline of tools/, which dev-setup runs. DpopClient.java, for 17, is tested above
       - name: Check the compose files
         run: |
           deploy/keycloak/dev-setup --yes
@@ -83,4 +83,7 @@ jobs:
           promtool check rules alerts.yml
           promtool test rules alerts.test.yml
       - name: Check the shell scripts
-        run: shellcheck deploy/stack/deploy.sh deploy/stack/local/prepare.sh deploy/keycloak/dev-setup deploy/keycloak/make-production-realm deploy/keycloak/entrypoint.sh deploy/postgres/*.sh
+        run: |
+          shellcheck --shell=sh deploy/stack/deploy.sh deploy/stack/local/prepare.sh deploy/keycloak/dev-setup deploy/keycloak/entrypoint.sh deploy/postgres/*.sh
+          # Until they are rewritten (docs/adr/0026-scripting-standard.md), the load and profiling scripts use bash.
+          shellcheck --shell=bash perf/*.sh

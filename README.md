@@ -21,12 +21,14 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 
 ## Run it locally
 
-You need Docker and JDK 25, and `openssl`, which `dev-setup` uses for the passwords. The client below runs on any JDK 17 or newer.
+You need Docker and JDK 25. The client below runs on any JDK 17 or newer.
 
 ```bash
 deploy/keycloak/dev-setup     # once: makes your own dev keys and passwords, and asks what it needs
 ./gradlew bootRun
 ```
+
+Every script of the repository has a Gradle task: `./gradlew tasks --group tooling` lists them.
 
 `dev-setup` shows a banner, then asks for the few things a development setup needs (the Keycloak console password, the
 passwords of the two web users and of Postgres), offering a random value for each. It writes a private key for each dev

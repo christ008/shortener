@@ -58,7 +58,7 @@ flowchart LR
 1. ~~**A Keycloak service for the stack**~~ Built: `compose.prod.keycloak.yaml`, with its own database, the public issuer, behind
    the edge, rehearsed on one machine ([DEPLOY.md](DEPLOY.md#keycloak), [ADR 0025](adr/0025-keycloak-in-the-stack.md)).
 2. ~~**An edge route for `/realms`**~~ Built: only the shortener realm and its static files, with a limit on the token endpoint.
-3. ~~**A demo realm.**~~ Built: `make-production-realm` makes it from the public keys of `demo-client`, which can create, read and
+3. ~~**A demo realm.**~~ Built: `./gradlew productionRealm` makes it from the public keys of `demo-client`, which can create, read and
    disable its own links, and `admin-client`, whose key only the operator holds. No users, TLS required, brute-force detection.
    Not built: the `shortener-ui` client and web users, which wait for the web UI.
 4. **Certificate issuance and renewal**, with a reload of the edge.
@@ -86,7 +86,7 @@ Before anyone is invited:
 
 - **Restrict targets.** Set `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` to a short list, for example `example.com` and
   `*.example.org`. Anything else is refused with `400`. With no list the production stack does not start, unless `ALLOW_ANY_TARGET=true` says on purpose that it redirects to anywhere: never on a public instance.
-- **Use the production realm** that `make-production-realm` writes, never the dev one.
+- **Use the production realm** that `./gradlew productionRealm` writes, never the dev one.
 - **Keep the limits.** Per address (300 a minute) and per client (60 a minute) are the defaults. Do not raise them.
 - **Expect to take links down.** Keep an administrator client whose key only you hold, and know the call:
   `DELETE /api/short-links/<code>`.

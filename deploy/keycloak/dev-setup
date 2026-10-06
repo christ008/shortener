@@ -1,260 +1,29 @@
 #!/bin/sh
-# Makes the cryptographic material and the passwords a local development setup needs, so none of it is committed.
+# Makes the cryptographic material and the passwords a local development setup needs, so none of it is committed. The work is
+# tools/DevSetup.java, which says what it writes and how to use it: this only finds a JDK 25 for it.
 #
-#   deploy/keycloak/dev-setup              asks for each setting, offering a random value
-#   deploy/keycloak/dev-setup --yes        takes every default, and asks nothing (for CI and scripts)
-#   deploy/keycloak/dev-setup --force      replaces what is already there
-#   deploy/keycloak/dev-setup --show       prints the passwords of an existing setup
+#   deploy/keycloak/dev-setup [--yes] [--force] [--show]
 #
-# It writes, all of it ignored by Git:
-#   deploy/keycloak/dev-keys/<client>.jwk.json   a private key for each of the four dev clients (P-256, made by DpopClient.java)
-#   deploy/keycloak/shortener-realm.json         the dev realm, made from shortener-realm.template.json with their public keys
-#   .env                                         the passwords compose.yaml reads, merged into what is already there
-#
-# It needs openssl for the passwords and a JDK 17 or newer for the keys, which DpopClient.java makes.
-#
-# Each setting can also be given in the environment, which is how a script answers: DEV_KEYS_DIR,
-# DEV_KEYCLOAK_ADMIN_USER, DEV_KEYCLOAK_ADMIN_PASSWORD, DEV_POSTGRES_PASSWORD, DEV_APP_PASSWORD,
-# DEV_MIGRATOR_PASSWORD, DEV_EXPORTER_PASSWORD, DEV_USER_ALICE_PASSWORD and DEV_USER_BOB_PASSWORD.
+# It runs the java of JAVA_HOME when that is set, and else the one on the PATH. `./gradlew devSetup` runs it with the right one.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
-env_file=$root/.env
-template=$here/shortener-realm.template.json
-realm=$here/shortener-realm.json
-clients="demo-client other-client admin-client no-scope-client"
 
-assume_yes=false
-force=false
-show=false
-for argument in "$@"; do
-  case "$argument" in
-    --yes | -y) assume_yes=true ;;
-    --force | -f) force=true ;;
-    --show) show=true ;;
-    --help | -h)
-      sed -n '2,/^set -eu/p' "$0" | sed '$d; s/^# \{0,1\}//'
-      exit 0
-      ;;
-    *)
-      echo "dev-setup: unknown option $argument (see --help)" >&2
-      exit 2
-      ;;
-  esac
-done
+java=java
+[ -z "${JAVA_HOME:-}" ] || java=$JAVA_HOME/bin/java
+command -v "$java" >/dev/null 2>&1 || {
+  echo "dev-setup: needs java 25, and found none (see JAVA_HOME and the PATH), or run ./gradlew devSetup" >&2
+  exit 1
+}
 
-for tool in openssl awk sed tr java; do
-  command -v "$tool" >/dev/null 2>&1 || {
-    echo "dev-setup: needs $tool, which is not installed" >&2
-    exit 1
-  }
-done
-
-# DpopClient.java is run from source, and is written for JDK 17: say so here, not as a compiler error about text blocks.
-java_major=$(java -version 2>&1 | sed -n 's/^[a-z]* version "\(1\.\)\{0,1\}\([0-9]*\).*/\2/p' | head -1)
-if [ -z "$java_major" ] || [ "$java_major" -lt 17 ]; then
-  echo "dev-setup: needs a JDK 17 or newer, and found ${java_major:-none} (see JAVA_HOME and the PATH)" >&2
+# tools/DevSetup.java is a compact source file, which a JDK older than 25 refuses with a message about a preview feature: say
+# what is needed here instead.
+java_major=$("$java" -version 2>&1 | sed -n 's/^[a-z]* version "\(1\.\)\{0,1\}\([0-9]*\).*/\2/p' | head -1)
+if [ -z "$java_major" ] || [ "$java_major" -lt 25 ]; then
+  echo "dev-setup: needs JDK 25, and found ${java_major:-none} (see JAVA_HOME and the PATH), or run ./gradlew devSetup" >&2
   exit 1
 fi
 
-# ---- the .env file ----------------------------------------------------------------------------------------------
-
-env_get() {
-  if [ -f "$env_file" ]; then sed -n "s/^$1='\\{0,1\\}\\([^']*\\)'\\{0,1\\}\$/\\1/p" "$env_file" | head -1; fi
-}
-
-if [ "$show" = true ]; then
-  if [ ! -f "$env_file" ] || ! grep -q '^DEV_' "$env_file"; then
-    echo "dev-setup: nothing set up yet; run deploy/keycloak/dev-setup" >&2
-    exit 1
-  fi
-  echo "Keycloak console   http://localhost:8180   $(env_get DEV_KEYCLOAK_ADMIN_USER) / $(env_get DEV_KEYCLOAK_ADMIN_PASSWORD)"
-  echo "web users          alice / $(env_get DEV_USER_ALICE_PASSWORD)    bob / $(env_get DEV_USER_BOB_PASSWORD)"
-  echo "postgres           myuser / $(env_get DEV_POSTGRES_PASSWORD)"
-  echo "client keys        $(env_get DEV_KEYS_DIR)"
-  exit 0
-fi
-
-# ---- the banner -------------------------------------------------------------------------------------------------
-
-banner() {
-  cat <<'EOF'
-
-   ____  _                _
-  / ___|| |__   ___  _ __| |_ ___ _ __   ___ _ __
-  \___ \| '_ \ / _ \| '__| __/ _ \ '_ \ / _ \ '__|
-   ___) | | | | (_) | |  | ||  __/ | | |  __/ |
-  |____/|_| |_|\___/|_|   \__\___|_| |_|\___|_|
-
-  development setup: throwaway keys and passwords
-
-  ----------------------------------------------------------------------------
-   FOR LOCAL DEVELOPMENT ONLY. Never reuse any of this in a deployment: a real
-   one has its own identity provider, its own keys and its own secrets.
-  ----------------------------------------------------------------------------
-
-  This makes, and writes where Git ignores them:
-    - a private key for each dev client (demo, other, admin, no-scope)
-    - the dev realm for Keycloak, trusting those keys and these passwords
-    - the passwords of Keycloak, its two web users and Postgres, in .env
-
-EOF
-}
-
-banner
-
-# ---- what to set ------------------------------------------------------------------------------------------------
-
-interactive=false
-if [ "$assume_yes" = false ] && [ -t 0 ]; then interactive=true; fi
-
-random_secret() { openssl rand -base64 24 | tr -d '/+=\n' | cut -c1-24; }
-
-# ask VARIABLE "what it is" DEFAULT [secret]: the value from the environment, else a prompt, else the default
-ask() {
-  name=$1
-  label=$2
-  default=$3
-  secret=${4:-}
-  eval "current=\${$name:-}"
-  if [ -n "$current" ]; then
-    value=$current
-  elif [ "$interactive" = true ]; then
-    shown=$default
-    [ "$secret" != secret ] || shown='a random one'
-    printf '  %s [%s]: ' "$label" "$shown" >&2
-    if [ "$secret" = secret ]; then stty -echo 2>/dev/null || true; fi
-    IFS= read -r value || value=
-    if [ "$secret" = secret ]; then
-      stty echo 2>/dev/null || true
-      echo >&2
-    fi
-    [ -n "$value" ] || value=$default
-  else
-    value=$default
-  fi
-  case "$value" in
-    *"'"* | *'"'* | *\\* | *'
-'*)
-      echo "dev-setup: $label must not contain quotes, backslashes or line breaks" >&2
-      exit 1
-      ;;
-  esac
-  eval "$name=\$value"
-}
-
-existing=false
-if [ -f "$realm" ]; then existing=true; fi
-if [ -f "$env_file" ] && grep -q '^DEV_' "$env_file"; then existing=true; fi
-if [ "$existing" = true ] && [ "$force" = false ]; then
-  keep=true
-  if [ "$interactive" = true ]; then
-    printf '  A setup already exists. Replace its keys, realm and passwords? [y/N]: ' >&2
-    IFS= read -r answer || answer=
-    case "$answer" in y | Y | yes) keep=false ;; esac
-  fi
-  if [ "$keep" = true ]; then
-    echo "  A setup already exists, so nothing was changed. Use --force to replace it, or --show to see its passwords." >&2
-    exit 0
-  fi
-fi
-
-if [ "$interactive" = true ]; then
-  echo "  Press Enter to accept what is in brackets. Passwords are generated for you; type one to choose your own."
-  echo
-fi
-
-ask DEV_KEYS_DIR "Where the client keys go" "deploy/keycloak/dev-keys"
-ask DEV_KEYCLOAK_ADMIN_USER "Keycloak console user" "admin"
-ask DEV_KEYCLOAK_ADMIN_PASSWORD "Keycloak console password" "$(random_secret)" secret
-ask DEV_USER_ALICE_PASSWORD "Password of the web user alice" "$(random_secret)" secret
-ask DEV_USER_BOB_PASSWORD "Password of the web user bob" "$(random_secret)" secret
-ask DEV_POSTGRES_PASSWORD "Postgres password (user myuser)" "$(random_secret)" secret
-ask DEV_APP_PASSWORD "Postgres password of the role shortener_app" "$(random_secret)" secret
-ask DEV_MIGRATOR_PASSWORD "Postgres password of the role shortener_migrator" "$(random_secret)" secret
-ask DEV_EXPORTER_PASSWORD "Postgres password of the role shortener_exporter" "$(random_secret)" secret
-
-case "$DEV_KEYS_DIR" in /*) keys_dir=$DEV_KEYS_DIR ;; *) keys_dir=$root/$DEV_KEYS_DIR ;; esac
-
-# ---- the keys ---------------------------------------------------------------------------------------------------
-
-echo
-echo "  Making the keys (P-256, ES256)"
-mkdir -p "$keys_dir"
-work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT INT TERM
-for client in $clients; do
-  java "$here/DpopClient.java" keygen "$client" >"$work/$client.keys"
-  sed -n 1p "$work/$client.keys" >"$keys_dir/$client.jwk.json"
-  sed -n 2p "$work/$client.keys" >"$work/$client.public"
-  # The load test reads the keys from a container that runs as another user, and these are throwaway keys.
-  chmod 644 "$keys_dir/$client.jwk.json"
-  echo "    $keys_dir/$client.jwk.json"
-done
-
-# ---- the realm --------------------------------------------------------------------------------------------------
-
-# a JSON string with its quotes and backslashes escaped, to go inside another JSON string
-json_in_json() { sed 's/\\/\\\\/g; s/"/\\"/g'; }
-
-replace() { # FILE PLACEHOLDER VALUE: a plain text replacement, with no regular expression and no escapes in the value
-  PLACEHOLDER=$2 VALUE=$3 awk '{
-    i = index($0, ENVIRON["PLACEHOLDER"])
-    while (i) {
-      $0 = substr($0, 1, i - 1) ENVIRON["VALUE"] substr($0, i + length(ENVIRON["PLACEHOLDER"]))
-      i = index($0, ENVIRON["PLACEHOLDER"])
-    }
-    print }' "$1" >"$1.next"
-  mv "$1.next" "$1"
-}
-
-echo "  Making the dev realm from $(basename "$template")"
-cp "$template" "$work/realm.json"
-for client in $clients; do
-  jwks=$(printf '{"keys":[%s]}' "$(cat "$work/$client.public")" | json_in_json)
-  replace "$work/realm.json" "@JWKS:$client@" "$jwks"
-done
-replace "$work/realm.json" "@PASSWORD:alice@" "$DEV_USER_ALICE_PASSWORD"
-replace "$work/realm.json" "@PASSWORD:bob@" "$DEV_USER_BOB_PASSWORD"
-if grep -q '@[A-Z]*:[a-z-]*@' "$work/realm.json"; then
-  echo "dev-setup: a placeholder was left in the realm" >&2
-  exit 1
-fi
-cp "$work/realm.json" "$realm"
-chmod 644 "$realm"
-echo "    $realm"
-
-# ---- .env -------------------------------------------------------------------------------------------------------
-
-set_env() { # KEY VALUE: replaces the line of KEY in .env, or adds it, and leaves the other lines alone
-  touch "$env_file"
-  grep -v "^$1=" "$env_file" >"$work/env" || true
-  printf "%s='%s'\n" "$1" "$2" >>"$work/env"
-  cp "$work/env" "$env_file"
-  chmod 600 "$env_file"
-}
-
-echo "  Writing the passwords to $env_file"
-set_env DEV_KEYS_DIR "$DEV_KEYS_DIR"
-set_env DEV_KEYCLOAK_ADMIN_USER "$DEV_KEYCLOAK_ADMIN_USER"
-set_env DEV_KEYCLOAK_ADMIN_PASSWORD "$DEV_KEYCLOAK_ADMIN_PASSWORD"
-set_env DEV_USER_ALICE_PASSWORD "$DEV_USER_ALICE_PASSWORD"
-set_env DEV_USER_BOB_PASSWORD "$DEV_USER_BOB_PASSWORD"
-set_env DEV_POSTGRES_PASSWORD "$DEV_POSTGRES_PASSWORD"
-set_env DEV_APP_PASSWORD "$DEV_APP_PASSWORD"
-set_env DEV_MIGRATOR_PASSWORD "$DEV_MIGRATOR_PASSWORD"
-set_env DEV_EXPORTER_PASSWORD "$DEV_EXPORTER_PASSWORD"
-
-cat <<EOF
-
-  Done. What to do next:
-    ./gradlew bootRun                 starts Postgres and Keycloak with these passwords, and the application
-    java deploy/keycloak/DpopClient.java call $DEV_KEYS_DIR/demo-client.jwk.json demo-client \\
-        POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/"}'
-    deploy/keycloak/dev-setup --show  prints the passwords again
-
-  If Postgres or Keycloak ran before with other passwords, remove their data first, because they keep the old
-  ones: docker compose down -v
-
-EOF
+cd "$root"
+exec "$java" tools/DevSetup.java "$@"
