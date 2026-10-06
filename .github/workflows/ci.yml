@@ -34,6 +34,15 @@ jobs:
         env:
           DPOP_CLIENT_JAVA_HOME: ${{ steps.jdk17.outputs.path }}
         run: ./gradlew test
+      - name: Coverage report (a measurement, not a gate)
+        if: always()
+        run: ./gradlew koverHtmlReport koverXmlReport -x test
+      - name: Keep the coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: build/reports/kover
       - name: Keep the test reports when something fails
         if: failure()
         uses: actions/upload-artifact@v7

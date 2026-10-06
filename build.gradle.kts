@@ -4,6 +4,8 @@ plugins {
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.graalvm.buildtools.native") version "1.1.13"
+    id("org.jetbrains.kotlinx.kover") version "0.9.11"
+    id("info.solidsoft.pitest") version "1.19.0"
 }
 
 group = "uy.ct"
@@ -69,6 +71,83 @@ dependencyManagement {
         mavenBom("org.springframework.modulith:spring-modulith-bom:${property("springModulithVersion")}")
         mavenBom("org.testcontainers:testcontainers-bom:${property("testcontainersVersion")}")
     }
+}
+
+/**
+ * Coverage, as a measurement and not a gate: `./gradlew koverHtmlReport koverXmlReport` after `./gradlew test` writes
+ * build/reports/kover, and CI keeps it as an artifact. Only the whole suite says what the project covers, and part of it needs
+ * Docker.
+ */
+kover {
+    currentProject {
+        instrumentation {
+            // Only the classes of the project: the rest are loaded by the tests too, and instrumenting them only fills a log.
+            includedClasses.add("uy.ct.shortener.*")
+        }
+    }
+    reports {
+        filters {
+            excludes {
+                // What the framework generates for ahead-of-time and native builds is not code of the project.
+                classes("*__*", "*\$\$*", "uy.ct.shortener.ShortenerApplicationKt")
+            }
+        }
+    }
+}
+
+/**
+ * Mutation testing of the logic of the `shortlink` module, run by hand with `./gradlew mutationTest` (not part of `check`, and not
+ * in CI): it changes the code in small ways and runs the tests that cover each change, and a change that no test notices is a
+ * behaviour that nothing checks. See the Testing section of docs/INTERNALS.md for what it found.
+ *
+ * - Scope: the domain types, the service, the redirect cache, the target-URL policy and the code generator. Not the web and
+ *   persistence adapters (tested against HTTP and Postgres, not through mutation), not authorization (a framework's expressions),
+ *   not the audit trail, and not configuration, properties and native hints.
+ * - Tests: the ones that need no Docker, because it demands a green run before it mutates anything. Mutants that only a test
+ *   with a database would kill are reported as surviving, and read as such.
+ */
+pitest {
+    junit5PluginVersion = "1.2.3"
+    pitestVersion = "1.30.0"
+    targetClasses = setOf(
+        "uy.ct.shortener.shortlink.Actor*",
+        "uy.ct.shortener.shortlink.CreatedByFilter*",
+        "uy.ct.shortener.shortlink.InsertResult*",
+        "uy.ct.shortener.shortlink.LinkLookup*",
+        "uy.ct.shortener.shortlink.LinkStatus*",
+        "uy.ct.shortener.shortlink.ShortCode",
+        "uy.ct.shortener.shortlink.ShortCode\$*",
+        "uy.ct.shortener.shortlink.ShortLink",
+        "uy.ct.shortener.shortlink.ShortLink\$*",
+        "uy.ct.shortener.shortlink.internal.DefaultShortLinkService*",
+        "uy.ct.shortener.shortlink.internal.CaffeineRedirectCache*",
+        "uy.ct.shortener.shortlink.internal.RedirectCache",
+        "uy.ct.shortener.shortlink.internal.NoRedirectCache*",
+        "uy.ct.shortener.shortlink.internal.TargetUrlPolicy",
+        "uy.ct.shortener.shortlink.internal.AnyTarget*",
+        "uy.ct.shortener.shortlink.internal.AllowedHosts*",
+        "uy.ct.shortener.shortlink.internal.RandomShortCodeGenerator*",
+    )
+    targetTests = setOf(
+        "uy.ct.shortener.shortlink.ShortCodeTest",
+        "uy.ct.shortener.shortlink.ShortLinkModelTest",
+        "uy.ct.shortener.shortlink.internal.DefaultShortLinkServiceTest",
+        "uy.ct.shortener.shortlink.internal.RedirectCacheTest",
+        "uy.ct.shortener.shortlink.internal.RandomShortCodeGeneratorTest",
+        "uy.ct.shortener.shortlink.internal.TargetUrlPolicy*Test",
+        "uy.ct.shortener.shortlink.internal.AuditTrailTest",
+        "uy.ct.shortener.shortlink.internal.ShortLinkAuthorizationTest",
+    )
+    threads = 4
+    outputFormats = setOf("HTML", "XML")
+    timestampedReports = false
+    failWhenNoMutations = false
+}
+
+tasks.register("mutationTest") {
+    group = "verification"
+    description = "Mutation testing of the logic of the shortlink module, by hand and not in CI (see the pitest block)."
+    dependsOn("pitest")
 }
 
 kotlin {
