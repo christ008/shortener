@@ -5,4 +5,4 @@ This directory is empty in Git. `deploy/keycloak/dev-setup` writes a private key
 the dev realm. Git ignores them.
 
 They are throwaway keys for your machine: never reuse them, never import the dev realm into a real Keycloak, and make a
-key for a real client with `../dpop keygen CLIENT_ID`.
+key for a real client with `java ../DpopClient.java keygen CLIENT_ID`.

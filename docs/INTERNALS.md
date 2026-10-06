@@ -384,7 +384,7 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 
 `deploy/keycloak/shortener-realm.template.json` defines the scopes, the audience mapper and four clients (`demo`, `other`,
 `admin`, `no-scope`): confidential, service-account only, implicit and password grants off. It holds placeholders where
-the keys and the web users' passwords go. `deploy/keycloak/dev-setup` makes the keys with openssl and fills them in,
+the keys and the web users' passwords go. `deploy/keycloak/dev-setup` makes the keys with the client's `keygen` and fills them in,
 which writes the realm Keycloak imports. Nothing secret is committed, so each developer has their own keys. Against the OAuth 2.1 draft
 that covers tokens only in the header, no deprecated grants, five-minute tokens, sender-constrained tokens and
 asymmetric client authentication. The draft is not final, so this is alignment, not conformance.
@@ -747,7 +747,8 @@ it, which puts the rule in one place and lets the type change without its caller
 - **Ownership is the client id.** There are no end users yet, so the token's `azp` is the owner and scopes are the only
   permission model.
 - **Sender-constrained tokens by default.** A leaked bearer token is the main risk of a token API. DPoP removes it at the
-  cost of a client that can sign. A client is provided, in shell with openssl and curl, so it needs no runtime.
+  cost of a client that can sign. A client is provided: `deploy/keycloak/DpopClient.java`, one file that needs only a JDK 17
+  or newer and no build, and that CI compiles for 17 and runs on 17.
 - **In-process redirect cache.** Caffeine, active links only, short TTL, local eviction on disable. See
   [Redirect cache](#redirect-cache) for what was rejected.
 - **Which hosts a link may point to is a policy.** Empty by default, so a private instance accepts anything; a public

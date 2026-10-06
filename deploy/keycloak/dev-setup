@@ -7,9 +7,11 @@
 #   deploy/keycloak/dev-setup --show       prints the passwords of an existing setup
 #
 # It writes, all of it ignored by Git:
-#   deploy/keycloak/dev-keys/<client>.jwk.json   a private key for each of the four dev clients (P-256, made with openssl)
+#   deploy/keycloak/dev-keys/<client>.jwk.json   a private key for each of the four dev clients (P-256, made by DpopClient.java)
 #   deploy/keycloak/shortener-realm.json         the dev realm, made from shortener-realm.template.json with their public keys
 #   .env                                         the passwords compose.yaml reads, merged into what is already there
+#
+# It needs openssl for the passwords and a JDK 17 or newer for the keys, which DpopClient.java makes.
 #
 # Each setting can also be given in the environment, which is how a script answers: DEV_KEYS_DIR,
 # DEV_KEYCLOAK_ADMIN_USER, DEV_KEYCLOAK_ADMIN_PASSWORD, DEV_POSTGRES_PASSWORD, DEV_APP_PASSWORD,
@@ -42,12 +44,19 @@ for argument in "$@"; do
   esac
 done
 
-for tool in openssl awk sed tr; do
+for tool in openssl awk sed tr java; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "dev-setup: needs $tool, which is not installed" >&2
     exit 1
   }
 done
+
+# DpopClient.java is run from source, and is written for JDK 17: say so here, not as a compiler error about text blocks.
+java_major=$(java -version 2>&1 | sed -n 's/^[a-z]* version "\(1\.\)\{0,1\}\([0-9]*\).*/\2/p' | head -1)
+if [ -z "$java_major" ] || [ "$java_major" -lt 17 ]; then
+  echo "dev-setup: needs a JDK 17 or newer, and found ${java_major:-none} (see JAVA_HOME and the PATH)" >&2
+  exit 1
+fi
 
 # ---- the .env file ----------------------------------------------------------------------------------------------
 
@@ -171,12 +180,12 @@ case "$DEV_KEYS_DIR" in /*) keys_dir=$DEV_KEYS_DIR ;; *) keys_dir=$root/$DEV_KEY
 # ---- the keys ---------------------------------------------------------------------------------------------------
 
 echo
-echo "  Making the keys (P-256, ES256) with openssl"
+echo "  Making the keys (P-256, ES256)"
 mkdir -p "$keys_dir"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT INT TERM
 for client in $clients; do
-  "$here/dpop" keygen "$client" >"$work/$client.keys"
+  java "$here/DpopClient.java" keygen "$client" >"$work/$client.keys"
   sed -n 1p "$work/$client.keys" >"$keys_dir/$client.jwk.json"
   sed -n 2p "$work/$client.keys" >"$work/$client.public"
   # The load test reads the keys from a container that runs as another user, and these are throwaway keys.
@@ -241,7 +250,7 @@ cat <<EOF
 
   Done. What to do next:
     ./gradlew bootRun                 starts Postgres and Keycloak with these passwords, and the application
-    deploy/keycloak/dpop call $DEV_KEYS_DIR/demo-client.jwk.json demo-client \\
+    java deploy/keycloak/DpopClient.java call $DEV_KEYS_DIR/demo-client.jwk.json demo-client \\
         POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/"}'
     deploy/keycloak/dev-setup --show  prints the passwords again
 

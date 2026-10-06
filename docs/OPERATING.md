@@ -15,10 +15,10 @@ How to run the service on your machine, try it, test it, and look after it when 
 
 | For | You need |
 |---|---|
-| Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN), and `openssl` and `curl` for the tools |
+| Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN), and `openssl` for `dev-setup` |
 | Building the native image | about 7 GB of free memory, and 3 minutes |
 | The load test | Docker (k6 runs in a container), a few spare cores, and the warning under [Test it](#test-it) |
-| Trying the production stack | `openssl` and `curl`, which most systems have |
+| Trying the production stack | `openssl` and `keytool`, both of which come with a JDK and most systems |
 
 ## Three ways to run it
 
@@ -61,7 +61,7 @@ It shows a banner and asks, offering a random value for each:
 |---|---|
 | where the client keys go (default `deploy/keycloak/dev-keys`) | the client below, `perf/smoke.sh`, the load test |
 | the Keycloak console user and password | the Keycloak at <http://localhost:8180> |
-| the passwords of the web users `alice` and `bob` | `dpop login`, and the web UI when it exists |
+| the passwords of the web users `alice` and `bob` | the client's `login`, and the web UI when it exists |
 | the Postgres password, and those of the roles `shortener_app`, `shortener_migrator` and `shortener_exporter` | `compose.yaml` |
 
 It writes a private key for each of the four dev clients, the dev realm that trusts them
@@ -74,7 +74,7 @@ Clients sign in with a signed assertion and get tokens bound to a key (DPoP), so
 client in `deploy/keycloak` does it:
 
 ```bash
-deploy/keycloak/dpop call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 
@@ -83,20 +83,27 @@ visitor's computer. It is a client, not a part of the service, so it is never de
 reach two URLs over HTTP or HTTPS: the identity provider's token endpoint (`TOKEN_URL`, by default the local Keycloak) and
 the API. Against another instance, set `TOKEN_URL` (and `ISSUER` if it differs).
 
-**What it needs.** `openssl` (1.1.1, or LibreSSL 3) and `curl`, with the `awk`, `sed`, `tr`, `od`, `head` and `tail` of any
-POSIX system. No JDK. It signs with `openssl`, builds the keys and the ES256 signatures itself, and speaks to the identity
-provider with `curl`, so it is a short script you can read: `deploy/keycloak/dpop`.
+**What it needs.** A JDK 17 or newer, and nothing else: it is one source file that the `java` launcher compiles and runs
+(a second or two per run), with no library and no build step. It is written to the JDK 17 baseline, with records, text
+blocks and switch expressions but nothing newer, and the tests compile it with `--release 17` and every lint on, so a
+newer API fails there and not on somebody's machine. It keeps its own small JSON reader, strict, so a response that is
+not JSON is reported as such, and every failure is one line on stderr (`DpopClient: the token endpoint answered 401: ...`)
+with exit status 1. `DPOP_DEBUG=1` adds the stack trace. An answer from the API with an error status is not a failure:
+the status is printed, as it is the answer.
 
 | To | Do |
 |---|---|
-| trust a certificate of your own | `CURL_OPTS="--cacert cert.pem" deploy/keycloak/dpop ...` |
-| call another instance | `TOKEN_URL=https://auth.example.com/realms/x/protocol/openid-connect/token deploy/keycloak/dpop ...` |
-| force a sampled trace | `TRACEPARENT=00-<trace id>-<span id>-01 deploy/keycloak/dpop ...` |
-| make a key for a new client | `deploy/keycloak/dpop keygen my-client`: the first line is the private JWK, the second the public one |
+| trust a certificate of your own | `java -Djavax.net.ssl.trustStore=ts.p12 -Djavax.net.ssl.trustStorePassword=changeit deploy/keycloak/DpopClient.java ...`, or the same in `JAVA_TOOL_OPTIONS` |
+| call another instance | `TOKEN_URL=https://auth.example.com/realms/x/protocol/openid-connect/token java deploy/keycloak/DpopClient.java ...` |
+| force a sampled trace | `TRACEPARENT=00-<trace id>-<span id>-01 java deploy/keycloak/DpopClient.java ...` |
+| make a key for a new client | `java deploy/keycloak/DpopClient.java keygen my-client`: the first line is the private JWK, the second the public one |
 
-`DpopClientTest` runs the script against a stand-in server and checks what it sent with a different implementation, so
-the signatures are known to verify, with keys made by Nimbus and by the script itself, over many runs, and for signatures
-whose integers are shorter or longer than 32 bytes. `perf/smoke.sh` runs it against the real Keycloak.
+`DpopClientTest` runs the file against a stand-in for Keycloak and the API, and checks what it sent with a different
+implementation (Nimbus), so the signatures are known to verify, with keys made by Nimbus and by the client itself,
+including a key whose private scalar starts with a zero byte. The stand-in plays the login of a single-page app too (PKCE,
+a DPoP-bound code, a rotating refresh token bound to the key), so `login` is tested, and it checks the one-line errors.
+The same test compiles the client with `--release 17` and runs it, and CI runs the client on a JDK 17 through
+`DPOP_CLIENT_JAVA_HOME`, so the baseline is run and not only compiled. `perf/smoke.sh` runs it against the real Keycloak.
 
 | Dev client | Scopes | What it is for |
 |---|---|---|
