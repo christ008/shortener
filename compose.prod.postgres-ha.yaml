@@ -1,0 +1,96 @@
+# Backups and a replica for the stack's Postgres. Add it with a second -c / -f file, and POSTGRES_HA=1 for deploy/stack/deploy.sh:
+#   POSTGRES_HA=1 deploy/stack/deploy.sh <version>
+#   docker compose -f compose.prod.yaml -f compose.prod.postgres-ha.yaml up -d
+#
+# - The image is built from deploy/postgres/Dockerfile: the official one with pgBackRest, `docker build -t shortener-postgres:18.6
+#   deploy/postgres`. On more than one node it must be in a registry, and POSTGRES_IMAGE says where.
+# - The primary archives its WAL to a repository on a volume of its node (deploy/postgres/pgbackrest.conf), at least every five
+#   minutes, so a restore loses at most that. Nothing takes a backup by itself: deploy/postgres/backup does, from cron.
+#   That repository does not survive losing the node. Point repo1 at object storage or another host to get that.
+# - The replica is a streaming copy, on another node when the swarm has one, read only, that the application does not read from.
+#   It is for losing the primary, and nothing promotes it by itself: see docs/DEPLOY.md.
+# - Both need the secret db_replicator_password, and the data directory of the primary to be new, or the role to be made by hand
+#   (deploy/postgres/replication.sh).
+services:
+  postgres:
+    image: '${POSTGRES_IMAGE:-shortener-postgres}:${POSTGRES_VERSION:-18.6}'
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=shortener archive-push %p
+      # A segment is archived when it is full or after this long, whichever is first: the most a restore can lose on a quiet database.
+      - -c
+      - archive_timeout=300
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=5
+      - -c
+      - max_replication_slots=5
+      # A replica that is gone must not fill the primary's disk with the WAL it has not read.
+      - -c
+      - max_slot_wal_keep_size=4GB
+    environment:
+      SHORTENER_REPLICATOR_PASSWORD_FILE: /run/secrets/db_replicator_password
+    volumes:
+      - pgbackrest-data:/var/lib/pgbackrest
+    configs:
+      - {source: postgres-pgbackrest, target: /etc/pgbackrest/pgbackrest.conf, mode: 0444}
+      - {source: postgres-replication, target: /docker-entrypoint-initdb.d/35-replication.sh, mode: 0555}
+    secrets: [db_replicator_password]
+
+  postgres-replica:
+    read_only: true
+    cap_drop: [ALL]
+    # The entrypoint starts as root to prepare the data directory, then drops to postgres, so it needs these and no more.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    image: '${POSTGRES_IMAGE:-shortener-postgres}:${POSTGRES_VERSION:-18.6}'
+    entrypoint: ['/usr/local/bin/shortener-replica-entrypoint.sh']
+    environment:
+      PRIMARY_HOST: postgres
+      REPLICATOR_PASSWORD_FILE: /run/secrets/db_replicator_password
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql
+      - {type: tmpfs, target: /tmp, tmpfs: {size: 67108864, mode: 1023}}
+      - {type: tmpfs, target: /var/run/postgresql, tmpfs: {size: 1048576, mode: 1023}}
+      - {type: tmpfs, target: /dev/shm, tmpfs: {size: 134217728, mode: 1023}}
+    configs:
+      - {source: postgres-diagnostics, target: /etc/shortener/diagnostics.conf, mode: 0444}
+    secrets: [db_replicator_password]
+    networks: [data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d shortener']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    stop_grace_period: 60s
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: '2', memory: 1G}
+      # On a node of its own, the one thing that makes it worth having:
+      #   docker node update --label-add shortener.postgres-replica=true <node>
+      placement:
+        constraints: ['node.labels.shortener.postgres-replica == true']
+      restart_policy: {condition: any, delay: 5s}
+      update_config: {order: stop-first, failure_action: rollback}
+
+volumes:
+  pgbackrest-data: {}
+  postgres-replica-data: {}
+
+configs:
+  postgres-pgbackrest:
+    file: ./deploy/postgres/pgbackrest.conf
+  postgres-replication:
+    file: ./deploy/postgres/replication.sh
+
+secrets:
+  db_replicator_password:
+    file: '${SECRETS_DIR:-./secrets}/db_replicator_password'

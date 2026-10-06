@@ -184,7 +184,7 @@ When it is deployed, with the commands of [DEPLOY.md](DEPLOY.md):
 | look at the database | `perf/pg-diagnostics.sql`, see DEPLOY.md |
 | rotate a secret | a new secret under a new name, then deploy; Swarm secrets cannot change |
 
-What to watch is the nine alerts in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). The two that mean "the database is in
+What to watch is the twelve alerts in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). The two that mean "the database is in
 trouble" are `ShortenerStorageUnavailable` and `ShortenerServingStaleRedirects`. The service keeps redirecting links it
 has read, for five minutes, while the database is down, and answers `503` with `Retry-After` for the rest.
 
@@ -224,6 +224,7 @@ client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr
 | `tools/Realms.java`, `tools/RealmTemplate.java`, `tools/Cli.java` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Java 25 | done |
 | `tools/Smoke.java`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Java 25 | done: 2.4 s against 16 s |
 | `tools/run` | find a JDK 25 and start a tool of `tools/` | sh | done |
+| `deploy/postgres/backup` | back up, check and prove a restore of the stack's Postgres, from the manager | sh | done |
 | `tools/Report.java` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Java 25 | done: the Python scripts are gone, and its output is theirs on every committed result |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | sh | done: run end to end with short runs |
 | `perf/k6/mixed.js` | the load workload | k6 | stays: it is k6's own language |
@@ -239,6 +240,7 @@ Each script a person runs has a Gradle task, listed by `./gradlew tasks --group 
 | `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL`, `-Pmethod`, `-Pbody` |
 | `smoke` | `tools/Smoke.java` | `-PbaseUrl=URL`, `-Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
+| `postgresBackup` | `deploy/postgres/backup` | `-Pcommand=init\|full\|diff\|check\|info\|restore-test` |
 | `report` | `tools/Report.java` | `-Preport=summary\|gc\|hprof\|profile\|json`, `-Ptarget=PATH`, `-Ptop=N` |
 
 The tools run on the toolchain's JDK 25 even when `java` on the PATH is older. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself

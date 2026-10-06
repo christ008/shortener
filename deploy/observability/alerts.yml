@@ -99,3 +99,29 @@ groups:
       description: A takedown wave is expected during an abuse response, and a stolen administrator key looks the same. Read
         the lines of the logger `uy.ct.shortener.audit` with `event.action=disabled_by_admin` or `listed_others`, and check
         `actor` is who you expect.
+- name: shortener-postgres-ha
+  rules:
+  - alert: ShortenerWalArchivingFailing
+    expr: increase(pg_stat_archiver_failed_count[10m]) > 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Postgres cannot archive its WAL
+      description: 'The archive command failed for five minutes. Until it works, backups cannot be restored to a point in time and the WAL piles up in pg_wal, which can fill the disk. Look at the log of the postgres container for what pgBackRest said, and run `deploy/postgres/backup check`. Before the first `deploy/postgres/backup init` this is expected: the stanza does not exist yet.'
+  - alert: ShortenerReplicaDisconnected
+    expr: max(pg_replication_slots_active{slot_name="replica1"}) == 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: The Postgres replica is not connected
+      description: The primary keeps the WAL the replica has not read, up to 4 GB (max_slot_wal_keep_size), after which the slot is lost and the replica must be copied again. Look at the replica's container, its node and its log.
+  - alert: ShortenerReplicaLagging
+    expr: max(pg_stat_replication_pg_wal_lsn_diff) > 104857600
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: The Postgres replica is more than 100 MiB behind
+      description: A replica that far behind is a primary lost with that much unreplicated. Look at the load on the replica's node and the network between them.

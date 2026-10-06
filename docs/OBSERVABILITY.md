@@ -22,7 +22,7 @@ its own overlay, see [DEPLOY.md](DEPLOY.md#operate).
 | Traces | OTLP over HTTP to Tempo | sampling 0 by default, 100% under `dev`, 5% under `production` |
 | Logs | JSON on stdout (ECS) under `production` | trace and span ids included |
 | Health | `/actuator/health/liveness` and `/readiness`, management port | readiness does not include the database |
-| Alerts | `deploy/observability/alerts.yml` | nine rules, unit-tested with promtool |
+| Alerts | `deploy/observability/alerts.yml` | twelve rules, unit-tested with promtool |
 
 ## Dashboard
 
@@ -100,6 +100,9 @@ database is slow or gone.
 | `ShortenerAuthenticationFailures` | more than one failed authentication a second | 10 m | warning |
 | `ShortenerForbiddenCalls` | clients with a valid token are denied more than once every five seconds | 10 m | warning |
 | `ShortenerRateLimited` | more than one request a second is answered `429` | 10 m | warning |
+| `ShortenerWalArchivingFailing` | the archive command of Postgres failed in the last ten minutes | 5 m | critical |
+| `ShortenerReplicaDisconnected` | the replication slot has no connection | 5 m | warning |
+| `ShortenerReplicaLagging` | the replica is more than 100 MiB behind | 10 m | warning |
 | `ShortenerAdministratorActivity` | more than ten disables or listings of other clients' links in ten minutes | none | warning |
 
 - Each rule has a unit test with simulated series, in `deploy/observability/alerts.test.yml`. CI runs them with promtool:
@@ -110,7 +113,7 @@ database is slow or gone.
   ```
 - Prometheus evaluates them and shows them in its interface. Sending them somewhere needs an Alertmanager, see
   `deploy/observability/prometheus.stack.yml`.
-- The database server's own alerts (connections against `max_connections`, replication, backup age, transaction age)
+- The database server's own alerts (connections against `max_connections`, backup age, transaction age)
   depend on how Postgres is run, and are not here.
 
 ## Health, logs and the database

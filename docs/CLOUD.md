@@ -63,7 +63,7 @@ flowchart LR
    Not built: the `shortener-ui` client and web users, which wait for the web UI.
 4. **Certificate issuance and renewal**, with a reload of the edge.
 5. **A bootstrap script** that, on a fresh VM, installs Docker, makes the secrets, deploys, and installs the nightly dump.
-6. **Backups and a restore test.** The stack has none.
+6. **Backups and a restore test.** Built, with a repository on the same disk ([DEPLOY.md](DEPLOY.md#backups-and-a-replica), [ADR 0028](adr/0028-postgres-backups-and-a-replica.md)): a nightly differential from cron, a `restore-test`, and the repository to move off the VM. A replica needs a second node, which this plan does not have.
 
 ## Steps
 
@@ -93,7 +93,7 @@ Before anyone is invited:
 - **Keep it small.** Few people, no promise of availability, and say so in the README next to the URL.
 - **Do not store anything you would mind losing.** The database is one disk on one machine.
 
-Known limits that apply here: rate limits and the DPoP replay cache are per task, there is no backup, and the VM is a
+Known limits that apply here: rate limits and the DPoP replay cache are per task, there is no backup unless the repository leaves the VM, and the VM is a
 single point of failure.
 
 ## Cost and teardown

@@ -23,7 +23,7 @@ class ComposeStackTest {
 
     private val migratorSecret = "db_migrator_password"
 
-    private val files = listOf("compose.prod.yaml", "compose.prod.observability.yaml", "compose.prod.keycloak.yaml").map(::load)
+    private val files = listOf("compose.prod.yaml", "compose.prod.observability.yaml", "compose.prod.keycloak.yaml", "compose.prod.postgres-ha.yaml").map(::load)
 
     private val services: Map<String, Map<String, Any?>> = files
         .flatMap { it.map("services").entries }
@@ -74,7 +74,7 @@ class ComposeStackTest {
 
     @Test
     fun `every service but the database runs as a user that is not root`() {
-        services.filterKeys { it != "postgres" }.forEach { (name, service) ->
+        services.filterKeys { it != "postgres" && it != "postgres-replica" }.forEach { (name, service) ->
             val user = service["user"].toString()
             assertThat(user).describedAs("$name user").isNotEqualTo("null").doesNotStartWith("0").isNotEqualTo("root")
         }
@@ -82,8 +82,10 @@ class ComposeStackTest {
 
     @Test
     fun `only the database adds capabilities, and only those its entrypoint needs to hand over to the postgres user`() {
-        assertThat(services.filter { it.value.list("cap_add").isNotEmpty() }.keys).containsExactly("postgres")
-        assertThat(services.getValue("postgres").list("cap_add")).containsExactlyInAnyOrder("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID")
+        assertThat(services.filter { it.value.list("cap_add").isNotEmpty() }.keys).containsExactlyInAnyOrder("postgres", "postgres-replica")
+        listOf("postgres", "postgres-replica").forEach {
+            assertThat(services.getValue(it).list("cap_add")).describedAs("$it cap_add").containsExactlyInAnyOrder("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID")
+        }
     }
 
     @Test
@@ -223,5 +225,44 @@ class ComposeStackTest {
         assertThat(locations).containsExactly("/realms/shortener/protocol/openid-connect/token", "^/(realms/shortener|resources)/")
         assertThat(conf).doesNotContain("/admin").doesNotContain("realms/master")
         assertThat(conf).contains("limit_req zone=token")
+    }
+
+    @Test
+    fun `the primary archives its WAL with pgBackRest at least every five minutes, and bounds what a missing replica can keep`() {
+        val command = services.getValue("postgres").list("command").map { it.toString() }
+
+        assertThat(command).contains("archive_mode=on", "archive_timeout=300", "wal_level=replica", "max_slot_wal_keep_size=4GB")
+        assertThat(command).anyMatch { it.startsWith("archive_command=pgbackrest --stanza=shortener archive-push") }
+        assertThat(services.getValue("postgres").list("volumes").filterIsInstance<String>()).contains("pgbackrest-data:/var/lib/pgbackrest")
+        services.filterKeys { it != "postgres" }.forEach { (name, service) ->
+            assertThat(service.list("volumes").map { it.toString() }).describedAs("$name must not mount the backups").noneMatch { it.contains("pgbackrest-data") }
+        }
+    }
+
+    @Test
+    fun `the replica is a read only copy on its own volume and its own node, that nothing publishes or reads`() {
+        val replica = services.getValue("postgres-replica")
+        val primary = services.getValue("postgres")
+
+        assertThat(replica.list("ports")).isEmpty()
+        assertThat(replica.list("networks")).containsExactly("data")
+        assertThat(replica.list("entrypoint")).containsExactly("/usr/local/bin/shortener-replica-entrypoint.sh")
+        assertThat(replica.list("volumes").map { it.toString() }).anyMatch { it.startsWith("postgres-replica-data:") }
+        assertThat(primary.list("volumes").map { it.toString() }).noneMatch { it.contains("postgres-replica-data") }
+        val constraints = replica.map("deploy").map("placement").list("constraints") + primary.map("deploy").map("placement").list("constraints")
+        assertThat(constraints).describedAs("the replica and the primary are told to different nodes").doesNotHaveDuplicates()
+        services.filterKeys { it != "postgres" && it != "postgres-replica" }.forEach { (name, service) ->
+            assertThat(environmentOf(service).values.joinToString()).describedAs("$name must not point at the replica").doesNotContain("postgres-replica")
+        }
+    }
+
+    @Test
+    fun `the replication password is held by the two databases and nobody else`() {
+        services.filterKeys { it != "postgres" && it != "postgres-replica" }.forEach { (name, service) ->
+            assertThat(secretsOf(service)).describedAs("secrets of $name").doesNotContain("db_replicator_password")
+        }
+        assertThat(secretsOf(services.getValue("postgres-replica"))).containsExactly("db_replicator_password")
+        assertThat(secretsOf(services.getValue("postgres"))).contains("db_replicator_password")
+        assertThat(environmentOf(services.getValue("postgres-replica")).keys).noneMatch { it.endsWith("PASSWORD") }
     }
 }

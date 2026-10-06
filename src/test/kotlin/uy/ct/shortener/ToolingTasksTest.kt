@@ -26,7 +26,7 @@ class ToolingTasksTest {
     fun `every task names itself in the tooling group, with a description`() {
         val tasks = Regex("""(?m)^tooling\(\s*"(\w+)",\s*"([^"]+)"""").findAll(tooling).toList()
 
-        assertThat(tasks.map { it.groupValues[1] }).containsExactly("devSetup", "devPasswords", "keygen", "productionRealm", "dpopCall", "smoke", "stackPrepare", "report")
+        assertThat(tasks.map { it.groupValues[1] }).containsExactly("devSetup", "devPasswords", "keygen", "productionRealm", "dpopCall", "smoke", "stackPrepare", "report", "postgresBackup")
         tasks.forEach { assertThat(it.groupValues[2]).isNotBlank }
     }
 
@@ -35,7 +35,8 @@ class ToolingTasksTest {
         val withoutTask = setOf(
             "deploy/stack/deploy.sh", // run on a manager, by hand, with the version as its argument
             "deploy/keycloak/entrypoint.sh", // inside the Keycloak image
-            "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", // inside Postgres
+            "deploy/postgres/entrypoint.sh", "deploy/postgres/replica-entrypoint.sh", "deploy/postgres/restore-test.sh", // inside the Postgres image
+            "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", "deploy/postgres/replication.sh", // inside Postgres
             "deploy/keycloak/dev-setup", "tools/DevSetup.java", // the script starts the tool, and both are listed through devSetup and devPasswords
             "deploy/keycloak/DpopClient.java", // listed through its tasks
             "perf/smoke.sh", // the shim of tools/run that the workflows call, listed through smoke

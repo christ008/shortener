@@ -491,6 +491,7 @@ Services:
 - `migrate`: the one-shot migration job.
 - `postgres`: the database, on one node with a local volume. A managed database replaces it by dropping the service.
 - Overlay `compose.prod.observability.yaml`: Prometheus with the alert rules, and the Postgres exporter.
+- Overlay `compose.prod.postgres-ha.yaml`: pgBackRest backups of the database and a streaming replica ([DEPLOY.md](DEPLOY.md#backups-and-a-replica)).
 - Overlay `compose.prod.keycloak.yaml`: Keycloak, for a stack with no identity provider of its own ([DEPLOY.md](DEPLOY.md#keycloak),
   [ADR 0025](adr/0025-keycloak-in-the-stack.md)).
 
@@ -586,7 +587,7 @@ sequenceDiagram
 - No `preStop` hook, so the guarantee is health gating plus short DNS caching plus a retry for repeatable requests.
 - `no-new-privileges` is not applied.
 - Secrets and configs are immutable: rotating one means a new name and a stack update.
-- The database is one instance on one node, with no replication and no backups unless you add them.
+- The database is one instance on one node. The optional overlay adds backups to a volume of that node and a replica on another, promoted by hand ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)); without it there is neither.
 - Prometheus cannot be published to the loopback address only, so it is not published at all.
 
 ### Verified
