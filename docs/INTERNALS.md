@@ -27,14 +27,17 @@ contract (a test keeps it in step with the code).
 Two Spring Modulith modules: `shortlink` and `security`. In `shortlink` the public package is the contract and
 everything else is an adapter behind it.
 
-```
-                 web (controller, DTOs)
-                          │ calls
-                          ▼
-  ShortLinkService  ◄── authorization (method security, PermissionEvaluator, scopes)
-  (interface)
-        ▲ implemented by
-  DefaultShortLinkService ──► ShortLinkRepository (interface) ◄── persistence (JdbcClient)
+```mermaid
+flowchart LR
+    web["web<br/>controller and DTOs"] -->|calls| service(["ShortLinkService<br/>interface"])
+    authorization["authorization<br/>method security, permission evaluator, scopes"] -.->|guards| service
+    service ---|implemented by| impl["DefaultShortLinkService"]
+    impl --> repository(["ShortLinkRepository<br/>interface"])
+    impl --> cache(["RedirectCache<br/>interface"])
+    impl --> policy(["TargetUrlPolicy<br/>interface"])
+    repository ---|implemented by| persistence["persistence<br/>JdbcClient"]
+    cache ---|implemented by| caches["CaffeineRedirectCache<br/>NoRedirectCache"]
+    policy ---|implemented by| policies["AnyTarget<br/>AllowedHosts"]
 ```
 
 ArchUnit tests enforce what Modulith does not check inside a module:
@@ -57,10 +60,49 @@ ArchUnit tests enforce what Modulith does not check inside a module:
    - Custom: one attempt, a conflict is `409`. `api`, `actuator` and `error` are reserved so they cannot shadow routes.
 5. `201` with the link and a `Location` header built from the forwarded host and scheme.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant Chain as Filter chain
+    participant Controller
+    participant Security as Method security
+    participant Service as DefaultShortLinkService
+    participant DB as Postgres
+    Client->>Chain: POST /api/short-links with a DPoP token and proof
+    Chain->>Chain: limit by IP, authenticate, limit by client
+    Chain->>Controller: the authenticated request
+    Controller->>Controller: validate the body
+    Controller->>Security: shorten, or claim for a custom code
+    Security->>Security: the scope, and the owner is the caller
+    Security->>Service: allowed
+    Service->>Service: parse the target and apply the target policy
+    loop up to 5 attempts for a generated code, 1 for a custom one
+        Service->>DB: INSERT ... ON CONFLICT DO NOTHING
+        DB-->>Service: created, or the code is taken
+    end
+    Service-->>Controller: the link
+    Controller-->>Client: 201 with a Location header
+```
+
 **Redirect** (`GET /{code}`), public and the hot path
 
 - Looks up the [redirect cache](#redirect-cache), then loads by primary key on a miss.
 - `302`, `404` when unknown, `410` when disabled.
+
+```mermaid
+flowchart TD
+    request(["GET /{code}"]) --> cache{"In the cache?"}
+    cache -->|yes| hit["302 to the target"]
+    cache -->|no| load["Load by primary key"]
+    load --> answer{"What the database says"}
+    answer -->|"an active link"| keep["Keep it in the cache, then 302"]
+    answer -->|disabled| gone["410"]
+    answer -->|none| missing["404"]
+    answer -->|unreachable| stale{"Copy read within<br/>stale-if-error?"}
+    stale -->|yes| served["302, counted as stale"]
+    stale -->|no| unavailable["503 with Retry-After"]
+```
 
 **Disable** (`DELETE /api/short-links/{code}`)
 
@@ -140,6 +182,15 @@ Postgres 18 with plain JDBC through `JdbcClient`. Two statements dominate and bo
     with one user works as before.
 - `shortener_exporter` has `pg_monitor`: it reads statistics, not data.
 
+```mermaid
+flowchart LR
+    job["migration job"] -->|"owns the tables, runs Flyway"| migrator["shortener_migrator"]
+    app["application"] -->|"SELECT, INSERT, and UPDATE of disabled_at and disabled_by"| appRole["shortener_app"]
+    exporter["postgres_exporter"] -->|"pg_monitor: statistics, not data"| exporterRole["shortener_exporter"]
+    migrator --> table[("short_link")]
+    appRole --> table
+```
+
 Limits on the application role apply at login, so no application setting lifts them and they hold behind a pooler:
 
 | Setting | Value | Why |
@@ -202,7 +253,8 @@ pool (10 connections, 3 s wait).
 
 ## Redirect cache
 
-An in-process Caffeine cache per instance, in front of the database read that every redirect costs.
+An in-process Caffeine cache per instance, in front of the database read that every redirect costs. The decision
+tree, including the outage case, is in [Request flows](#request-flows).
 
 - **What.** Active links only. An unknown code is never cached, so a new link works at once. A disabled link is never
   cached, so a takedown is not extended. Only `resolve` uses it. `get`, `list` and `disable` read the repository, so
@@ -240,6 +292,19 @@ Rejected:
 
 Stateless and deny by default, in this order: IP rate limit, authentication, client rate limit, authorization.
 
+```mermaid
+flowchart LR
+    request(["Request"]) --> ip["Limit by IP"]
+    ip -->|over the limit| tooMany1["429"]
+    ip --> authenticate["Authenticate<br/>DPoP or bearer"]
+    authenticate -->|"bad token or proof"| unauthorized["401"]
+    authenticate --> client["Limit by client"]
+    client -->|over the limit| tooMany2["429"]
+    client --> authorize["Authorize<br/>route rules, then method security"]
+    authorize -->|"missing scope"| forbidden["403"]
+    authorize --> controller(["Controller"])
+```
+
 - `/api/**` needs authentication.
 - `GET` and `HEAD` on `/{code}` and the health and Prometheus endpoints are public.
 - Everything else is denied.
@@ -263,6 +328,20 @@ Every access token must be bound to the client's key:
    query (`htu`), token hash (`ath`), a unique `jti` and the time.
 3. Spring Security checks the signature, that the key matches `cnf.jkt`, method, URL, token hash, age and that the
    `jti` is new.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant IdP as Identity provider
+    participant API as Shortener API
+    Client->>Client: generate a DPoP key pair
+    Client->>IdP: token request with a signed assertion and a DPoP proof
+    IdP-->>Client: access token whose cnf.jkt is the key's thumbprint
+    Client->>API: Authorization DPoP token, and a DPoP proof for this exact request
+    Note over API: checks the proof's signature, that its key matches cnf.jkt,<br/>the method, the URL, the token hash, the age, and that the jti is new
+    API-->>Client: the response
+```
 
 Properties:
 
@@ -311,6 +390,15 @@ asymmetric client authentication. The draft is not final, so this is alignment, 
 ## Errors
 
 Every error is an RFC 9457 problem detail (`application/problem+json`), rendered by Spring MVC.
+
+```mermaid
+flowchart LR
+    limit["Rate limit"] --> responder
+    failure["Authentication or authorization failure"] --> responder["SecurityProblemResponder<br/>builds a SecurityProblem with its headers"]
+    responder --> resolver["MVC exception resolver<br/>with the problem details advice"]
+    domain["Domain failure<br/>a ShortLinkException"] --> resolver
+    resolver --> body(["application/problem+json<br/>the same shape for every error"])
+```
 
 - **Domain failures** extend `ShortLinkException`, a thin subclass of Spring's `ErrorResponseException`. Each carries its
   status and message, and `StorageUnavailableException` adds `Retry-After`. There is no `@ControllerAdvice` of our own:
@@ -399,6 +487,25 @@ Services:
 - `postgres`: the database, on one node with a local volume. A managed database replaces it by dropping the service.
 - Overlay `compose.prod.observability.yaml`: Prometheus with the alert rules, and the Postgres exporter.
 
+```mermaid
+flowchart LR
+    client(["Client"]) -->|"443, host mode"| edge
+    subgraph edgeNet["edge network"]
+        edge["edge<br/>nginx"]
+    end
+    edge --> app["shortener<br/>2 tasks, on both networks"]
+    subgraph dataNet["data network, no route out"]
+        db[("postgres")]
+        migrate["migrate job"] --> db
+        exporter["postgres-exporter"] --> db
+        prometheus["prometheus"]
+    end
+    app --> db
+    prometheus -.->|"scrapes 8081"| app
+    prometheus -.->|scrapes| exporter
+    app -.->|"fetches signing keys"| idp(["identity provider"])
+```
+
 ### Hardening
 
 `ComposeStackTest` holds every service to this.
@@ -433,6 +540,27 @@ Services:
 - Resolves `shortener` every 5 s, so tasks that come and go are followed without a reload.
 
 ### Rollouts
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator
+    participant Deploy as deploy.sh
+    participant Job as migrate job
+    participant DB as Postgres
+    participant Old as application task, old
+    participant New as application task, new
+    Operator->>Deploy: deploy.sh with the new version
+    Deploy->>Job: deploy with the migration at the new version, the application still on the old
+    Job->>DB: apply the migrations as shortener_migrator
+    Job-->>Deploy: complete
+    Note over Old,DB: the old version keeps serving against the new schema
+    Deploy->>New: deploy with the application at the new version
+    New->>New: start before the old task stops, and pass the health check
+    New-->>Deploy: healthy for 20 seconds
+    Deploy->>Old: stop it, one task at a time
+    Note over New: an unhealthy new task rolls the update back
+```
 
 - The application updates one task at a time, new before old (`start-first`), waits for the health check, watches the
   new task for 20 s and rolls back if it fails.
