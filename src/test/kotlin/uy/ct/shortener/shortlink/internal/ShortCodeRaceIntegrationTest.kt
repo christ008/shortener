@@ -1,5 +1,6 @@
 package uy.ct.shortener.shortlink.internal
 
+import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.LinkLookup
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.micrometer.observation.ObservationRegistry
@@ -49,7 +50,7 @@ class ShortCodeRaceIntegrationTest {
 
         val pool = Executors.newFixedThreadPool(threads)
         val results = try {
-            List(threads) { i -> pool.submit<ShortCode> { service.shorten("https://example.com/$i", "race-test").shortCode } }
+            List(threads) { i -> pool.submit<ShortCode> { service.shorten("https://example.com/$i", Actor.Client("race-test")).shortCode } }
                 .map { it.get(30, TimeUnit.SECONDS) }
         } finally {
             pool.shutdownNow()

@@ -19,9 +19,9 @@ class ShortLinkModelTest {
 
     @Test
     fun `a link knows who created it`() {
-        assertThat(active.isCreatedBy("alice")).isTrue
-        assertThat(active.isCreatedBy("bob")).isFalse
-        assertThat(active.copy(createdBy = Actor.Unknown).isCreatedBy("alice")).isFalse
+        assertThat(active.isCreatedBy(Actor.Client("alice"))).isTrue
+        assertThat(active.isCreatedBy(Actor.Client("bob"))).isFalse
+        assertThat(active.copy(createdBy = Actor.Unknown).isCreatedBy(Actor.Client("alice"))).isFalse
     }
 
     @Test

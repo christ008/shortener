@@ -372,8 +372,9 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 | `shortlinks:read`, `shortlinks:delete` | read and disable the client's own links |
 | `shortlinks:admin` | read and disable any client's links |
 
-- Ownership is a rule on top of scopes: the `createdBy` and `disabledBy` arguments must equal the caller, and a listing
-  filter must be limited to the caller (`#filter.isLimitedTo(authentication.name)`).
+- Ownership is a rule on top of scopes: the `createdBy` and `disabledBy` arguments, an `Actor.Client`, must name the caller
+  (`#createdBy.name == authentication.name`), and a listing filter must be limited to the caller
+  (`#filter.isLimitedTo(authentication.name)`).
 - A `PermissionEvaluator` lets a caller manage a link only if it created it, or is an administrator.
 - A denied link read becomes `404` through `@HandleAuthorizationDenied`.
 
@@ -474,7 +475,7 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 | `management.server.port` ignored | read at AOT time | set it in `application.yaml`, not the environment |
 | Tomcat missing a reflection entry | `server.tomcat.mbeanregistry.enabled=true` | removed |
 | Every DPoP request is `401` with no reason | the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class | `DpopRuntimeHints`, plus a startup check that fails if DPoP is required and the filter is missing |
-| Authorized calls fail with `500` | SpEL reads `authentication.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
+| Authorized calls fail with `500` | SpEL reads `authentication.name`, `#createdBy.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
 
 Unit tests cannot run a native image, so `perf/smoke.sh` (`tools/Smoke.java`) exercises every endpoint with real tokens (21 checks).
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).

@@ -7,17 +7,17 @@ import org.springframework.security.access.prepost.PreAuthorize
  * the rules read as intent on the service.
  *
  * - Each checks the scope the operation needs, named by the `scopes` bean.
- * - Creating and disabling also check that the caller acts under its own name, so a client cannot
- *   act in another client's name.
+ * - Creating and disabling also check that the [uy.ct.shortener.shortlink.Actor.Client] they are given is the caller,
+ *   so a client cannot act in another client's name.
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
-@PreAuthorize("hasAuthority(@scopes.create) and #createdBy == authentication.name")
+@PreAuthorize("hasAuthority(@scopes.create) and #createdBy.name == authentication.name")
 annotation class MayCreate
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
-@PreAuthorize("hasAuthority(@scopes.create) and hasAuthority(@scopes.claim) and #createdBy == authentication.name")
+@PreAuthorize("hasAuthority(@scopes.create) and hasAuthority(@scopes.claim) and #createdBy.name == authentication.name")
 annotation class MayClaim
 
 @Target(AnnotationTarget.FUNCTION)
@@ -33,5 +33,5 @@ annotation class MayList
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
-@PreAuthorize("hasAnyAuthority(@scopes.delete, @scopes.admin) and #disabledBy == authentication.name")
+@PreAuthorize("hasAnyAuthority(@scopes.delete, @scopes.admin) and #disabledBy.name == authentication.name")
 annotation class MayDisable

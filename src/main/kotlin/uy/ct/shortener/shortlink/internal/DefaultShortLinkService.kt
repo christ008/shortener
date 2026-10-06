@@ -5,6 +5,7 @@ import io.micrometer.observation.ObservationRegistry
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
+import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.InsertResult
 import uy.ct.shortener.shortlink.InvalidTargetUrlException
@@ -49,7 +50,7 @@ class DefaultShortLinkService(
 ) : ShortLinkService {
 
     @MayCreate
-    override fun shorten(targetUrl: String, createdBy: String): ShortLink {
+    override fun shorten(targetUrl: String, createdBy: Actor.Client): ShortLink {
         val uri = parseTargetUrl(targetUrl)
         repeat(MAX_GENERATION_ATTEMPTS) {
             when (val result = insert(codeGenerator.generate(), uri, createdBy)) {
@@ -61,7 +62,7 @@ class DefaultShortLinkService(
     }
 
     @MayClaim
-    override fun claim(shortCode: ShortCode, targetUrl: String, createdBy: String): ShortLink {
+    override fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ShortLink {
         val uri = parseTargetUrl(targetUrl)
         return when (val result = insert(shortCode.requireClaimable(), uri, createdBy)) {
             is InsertResult.Created -> result.link.also { audit.created(it, custom = true) }
@@ -85,15 +86,15 @@ class DefaultShortLinkService(
     }
 
     @MayDisable
-    override fun disable(shortCode: ShortCode, disabledBy: String) {
+    override fun disable(shortCode: ShortCode, disabledBy: Actor.Client) {
         val link = manageableLinks.get(shortCode)
-        repository.disable(shortCode, disabledBy)
+        repository.disable(shortCode, disabledBy.name)
         redirectCache.evict(shortCode)
         audit.disabled(link, disabledBy)
     }
 
-    private fun insert(shortCode: ShortCode, uri: URI, createdBy: String): InsertResult =
-        observed("shortlink.insert") { repository.insertIfAbsent(shortCode, uri, createdBy) }
+    private fun insert(shortCode: ShortCode, uri: URI, createdBy: Actor.Client): InsertResult =
+        observed("shortlink.insert") { repository.insertIfAbsent(shortCode, uri, createdBy.name) }
 
     private fun <T> observed(name: String, block: () -> T): T =
         Observation.createNotStarted(name, observations).observe(block)

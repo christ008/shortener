@@ -86,15 +86,15 @@ class ShortLinkAuthorizationTest {
     }
 
     private fun create(client: String, vararg scopes: String = manage) =
-        actingAs(client, *scopes) { service.shorten("https://example.com/$client", client) }
+        actingAs(client, *scopes) { service.shorten("https://example.com/$client", Actor.Client(client)) }
 
     private val firstPage = PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "createdAt"))
 
     @Test
     fun `creating needs the create scope and must be done in the caller's own name`() {
-        assertFailsWith<AccessDeniedException> { actingAs("reader", "shortlinks:read") { service.shorten("https://example.com", "reader") } }
-        assertFailsWith<AccessDeniedException> { actingAs("admin", *admin) { service.shorten("https://example.com", "admin") } }
-        assertFailsWith<AccessDeniedException> { actingAs("mallory", *manage) { service.shorten("https://example.com", "victim") } }
+        assertFailsWith<AccessDeniedException> { actingAs("reader", "shortlinks:read") { service.shorten("https://example.com", Actor.Client("reader")) } }
+        assertFailsWith<AccessDeniedException> { actingAs("admin", *admin) { service.shorten("https://example.com", Actor.Client("admin")) } }
+        assertFailsWith<AccessDeniedException> { actingAs("mallory", *manage) { service.shorten("https://example.com", Actor.Client("victim")) } }
 
         assertThat(create("alice").createdBy).isEqualTo(Actor.Client("alice"))
     }
@@ -103,10 +103,10 @@ class ShortLinkAuthorizationTest {
     fun `a custom code needs the claim scope as well as create`() {
         val code = ShortCode("my-promo")
 
-        assertFailsWith<AccessDeniedException> { actingAs("alice", *manage) { service.claim(code, "https://example.com", "alice") } }
-        assertFailsWith<AccessDeniedException> { actingAs("alice", "shortlinks:claim") { service.claim(code, "https://example.com", "alice") } }
+        assertFailsWith<AccessDeniedException> { actingAs("alice", *manage) { service.claim(code, "https://example.com", Actor.Client("alice")) } }
+        assertFailsWith<AccessDeniedException> { actingAs("alice", "shortlinks:claim") { service.claim(code, "https://example.com", Actor.Client("alice")) } }
 
-        assertThat(actingAs("alice", *everything) { service.claim(code, "https://example.com", "alice") }.shortCode).isEqualTo(code)
+        assertThat(actingAs("alice", *everything) { service.claim(code, "https://example.com", Actor.Client("alice")) }.shortCode).isEqualTo(code)
     }
 
     @Test
@@ -153,9 +153,9 @@ class ShortLinkAuthorizationTest {
         val mine = create("alice")
         val theirs = create("bob")
 
-        actingAs("alice", *manage) { service.disable(mine.shortCode, "alice") }
-        assertFailsWith<ShortLinkNotFoundException> { actingAs("alice", *manage) { service.disable(theirs.shortCode, "alice") } }
-        actingAs("root", *admin) { service.disable(theirs.shortCode, "root") }
+        actingAs("alice", *manage) { service.disable(mine.shortCode, Actor.Client("alice")) }
+        assertFailsWith<ShortLinkNotFoundException> { actingAs("alice", *manage) { service.disable(theirs.shortCode, Actor.Client("alice")) } }
+        actingAs("root", *admin) { service.disable(theirs.shortCode, Actor.Client("root")) }
 
         assertThat(actingAs("alice", *manage) { service.get(mine.shortCode) }.isDisabled).isTrue
         assertThat(actingAs("root", *admin) { service.get(theirs.shortCode) }.disabledBy).isEqualTo(Actor.Client("root"))
@@ -165,8 +165,8 @@ class ShortLinkAuthorizationTest {
     fun `disabling needs the delete or admin scope and must be done in the caller's own name`() {
         val link = create("alice")
 
-        assertFailsWith<AccessDeniedException> { actingAs("alice", "shortlinks:create", "shortlinks:read") { service.disable(link.shortCode, "alice") } }
-        assertFailsWith<AccessDeniedException> { actingAs("alice", *manage) { service.disable(link.shortCode, "someone-else") } }
+        assertFailsWith<AccessDeniedException> { actingAs("alice", "shortlinks:create", "shortlinks:read") { service.disable(link.shortCode, Actor.Client("alice")) } }
+        assertFailsWith<AccessDeniedException> { actingAs("alice", *manage) { service.disable(link.shortCode, Actor.Client("someone-else")) } }
     }
 
     @Test
