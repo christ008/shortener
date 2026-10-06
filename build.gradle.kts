@@ -61,6 +61,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test")
     testImplementation("com.tngtech.archunit:archunit:1.4.2")
+    testImplementation("com.nimbusds:nimbus-jose-jwt:10.9.1") // the tests import it; not in the Boot BOM, and the version Spring Security resolves
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("org.junit.platform:junit-platform-launcher")
