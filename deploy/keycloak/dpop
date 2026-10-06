@@ -89,7 +89,9 @@ jwk_to_pem() {
   d=$(b64url_to_hex "$(json_field "$1" d)")
   x=$(b64url_to_hex "$(json_field "$1" x)")
   y=$(b64url_to_hex "$(json_field "$1" y)")
-  [ "${#d}" -eq 64 ] && [ "${#x}" -eq 64 ] && [ "${#y}" -eq 64 ] || die "$1 is not a private P-256 JWK with x, y and d"
+  if [ "${#d}" -ne 64 ] || [ "${#x}" -ne 64 ] || [ "${#y}" -ne 64 ]; then
+    die "$1 is not a private P-256 JWK with x, y and d"
+  fi
   printf '%s' "30770201010420${d}a00a06082a8648ce3d030107a14403420004${x}${y}" | hex_to_bytes >"$work/key.der"
   openssl ec -inform DER -in "$work/key.der" -out "$2" 2>/dev/null || die "could not read the key in $1"
 }

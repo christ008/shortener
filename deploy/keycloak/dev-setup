@@ -51,7 +51,9 @@ done
 
 # ---- the .env file ----------------------------------------------------------------------------------------------
 
-env_get() { [ -f "$env_file" ] && sed -n "s/^$1='\\{0,1\\}\\([^']*\\)'\\{0,1\\}\$/\\1/p" "$env_file" | head -1 || true; }
+env_get() {
+  if [ -f "$env_file" ]; then sed -n "s/^$1='\\{0,1\\}\\([^']*\\)'\\{0,1\\}\$/\\1/p" "$env_file" | head -1; fi
+}
 
 if [ "$show" = true ]; then
   if [ ! -f "$env_file" ] || ! grep -q '^DEV_' "$env_file"; then
