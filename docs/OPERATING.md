@@ -16,7 +16,7 @@ is in [OBSERVABILITY.md](OBSERVABILITY.md), the design is in [INTERNALS.md](INTE
 | For | You need |
 |---|---|
 | Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
-| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | JDK 17 or newer, and the Gradle wrapper (builds them the first time) |
+| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 17 or newer (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
 | The native image | about 7 GB free memory, 3 minutes |
 | The load test | Docker (k6 runs in a container), spare cores |
 | The production stack on one machine | `openssl`, `keytool` |

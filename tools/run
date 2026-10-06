@@ -3,8 +3,9 @@
 #
 #   tools/run TOOL [ARGUMENTS...]       for example: tools/run Smoke http://localhost:8080
 #
-# Tools: Realms, DevSetup, Smoke, Report. Needs a JDK 17 or newer (JAVA_HOME, else the PATH). The first run builds them with
-# Gradle (dependencies from Maven Central); later runs only start a JVM. Tests: ./gradlew -p tools test.
+# Tools: Realms, DevSetup, Smoke, Report. Needs Java 17 or newer (JAVA_HOME, else the PATH), and a JDK, not a JRE, to build.
+# The first run builds them with Gradle (dependencies from Maven Central); later runs only start a JVM.
+# Tests: ./gradlew -p tools test.
 set -eu
 
 tool=${1:?usage: tools/run TOOL [ARGUMENTS...]}
@@ -35,6 +36,12 @@ launcher=tools/build/install/tools/bin/tools
 # Builds only when a source is newer than the last build.
 if [ ! -x "$launcher" ] || [ ! -f "$stamp" ] ||
   [ -n "$(find tools/src/main tools/build.gradle.kts tools/settings.gradle.kts -newer "$stamp" -print -quit)" ]; then
+  # Compiling for Java 17 reads lib/ct.sym, which a JRE does not have.
+  java_home=${JAVA_HOME:-$("$java" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java\.home = //p' | head -1)}
+  [ -r "$java_home/lib/ct.sym" ] || {
+    echo "$tool: building the tools needs a JDK, and ${java_home:-the java on the PATH} is not one (it has no lib/ct.sym)" >&2
+    exit 1
+  }
   ./gradlew --console=plain -q -p tools installDist >&2 || {
     echo "$tool: the tools could not be built (see above)" >&2
     exit 1

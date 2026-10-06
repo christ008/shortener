@@ -27,7 +27,7 @@ JDK 25 as compact source files. What that left, measured on one machine, one run
   because its toolchain asks for a JDK 25: `./gradlew help` on the application's build fails on a machine without one, and
   `./gradlew -p tools installDist` built and ran the tools with only a JDK 21. `settings.gradle.kts` includes it so that
   `./gradlew test` tests the tools too, which is all CI and a release run; it is configured only when one of its tasks is asked for.
-- **They need a JDK 17 or newer**, the baseline of the DPoP client. The bytecode is 17, and `-Xjdk-release=17` makes a call to an
+- **They need a JDK 17 or newer**, the baseline of the DPoP client, to build them, and `tools/run` says so when the java it finds is a JRE (no `lib/ct.sym`, which `-Xjdk-release` reads). A JRE 17 or newer runs them once built. The bytecode is 17, and `-Xjdk-release=17` makes a call to an
   API of a newer JDK a compile error: `Console.isTerminal`, which exists from 22, would otherwise compile on a 25 and fail on a 21.
   They were run on 21 and 25 here. CI builds and runs them on 17 in the `stack` job, which is where this is first checked.
 - **`tools/run TOOL` is still how a tool starts**, with the same names (`Realms`, `DevSetup`, `Smoke`, `Report`), so `perf/*.sh`,

@@ -56,16 +56,23 @@ class ToolsLauncherTest {
 
     private class Output(val status: Int, val stdout: String, val stderr: String)
 
-    private fun jdk(version: String): Path {
-        val home = root.resolve("jdk-$version")
-        script(home.resolve("bin/java"), "if [ \"\$1\" = -version ]; then echo 'openjdk version \"$version.0.1\" 2026-01-01' >&2; fi")
+    /** A java that says [version], and has the `lib/ct.sym` that only a JDK has, unless it is [asJre]. */
+    private fun jdk(version: String, asJre: Boolean = false): Path {
+        val home = root.resolve(if (asJre) "jre-$version" else "jdk-$version")
+        script(
+            home.resolve("bin/java"),
+            "case \"\$*\" in *XshowSettings*) echo '    java.home = $home' >&2;; esac\n" +
+                "if [ \"\${*#-version}\" != \"\$*\" ]; then echo 'openjdk version \"$version.0.1\" 2026-01-01' >&2; fi",
+        )
+        if (!asJre) Files.writeString(home.resolve("lib/ct.sym").also { Files.createDirectories(it.parent) }, "")
         return home
     }
 
-    private fun start(javaHome: Path?, vararg arguments: String): Output {
+    private fun start(javaHome: Path?, vararg arguments: String, onPath: Path? = null): Output {
         val builder = ProcessBuilder(root.resolve("tools/run").toString(), *arguments).directory(Path.of("/").toFile())
         builder.environment().remove("JAVA_HOME")
         javaHome?.let { builder.environment()["JAVA_HOME"] = it.toString() }
+        onPath?.let { builder.environment()["PATH"] = it.resolve("bin").toString() + ":" + builder.environment()["PATH"] }
         val process = builder.start()
         val stdout = process.inputStream.readAllBytes().decodeToString()
         val stderr = process.errorStream.readAllBytes().decodeToString()
@@ -147,6 +154,7 @@ class ToolsLauncherTest {
     fun `the version of a JDK is read from its release file, without starting it`() {
         val home = root.resolve("jdk-with-release")
         script(home.resolve("bin/java"), "echo 'java was started' >&2; exit 3")
+        Files.writeString(home.resolve("lib/ct.sym").also { Files.createDirectories(it.parent) }, "")
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"25.0.4.1\"\nIMPLEMENTOR=\"x\"\n")
 
         val accepted = start(home, "Smoke")
@@ -157,6 +165,37 @@ class ToolsLauncherTest {
         val refused = start(home, "Smoke")
         assertThat(refused.status).isEqualTo(1)
         assertThat(refused.stderr).contains("found 8")
+    }
+
+    @Test
+    fun `building needs a JDK, and a JRE is refused in words before Gradle is asked`() {
+        val jre = jdk("21", asJre = true)
+
+        val result = start(jre, "Smoke")
+
+        assertThat(result.status).isEqualTo(1)
+        assertThat(result.stderr).contains("Smoke: building the tools needs a JDK, and $jre is not one")
+        assertThat(builds()).isEmpty()
+    }
+
+    @Test
+    fun `the home of a java on the PATH is the one that is checked`() {
+        val result = start(null, "Smoke", onPath = jdk("21", asJre = true))
+
+        assertThat(result.status).isEqualTo(1)
+        assertThat(result.stderr).contains("building the tools needs a JDK, and ${root.resolve("jre-21")} is not one")
+        assertThat(builds()).isEmpty()
+        assertThat(start(null, "Smoke", onPath = jdk("21")).status).isEqualTo(0)
+    }
+
+    @Test
+    fun `a JRE can start the tools that are already built`() {
+        start(jdk("21"), "Smoke")
+
+        val result = start(jdk("21", asJre = true), "Smoke")
+
+        assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
+        assertThat(builds()).hasSize(1)
     }
 
     @Test
