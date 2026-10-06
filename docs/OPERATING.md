@@ -17,6 +17,7 @@ How to run the service on your machine, try it, test it, and look after it when 
 | For | You need |
 |---|---|
 | Running and testing | Docker and JDK 25 (Gradle finds one, or use SDKMAN) |
+| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 17 or newer, and the Gradle wrapper, which builds them the first time |
 | Building the native image | about 7 GB of free memory, and 3 minutes |
 | The load test | Docker (k6 runs in a container), a few spare cores, and the warning under [Test it](#test-it) |
 | Trying the production stack | `openssl` and `keytool`, both of which come with a JDK and most systems |
@@ -45,7 +46,7 @@ docker run --rm --network host --memory 512m \
   shortener:$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
 ```
 
-It starts in about 0.4 s. This runs without a profile, so it is quiet and uses the plain defaults. Add
+It is ready 0.4 to 0.7 s after `docker run`. This runs without a profile, so it is quiet and uses the plain defaults. Add
 `-e SPRING_PROFILES_ACTIVE=production` to see the production settings.
 
 **The production stack** is rehearsed in [DEPLOY.md](DEPLOY.md#rehearse-it-on-one-machine): a self-signed certificate,
@@ -207,10 +208,12 @@ has read, for five minutes, while the database is down, and answers `503` with `
 
 ## Scripts
 
-Every script is one of two kinds, decided in [ADR 0026](adr/0026-scripting-standard.md): **sh** starts programs in order and
-is POSIX `sh` checked with `shellcheck --shell=sh`, and **Java** computes (parses, templates, signs, checks, reports) and is one
-source file run with `java File.java`: the tools of `tools/` on JDK 25, as compact source files that share `tools/Cli.java`, and the
-client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr/0027-tools-on-jdk-25.md)). Nothing else is added. Python and bash are gone.
+Every script is one of two kinds. **sh** starts programs in order and is POSIX `sh` checked with `shellcheck --shell=sh`
+([ADR 0026](adr/0026-scripting-standard.md)). Whatever computes (parses, templates, signs, checks, reports) is **Kotlin**, in the
+tools of `tools/`, a Gradle build of its own that `tools/run` builds the first time and when a source changes
+([ADR 0029](adr/0029-tools-in-kotlin.md)). They need a JDK 17 or newer, and have tests that run in process: `./gradlew test` runs them with the
+application's, and `./gradlew -p tools test` alone. The one exception is the client that strangers run, `DpopClient.java`: a single Java file
+for JDK 17 or newer, with no build ([ADR 0020](adr/0020-dpop-client-in-java.md)), which the tools compile as it is. Nothing else is added. Bash is on its way out.
 
 | Script | Is for | Kind | Status |
 |---|---|---|---|
@@ -219,13 +222,13 @@ client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr
 | `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | create the roles and databases when Postgres first starts | sh | done |
 | `deploy/keycloak/entrypoint.sh` | read Keycloak's secrets from files and start it | sh | done |
 | `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP, make client keys | Java | done |
-| `deploy/keycloak/dev-setup` | start `tools/DevSetup.java` | sh | done: a 3-line shim of `tools/run` |
-| `tools/DevSetup.java` | make the dev keys, realm, passwords and `.env`, asking on a terminal | Java 25 | done |
-| `tools/Realms.java`, `tools/RealmTemplate.java`, `tools/Cli.java` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Java 25 | done |
-| `tools/Smoke.java`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Java 25 | done: 2.4 s against 16 s |
-| `tools/run` | find a JDK 25 and start a tool of `tools/` | sh | done |
+| `deploy/keycloak/dev-setup` | start the `DevSetup` tool | sh | done: a 3-line shim of `tools/run` |
+| `tools/run` | build the tools when a source changed, check the JDK is 17 or newer, and start one | sh | done |
 | `deploy/postgres/backup` | back up, check and prove a restore of the stack's Postgres, from the manager | sh | done |
-| `tools/Report.java` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Java 25 | done: the Python scripts are gone, and its output is theirs on every committed result |
+| `DevSetup` (`tools/src/main/kotlin`) | make the dev keys, realm, passwords and `.env`, asking on a terminal | Kotlin | done |
+| `Realms`, `RealmTemplate` and the shared `Cli` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Kotlin | done |
+| `Smoke`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Kotlin | done: 2.4 s against 16 s (measured when it was Java) |
+| `Report` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Kotlin | done: the Python scripts are gone, and its output is theirs on every committed result |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | sh | done: run end to end with short runs |
 | `perf/k6/mixed.js` | the load workload | k6 | stays: it is k6's own language |
 | `gradlew` | the Gradle wrapper | generated | not ours |
@@ -236,14 +239,15 @@ Each script a person runs has a Gradle task, listed by `./gradlew tasks --group 
 |---|---|---|
 | `devSetup`, `devPasswords` | `dev-setup --yes` (`--force` with `-Pforce`), and `--show` | |
 | `keygen` | `DpopClient.java keygen` | `-Pclient=NAME` |
-| `productionRealm` | `tools/Realms.java production` | `-Pdemo=FILE -Padmin=FILE`, `-Poutput=FILE` |
+| `productionRealm` | `tools/run Realms production` | `-Pdemo=FILE -Padmin=FILE`, `-Poutput=FILE` |
 | `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL`, `-Pmethod`, `-Pbody` |
-| `smoke` | `tools/Smoke.java` | `-PbaseUrl=URL`, `-Pmgmt=URL` |
+| `smoke` | `tools/run Smoke` | `-PbaseUrl=URL`, `-Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
 | `postgresBackup` | `deploy/postgres/backup` | `-Pcommand=init\|full\|diff\|check\|info\|restore-test` |
-| `report` | `tools/Report.java` | `-Preport=summary\|gc\|hprof\|profile\|json`, `-Ptarget=PATH`, `-Ptop=N` |
+| `report` | `tools/run Report` | `-Preport=summary\|gc\|hprof\|profile\|json`, `-Ptarget=PATH`, `-Ptop=N` |
 
-The tools run on the toolchain's JDK 25 even when `java` on the PATH is older. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself
+The tasks run with the toolchain's JDK 25 even when `java` on the PATH is older, and `tools/run` needs only a JDK 17 or newer, so it also works by hand on a machine without a 25. The first run
+builds the tools, which takes about half a minute, and the ones after it only start them. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself
 to be asked. The scripts that run inside the stack, and `deploy.sh`, which runs on a manager, have no task.
 
 CI lints every script as `sh`, with no severity filter.

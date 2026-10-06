@@ -1,4 +1,4 @@
-package uy.ct.shortener
+package uy.ct.shortener.tools
 
 import com.sun.net.httpserver.HttpServer
 import org.assertj.core.api.Assertions.assertThat
@@ -15,7 +15,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
 /**
- * `tools/Report.java` replaced three Python scripts, and the numbers they print have been quoted in the documentation. So the
+ * `Report` replaced three Python scripts, and the numbers they print have been quoted in the documentation. So the
  * expected output of the tests below is what the Python scripts printed for the same files: the results committed under
  * `perf/results`, and a small HPROF dump built to have every kind of record the reader skips or counts. The one line that
  * is new on purpose is the list of causes of the collections, which Python printed as a dictionary.
@@ -25,18 +25,9 @@ class ReportTest {
     @TempDir
     lateinit var directory: Path
 
-    private class Output(val exitCode: Int, val stdout: String, val stderr: String)
+    private fun run(vararg arguments: String) = run(Report, *arguments)
 
-    private fun run(vararg arguments: String): Output {
-        val process = ProcessBuilder(System.getProperty("java.home") + "/bin/java", "tools/Report.java", *arguments)
-            .directory(Path.of("").toAbsolutePath().toFile()).start()
-        val stdout = process.inputStream.readAllBytes().decodeToString()
-        val stderr = process.errorStream.readAllBytes().decodeToString()
-        check(process.waitFor(120, TimeUnit.SECONDS)) { "Report.java did not finish" }
-        return Output(process.exitValue(), stdout, stderr)
-    }
-
-    private fun expected(name: String) = Files.readString(Path.of("src/test/resources/report/$name"))
+    private fun expected(name: String) = Files.readString(repositoryRoot.resolve("tools/src/test/resources/report/$name"))
 
     @Test
     fun `the comparison of variants is what the Python report printed, for two sets of results`() {
@@ -54,7 +45,7 @@ class ReportTest {
     fun `the garbage collection summary is what the Python one printed, and the causes are a list`() {
         val result = run("gc", "perf/results/connections-overload/maxconn-500/app.log")
 
-        assertThat(result.exitCode).describedAs(result.stderr).isEqualTo(0)
+        assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
         assertThat(result.stdout.lines().take(4).joinToString("\n", postfix = "\n")).isEqualTo(expected("gc-maxconn500.expected.txt"))
         assertThat(result.stdout.lines()[4]).isEqualTo("causes: Full GC (Collect on allocation) 58, Incremental GC (Collect on allocation) 1749")
     }
@@ -63,20 +54,44 @@ class ReportTest {
     fun `a log with no collections is said in words and not a stack trace`() {
         val result = run("gc", "perf/results/2026-10-05-os/o2-1/app.log")
 
-        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.status).isEqualTo(1)
         assertThat(result.stderr).contains("fewer than two GC lines", "-XX:+PrintGC")
     }
 
     @Test
     fun `the heap histogram is what the Python one printed for a dump with every kind of record`() {
-        assertThat(run("hprof", "src/test/resources/report/sample.hprof", "8").stdout).isEqualTo(expected("sample.hprof.expected.txt"))
+        assertThat(run("hprof", "tools/src/test/resources/report/sample.hprof", "8").stdout).isEqualTo(expected("sample.hprof.expected.txt"))
     }
 
     @Test
     fun `a file that is not a heap dump is refused`() {
         val notADump = directory.resolve("not.hprof").also { Files.write(it, ByteArray(64) { 7 }) }
 
-        assertThat(run("hprof", notADump.toString()).exitCode).isEqualTo(1)
+        assertThat(run("hprof", notADump.toString()).status).isEqualTo(1)
+    }
+
+    @Test
+    fun `a heap dump that ends in the middle of a record is said in words and not a stack trace`() {
+        val whole = Files.readAllBytes(repositoryRoot.resolve("tools/src/test/resources/report/sample.hprof"))
+        val cut = directory.resolve("cut.hprof").also { Files.write(it, whole.copyOf(whole.size / 3)) }
+
+        val result = run("hprof", cut.toString())
+
+        assertThat(result.status).isEqualTo(1)
+        assertThat(result.stderr).contains("does not look like a complete HPROF dump").doesNotContain("\tat ", "Exception")
+    }
+
+    @Test
+    fun `a number that is not a number is a usage error and not a stack trace`() {
+        val sample = repositoryRoot.resolve("tools/src/test/resources/report/sample.hprof").toString()
+
+        val top = run("hprof", sample, "many")
+        val end = run("server", "http://localhost:1", "soon", "60")
+
+        assertThat(top.status).isEqualTo(2)
+        assertThat(top.stderr).contains("how many classes must be a whole number", "usage:")
+        assertThat(end.status).isEqualTo(2)
+        assertThat(end.stderr).contains("whole number of epoch seconds").doesNotContain("\tat ")
     }
 
     @Test
@@ -90,9 +105,9 @@ class ReportTest {
         val valid = directory.resolve("valid.json").also { Files.writeString(it, """{"a":[1,2.5,null,"x"]}""") }
         val invalid = directory.resolve("invalid.json").also { Files.writeString(it, """{"a":""") }
 
-        assertThat(run("json", valid.toString()).exitCode).isEqualTo(0)
+        assertThat(run("json", valid.toString()).status).isEqualTo(0)
         val bad = run("json", invalid.toString())
-        assertThat(bad.exitCode).isEqualTo(1)
+        assertThat(bad.status).isEqualTo(1)
         assertThat(bad.stderr).contains("is not valid JSON").doesNotContain("\tat ")
     }
 
@@ -100,7 +115,7 @@ class ReportTest {
     fun `a directory without results, and a command it does not know, are said in words`() {
         assertThat(run("summary", directory.toString()).stderr).contains("has no subdirectory with a summary.json")
         val unknown = run("nonsense")
-        assertThat(unknown.exitCode).isEqualTo(2)
+        assertThat(unknown.status).isEqualTo(2)
         assertThat(unknown.stderr).contains("unknown command nonsense", "usage:")
     }
 
@@ -148,7 +163,7 @@ class ReportTest {
 
         val result = run("server", url, "1000", "67")
 
-        assertThat(result.exitCode).describedAs(result.stderr).isEqualTo(0)
+        assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
         assertThat(result.stdout.trim()).isEqualTo(
             """{"redirect_p50":9.3E-4,"redirect_p95":0.5,"redirect_p99":0.5,"create_p50":0.5,"create_p99":null,"hikari_acquire_max":0.5,"hikari_timeouts":12.0,"gc_pause_seconds":null,"process_cpu_avg":0.5}""",
         )
@@ -164,7 +179,7 @@ class ReportTest {
     fun `server says when Prometheus is not there`() {
         val result = run("server", "http://localhost:1", "1000", "60")
 
-        assertThat(result.exitCode).isNotEqualTo(0)
+        assertThat(result.status).isNotEqualTo(0)
         assertThat(result.stderr).doesNotContain("\tat ")
     }
 }

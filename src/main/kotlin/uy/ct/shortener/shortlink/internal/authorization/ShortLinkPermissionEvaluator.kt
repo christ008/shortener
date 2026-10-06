@@ -3,6 +3,7 @@ package uy.ct.shortener.shortlink.internal.authorization
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.security.access.PermissionEvaluator
 import org.springframework.security.core.Authentication
+import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.ShortLink
 import java.io.Serializable
 
@@ -18,7 +19,7 @@ class ShortLinkPermissionEvaluator(private val scopes: ObjectProvider<ShortLinkS
 
     override fun hasPermission(authentication: Authentication, targetDomainObject: Any?, permission: Any): Boolean =
         targetDomainObject is ShortLink && permission == MANAGE &&
-            (targetDomainObject.isCreatedBy(authentication.name) || isAdmin(authentication))
+            (targetDomainObject.isCreatedBy(Actor.Client(authentication.name)) || isAdmin(authentication))
 
     override fun hasPermission(authentication: Authentication, targetId: Serializable, targetType: String, permission: Any): Boolean = false
 

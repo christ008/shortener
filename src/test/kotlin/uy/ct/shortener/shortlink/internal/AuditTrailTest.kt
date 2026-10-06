@@ -51,7 +51,7 @@ class AuditTrailTest {
     @Test
     fun `an owner disabling their own link is routine`() {
         LogCapture(LoggingAuditTrail.LOGGER_NAME).use { log ->
-            trail.disabled(link, by = "user:alice")
+            trail.disabled(link, by = Actor.Client("user:alice"))
 
             assertThat(log.events.single().level.toString()).isEqualTo("INFO")
             assertThat(log.events.single().fields).containsEntry("event.action", "disabled")
@@ -63,7 +63,7 @@ class AuditTrailTest {
     @Test
     fun `an administrator disabling another client's link is a warning of its own kind`() {
         LogCapture(LoggingAuditTrail.LOGGER_NAME).use { log ->
-            trail.disabled(link, by = "admin-client")
+            trail.disabled(link, by = Actor.Client("admin-client"))
 
             val line = log.events.single()
             assertThat(line.level.toString()).isEqualTo("WARN")
@@ -92,7 +92,7 @@ class AuditTrailTest {
     @Test
     fun `a link of unknown creator is named so`() {
         LogCapture(LoggingAuditTrail.LOGGER_NAME).use { log ->
-            trail.disabled(link.copy(createdBy = Actor.Unknown), by = "admin-client")
+            trail.disabled(link.copy(createdBy = Actor.Unknown), by = Actor.Client("admin-client"))
 
             assertThat(log.events.single().fields).containsEntry("owner", "unknown")
         }

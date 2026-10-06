@@ -1,6 +1,6 @@
 #!/bin/sh
 # Makes the cryptographic material and the passwords a local development setup needs, so none of it is committed. The work is
-# tools/DevSetup.java, which says what it writes and how to use it: this only starts it, on JDK 25.
+# the DevSetup tool (tools/), which says what it writes and how to use it: this only starts it.
 #
 #   deploy/keycloak/dev-setup [--yes] [--force] [--show]
 set -eu

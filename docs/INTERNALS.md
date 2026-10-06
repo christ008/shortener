@@ -42,7 +42,8 @@ flowchart LR
 
 ArchUnit tests enforce what Modulith does not check inside a module:
 
-- The public API depends on no JDBC type and no security type.
+- The public API depends on no JDBC type and no security type. It does use Spring Data's `Page` and `Pageable`, on purpose
+  (see [Design review](#design-review)).
 - The web adapter talks only to the service interface.
 - Nothing depends on the web or persistence adapters.
 - JDBC types never leave `persistence`.
@@ -371,8 +372,9 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 | `shortlinks:read`, `shortlinks:delete` | read and disable the client's own links |
 | `shortlinks:admin` | read and disable any client's links |
 
-- Ownership is a rule on top of scopes: the `createdBy` and `disabledBy` arguments must equal the caller, and a listing
-  filter must be limited to the caller (`#filter.isLimitedTo(authentication.name)`).
+- Ownership is a rule on top of scopes: the `createdBy` and `disabledBy` arguments, an `Actor.Client`, must name the caller
+  (`#createdBy.name == authentication.name`), and a listing filter must be limited to the caller
+  (`#filter.isLimitedTo(authentication.name)`).
 - A `PermissionEvaluator` lets a caller manage a link only if it created it, or is an administrator.
 - A denied link read becomes `404` through `@HandleAuthorizationDenied`.
 
@@ -473,9 +475,9 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 | `management.server.port` ignored | read at AOT time | set it in `application.yaml`, not the environment |
 | Tomcat missing a reflection entry | `server.tomcat.mbeanregistry.enabled=true` | removed |
 | Every DPoP request is `401` with no reason | the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class | `DpopRuntimeHints`, plus a startup check that fails if DPoP is required and the filter is missing |
-| Authorized calls fail with `500` | SpEL reads `authentication.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
+| Authorized calls fail with `500` | SpEL reads `authentication.name`, `#createdBy.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
 
-Unit tests cannot run a native image, so `perf/smoke.sh` (`tools/Smoke.java`) exercises every endpoint with real tokens (21 checks).
+Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exercises every endpoint with real tokens (21 checks).
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
 
 ## Deployment
@@ -619,6 +621,79 @@ Notes:
   hosts that pull it a registry login.
 - Dependabot proposes updates to the actions weekly. Pin them to commit hashes once the workflow is stable.
 
+## Testing
+
+How the tests are counted, and what coverage and mutation testing say about them. Everything below was measured on 2026-10-06 on
+one machine, on the tree of the commit that adds this section on top of `a99abe2`, **without Docker**: the tests that need
+Postgres (Testcontainers) did not run, so the coverage numbers are partial and say so.
+
+### What is counted
+
+A bare total mixed two kinds of test, so there are two counts. The rule is what the test looks at: the application's code, or the
+files and scripts of the repository.
+
+| | Tests | Where | Needs Docker |
+|---|---|---|---|
+| The application: domain, service, cache, policy, web, persistence, security, architecture | 225 | `src/test` | 100 of them (23 classes, every one imports `TestcontainersConfiguration`) |
+| Infrastructure of the repository: `ComposeStackTest` 17, `DpopClientTest` 18, `MigrationConventionsTest` 8, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 49 | `src/test` | none |
+| The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 10 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 43 | `tools/src/test` | none |
+| **Total** | **317** | | |
+
+So 225 tests are about the service and 92 are about its tooling and infrastructure. Of the 225, the 125 that need no database ran
+here and passed; the other 100 failed here only because there was no Docker (their failure is the context that cannot start, and
+Spring's refusal to retry it in the same run), and were not run. `./gradlew test` runs the tools' tests too.
+
+### Coverage (Kover)
+
+- **Tool.** Kover 0.9.11, which works with Kotlin 2.3.21 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
+  writes `build/reports/kover`, and CI keeps it as the `coverage` artifact. It is a measurement: there is no threshold.
+- **Scope.** The classes of `uy.ct.shortener`, from the 174 tests of the 274 in `src/test` that ran without Docker.
+- **Result, partial.** Lines 60.1% (355 of 591), branches 52.3% (126 of 241), methods 61.0%, classes 72.0%. By package, lines:
+
+  | Package | Covered |
+  |---|---|
+  | `shortlink` (the contract) | 64 of 69, 92.8% |
+  | `shortlink.internal` (service, cache, policy) | 150 of 155, 96.8% |
+  | `shortlink.internal.authorization` | 32 of 33, 97.0% |
+  | `security.internal` | 75 of 136, 55.1% |
+  | `shortlink.internal.persistence` | 27 of 85, 31.8% |
+  | `shortlink.internal.web` | 0 of 53 |
+  | `security` | 0 of 52 |
+
+  The low rows are the ones whose tests start the application against Postgres, so they say that Docker was missing and not how
+  much of them is tested. **The number for the project is the whole suite's, in the coverage artifact of a CI run**, which was not
+  available when this was written.
+
+### Mutation testing (PIT)
+
+- **Tool.** PIT 1.30.0 with its JUnit 5 plugin, through `info.solidsoft.pitest` 1.19.0. `./gradlew mutationTest` writes
+  `build/reports/pitest`. It is run by hand: it is not part of `check` and not in CI, and a run took between one and two minutes.
+- **Scope.** The domain types, `DefaultShortLinkService`, the redirect cache, the target-URL policy and the code generator, which
+  is 95 mutants (PIT's default mutators). Not the web and persistence adapters, which are tested against HTTP and Postgres. Not
+  authorization, which is a framework's expressions, nor the audit trail, configuration, properties and native hints. It runs the
+  tests of those classes that need no Docker, because PIT wants a green run first. A mutant that only a test with a database
+  would kill would show as surviving, and none did.
+- **First run: 95 mutants, 83 killed (87%), 2 with no coverage, test strength 89%.** A mutant killed by running forever (a
+  `TIMED_OUT` change to the retry loop in `shorten`) counts as killed.
+- **What the survivors showed.** Four were not checked by the tests PIT ran. Two were behaviour that no test checked, and two were
+  checked only by tests with a database or tests PIT was not running. Each got a test named for the behaviour, except the last:
+
+  | Surviving mutant | Why it mattered | Test |
+  |---|---|---|
+  | `ShortCode.RESERVED` replaced by an empty set | the two tests of reserved codes take their codes from that set, so with none they pass without checking anything, and nothing said which codes are kept | `the reserved codes are the three that would shadow a route of the application` |
+  | the check of the target in the constructor of `ShortLink` removed | `requireValidTargetUrl` was tested alone, but no test showed that a link cannot be built with a target that is not absolute http or https | `a link cannot be built for a target that is not an absolute http or https URL` |
+  | `Actor.of` negated (no coverage) | how a stored name becomes a client, or an unknown creator, was covered only by the tests with a database | `a stored name is a client, and an absent one is a creator that is not known` |
+  | `CreatedByFilter.Only.client` returning `""` (no coverage) | covered by tests that PIT was not running | no new test: `AuditTrailTest` and `ShortLinkAuthorizationTest`, which need no Docker and read it, were added to the tests PIT runs |
+
+- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%.** Eight survive, and none is behaviour of the
+  project: six are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
+  `CaffeineRedirectCache` and `AllowedHosts`), and two are in code of the standard library that Kotlin inlines (the early return
+  of `none` and `any` for an empty collection, an optimisation whose result is the same), so no test can kill them. PIT can be told
+  to skip calls to `kotlin.jvm.internal`, but that removed 23 mutants, not 6, and most of them were killed, so the percentage
+  rose without the tests having changed: it is not used.
+- **How to read it.** 92% is a statement about 95 mutants of the logic of one module, run against the tests of those classes. It
+  does not say how well the project is tested, and a mutant that survives is a question to read, not a defect.
+
 ## Performance
 
 ### Method
@@ -626,7 +701,8 @@ Notes:
 - `perf/bench.sh` runs one build in a container with 2 CPUs (cores 0-1) and 512 MB. Postgres uses cores 2-5 and k6 cores
   6-9.
 - k6 uses an arrival-rate executor, so slow responses do not slow the load: 99% redirects on a hot subset, 1% creates
-  signed with DPoP.
+  signed with DPoP. The redirects go to 300 seeded links, 80% of them to the first 60 (`perf/k6/mixed.js`), so after the warm-up
+  nearly every redirect is a cache hit. A workload of many links that the cache has not seen was not run.
 - Each variant warms up 30 s, then runs 1,500, 5,000 and 10,000 requests a second. Server-side percentiles come from
   Prometheus. `perf/run-all.sh` runs the variants.
 - One laptop, one run per rate, database and load generator on the same machine. Treat the numbers as shape, not capacity.
@@ -679,7 +755,7 @@ Two changes closed it:
   It trades about 1% failed requests for flat memory and latency. Creates still queue for seconds at that load, so a
   limit is protection, not capacity.
 
-Not yet tested: turning off Spring Security observations. Tooling: `perf/profile.sh`, `tools/Report.java` (`gc` and `hprof`),
+Not yet tested: turning off Spring Security observations. Tooling: `perf/profile.sh`, `tools/run Report` (`gc` and `hprof`),
 `perf/tune-connections.sh`.
 
 ### Running load tests safely
@@ -737,7 +813,7 @@ it, which puts the rule in one place and lets the type change without its caller
 | Open/closed | which targets are accepted was going to be an `if` in the service | `TargetUrlPolicy`: `AnyTarget` and `AllowedHosts`. A new rule is a new implementation |
 | Liskov | the two null objects, `NoRedirectCache` and `AnyTarget`, must honor their contracts | each has tests for its contract |
 | Interface segregation | the repository has four operations, each used by the service or `ManageableLinks` | nothing to split |
-| Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept. The ArchUnit test keeps JDBC and security types out of the contract and accepts Spring Data's paging types. Own paging types would be a copy of them |
+| Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept, and looked at again in the polish pass. The ArchUnit tests keep JDBC and security types out of the contract and accept Spring Data's paging types. Own paging types would be a copy of them, and the web adapter would have to parse `page`, `size` and `sort` itself, which `Pageable`'s resolver does today with the defaults and the cap of `spring.data.web.pageable.*`. The cost is that the contract is tied to `spring-data-commons`, a library with no persistence in it: a different paging library would change the contract, not only an adapter |
 
 ## Decisions
 
@@ -770,6 +846,12 @@ Each has a record with its problem, cost and alternatives in [adr/](adr/README.m
 
 ## Limitations
 
+- It has not served real traffic. What is said about its behaviour under load comes from a synthetic workload on one machine
+  (see [Performance](#performance)).
+- The migration history creates a table and drops it. `V2__create_event_publication.sql` made Modulith's event publication
+  table, and `V4__jdbc_schema.sql` begins by dropping it, from when the project moved from JPA to plain JDBC. Nothing in the code
+  publishes or listens to events, and the table is not in the schema now. It stays in the history because an applied migration
+  is not edited: Flyway checks its checksum. Anything that wants events again needs a migration that creates the table.
 - A link disabled on one instance can redirect on the others for up to the cache TTL (30 s).
 - Rate limits and the DPoP replay cache are per instance.
 - Beyond capacity (about 5,800 req/s on two cores) the service sheds load, but creates still queue for seconds. nginx

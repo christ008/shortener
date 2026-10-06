@@ -54,8 +54,8 @@ what it gives up, is in [INTERNALS.md](INTERNALS.md#deployment).
 4. Deploy:
 
    ```bash
-   deploy/stack/deploy.sh 0.20.0
-   OBSERVABILITY=1 deploy/stack/deploy.sh 0.20.0     # with Prometheus and the Postgres exporter
+   deploy/stack/deploy.sh 0.21.0
+   OBSERVABILITY=1 deploy/stack/deploy.sh 0.21.0     # with Prometheus and the Postgres exporter
    ```
 
    Everything starts at once. The application restarts until the migration job has finished, which takes seconds.
@@ -105,7 +105,7 @@ Everything, including a Keycloak with the dev realm and a self-signed certificat
 deploy/stack/local/prepare.sh                  # throwaway secrets and a certificate for localhost; runs deploy/keycloak/dev-setup too
 docker swarm init --advertise-addr 127.0.0.1 --listen-addr 127.0.0.1:2377
 docker node update --label-add shortener.postgres=true "$(docker node ls -q)"
-COMPOSE_FILES="compose.prod.yaml deploy/stack/local/compose.local.yaml" RESOLVE_IMAGE=never deploy/stack/deploy.sh 0.20.0
+COMPOSE_FILES="compose.prod.yaml deploy/stack/local/compose.local.yaml" RESOLVE_IMAGE=never deploy/stack/deploy.sh 0.21.0
 ```
 
 The `--listen-addr` keeps the Swarm manager off the network. `prepare.sh` runs `deploy/keycloak/dev-setup --yes` if it has

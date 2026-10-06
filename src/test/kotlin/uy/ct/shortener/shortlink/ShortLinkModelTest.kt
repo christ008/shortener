@@ -19,9 +19,9 @@ class ShortLinkModelTest {
 
     @Test
     fun `a link knows who created it`() {
-        assertThat(active.isCreatedBy("alice")).isTrue
-        assertThat(active.isCreatedBy("bob")).isFalse
-        assertThat(active.copy(createdBy = Actor.Unknown).isCreatedBy("alice")).isFalse
+        assertThat(active.isCreatedBy(Actor.Client("alice"))).isTrue
+        assertThat(active.isCreatedBy(Actor.Client("bob"))).isFalse
+        assertThat(active.copy(createdBy = Actor.Unknown).isCreatedBy(Actor.Client("alice"))).isFalse
     }
 
     @Test
@@ -39,6 +39,28 @@ class ShortLinkModelTest {
         ShortCode.RESERVED.forEach { assertFailsWith<ShortCodeUnavailableException> { ShortCode(it).requireClaimable() } }
 
         assertThat(ShortCode("my-promo").requireClaimable()).isEqualTo(ShortCode("my-promo"))
+    }
+
+    @Test
+    fun `the reserved codes are the three that would shadow a route of the application`() {
+        // The test above takes its codes from this set, so it would pass with none: this fixes which they are (api, actuator and
+        // error, as docs/openapi.yaml says).
+        assertThat(ShortCode.RESERVED).containsExactlyInAnyOrder("api", "actuator", "error")
+    }
+
+    @Test
+    fun `a link cannot be built for a target that is not an absolute http or https URL`() {
+        listOf("relative/path", "mailto:someone@example.com", "ftp://example.com/file", "javascript:alert(1)").forEach {
+            assertFailsWith<IllegalArgumentException>("expected '$it' to be refused") {
+                ShortLink(ShortCode("aaaaaaa"), URI.create(it), Actor.Client("alice"), Instant.EPOCH)
+            }
+        }
+    }
+
+    @Test
+    fun `a stored name is a client, and an absent one is a creator that is not known`() {
+        assertThat(Actor.of("alice")).isEqualTo(Actor.Client("alice"))
+        assertThat(Actor.of(null)).isEqualTo(Actor.Unknown)
     }
 
     @Test
