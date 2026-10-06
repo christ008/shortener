@@ -1,8 +1,8 @@
 # Development client keys
 
-These private keys belong to the four test clients in `../shortener-realm.json` (`demo-client`, `other-client`,
-`admin-client`, `no-scope-client`). They are committed on purpose so that `./gradlew bootRun`, the smoke test and the
-benchmarks work out of the box, and the realm trusts only their public halves.
+This directory is empty in Git. `deploy/keycloak/dev-setup` writes a private key for each of the four dev clients here
+(`demo-client`, `other-client`, `admin-client`, `no-scope-client`), as `<client>.jwk.json`, and puts their public halves in
+the dev realm. Git ignores them.
 
-They protect nothing. Never reuse them, never import this realm into a real Keycloak, and generate fresh keys for any
-real client with `java ../DpopClient.java keygen CLIENT_ID`.
+They are throwaway keys for your machine: never reuse them, never import the dev realm into a real Keycloak, and make a
+key for a real client with `../dpop keygen CLIENT_ID`.

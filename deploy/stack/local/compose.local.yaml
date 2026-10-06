@@ -2,7 +2,7 @@
 # deploy/keycloak can get tokens, and the management port for perf/smoke.sh, published on every interface of this
 # machine. Not for production.
 #
-#   deploy/stack/local/prepare.sh
+#   deploy/stack/local/prepare.sh     (runs deploy/keycloak/dev-setup too, if that has not been done)
 #   docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml up -d
 #   JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=... perf/smoke.sh https://localhost
 services:
@@ -15,8 +15,8 @@ services:
     image: 'quay.io/keycloak/keycloak:26.7.5'
     command: ['start-dev', '--import-realm']
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${DEV_KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${DEV_KEYCLOAK_ADMIN_PASSWORD:?run deploy/keycloak/dev-setup first}
       KC_HOSTNAME: http://localhost:8180
     ports:
       - {target: 8080, published: 8180, protocol: tcp, mode: host}

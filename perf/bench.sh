@@ -10,6 +10,8 @@ VARIANT=$1; IMAGE=$2; COMMAND=("${@:4}")
 mkdir -p "$3"; OUT=$(cd "$3" && pwd); chmod 777 "$OUT"
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
+PGPASS=$(sed -n "s/^DEV_POSTGRES_PASSWORD='\{0,1\}\([^']*\)'\{0,1\}$/\1/p" "$ROOT/.env" 2>/dev/null)
+[ -n "$PGPASS" ] || { echo "no Postgres password in $ROOT/.env: run deploy/keycloak/dev-setup first" >&2; exit 1; }
 PGPORT=${PGPORT:-$(docker compose -f "$ROOT/compose.yaml" port postgres 5432 | cut -d: -f2)}
 PG_CONTAINER=${PG_CONTAINER:-$(docker compose -f "$ROOT/compose.yaml" ps -q postgres)}
 PROM=http://localhost:9090
@@ -22,7 +24,7 @@ docker rm -f bench-app >/dev/null 2>&1 || true
 t0=$(date +%s.%N)
 docker run -d --name bench-app --network host --cpuset-cpus 0-1 --cpus 2 --memory 512m \
   -e SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:$PGPORT/mydatabase" \
-  -e SPRING_DATASOURCE_USERNAME=myuser -e SPRING_DATASOURCE_PASSWORD=secret \
+  -e SPRING_DATASOURCE_USERNAME=myuser -e "SPRING_DATASOURCE_PASSWORD=$PGPASS" \
   -e SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY=1000000000 -e SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY=1000000000 \
   ${DOCKER_ARGS:-} "$IMAGE" "${COMMAND[@]}" >/dev/null
 until curl -sf -m 2 -o /dev/null localhost:8081/actuator/health/readiness; do

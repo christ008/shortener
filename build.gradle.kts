@@ -83,14 +83,20 @@ tasks.withType<Test> {
         "compose.prod.yaml",
         "compose.prod.observability.yaml",
         "deploy/stack/.env.example",
-        "deploy/keycloak/DpopClient.java",
-        "deploy/keycloak/dev-keys/demo-client.jwk.json",
+        "deploy/keycloak/dpop",
+        "deploy/keycloak/dev-setup",
+        "deploy/keycloak/shortener-realm.template.json",
         "deploy/postgres/bootstrap.sql",
     )
 }
 
 tasks.bootRun {
     if (System.getenv("SPRING_PROFILES_ACTIVE") == null) systemProperty("spring.profiles.active", "dev")
+    doFirst {
+        if (!file("deploy/keycloak/shortener-realm.json").exists()) {
+            throw GradleException("The dev keys and passwords do not exist yet. Run deploy/keycloak/dev-setup first.")
+        }
+    }
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.aot.ProcessAot>("processAot") {

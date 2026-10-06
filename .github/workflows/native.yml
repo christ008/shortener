@@ -23,15 +23,17 @@ jobs:
         run: ./gradlew bootBuildImage
       - name: Start Postgres and Keycloak
         run: |
+          deploy/keycloak/dev-setup --yes
           docker compose up -d postgres keycloak
           until curl -sf http://localhost:8180/realms/shortener/.well-known/openid-configuration > /dev/null; do sleep 3; done
       - name: Run the image
         run: |
+          set -a; . ./.env; set +a
           port=$(docker compose port postgres 5432 | cut -d: -f2)
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
           docker run -d --name app --network host --memory 512m \
             -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:$port/mydatabase \
-            -e SPRING_DATASOURCE_USERNAME=myuser -e SPRING_DATASOURCE_PASSWORD=secret \
+            -e SPRING_DATASOURCE_USERNAME=myuser -e SPRING_DATASOURCE_PASSWORD="$DEV_POSTGRES_PASSWORD" \
             shortener:$version
           until curl -sf http://localhost:8081/actuator/health/readiness > /dev/null; do sleep 1; done
       - name: Smoke test every endpoint

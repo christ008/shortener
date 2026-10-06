@@ -33,6 +33,8 @@ deploy() {
     # shellcheck disable=SC2034  # `value` is read by the eval below
     while IFS='=' read -r key value; do
       case "$key" in ''|'#'*) continue ;; esac
+      value=${value#\'}
+      value=${value%\'}
       eval "[ -n \"\${$key:-}\" ] || export $key=\"\$value\""
     done < .env
   fi

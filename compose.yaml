@@ -3,14 +3,14 @@ services:
     image: 'postgres:18.6'
     environment:
       - 'POSTGRES_DB=mydatabase'
-      - 'POSTGRES_PASSWORD=secret'
+      - 'POSTGRES_PASSWORD=${DEV_POSTGRES_PASSWORD:?run deploy/keycloak/dev-setup first}'
       - 'POSTGRES_USER=myuser'
       # Passwords of the roles deploy/postgres/bootstrap.sql creates, set by set-role-passwords.sh. The application
       # run by bootRun still connects as myuser; these exist so that what compose starts has the same roles as
       # everywhere else.
-      - 'SHORTENER_APP_PASSWORD=app-secret'
-      - 'SHORTENER_MIGRATOR_PASSWORD=migrator-secret'
-      - 'SHORTENER_EXPORTER_PASSWORD=exporter-secret'
+      - 'SHORTENER_APP_PASSWORD=${DEV_APP_PASSWORD:?run deploy/keycloak/dev-setup first}'
+      - 'SHORTENER_MIGRATOR_PASSWORD=${DEV_MIGRATOR_PASSWORD:?run deploy/keycloak/dev-setup first}'
+      - 'SHORTENER_EXPORTER_PASSWORD=${DEV_EXPORTER_PASSWORD:?run deploy/keycloak/dev-setup first}'
     ports:
       - '5432'
     volumes:
@@ -24,7 +24,7 @@ services:
     depends_on:
       - postgres
     environment:
-      - 'DATA_SOURCE_NAME=postgresql://shortener_exporter:exporter-secret@postgres:5432/mydatabase?sslmode=disable'
+      - 'DATA_SOURCE_NAME=postgresql://shortener_exporter:${DEV_EXPORTER_PASSWORD:?run deploy/keycloak/dev-setup first}@postgres:5432/mydatabase?sslmode=disable'
     command: ['--collector.stat_statements', '--collector.stat_statements.limit=25']
     ports:
       - '9187:9187'
@@ -32,8 +32,8 @@ services:
     image: 'quay.io/keycloak/keycloak:26.7.5'
     command: ['start-dev', '--import-realm']
     environment:
-      - 'KC_BOOTSTRAP_ADMIN_USERNAME=admin'
-      - 'KC_BOOTSTRAP_ADMIN_PASSWORD=admin'
+      - 'KC_BOOTSTRAP_ADMIN_USERNAME=${DEV_KEYCLOAK_ADMIN_USER:-admin}'
+      - 'KC_BOOTSTRAP_ADMIN_PASSWORD=${DEV_KEYCLOAK_ADMIN_PASSWORD:?run deploy/keycloak/dev-setup first}'
       - 'KC_HOSTNAME=http://localhost:8180'
     ports:
       - '8180:8080'

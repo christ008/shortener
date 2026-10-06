@@ -46,3 +46,5 @@ perf/results/**/*.k6.txt
 /secrets/
 /.env
 /deploy/stack/local/secrets/
+/deploy/keycloak/dev-keys/*.jwk.json
+/deploy/keycloak/shortener-realm.json
