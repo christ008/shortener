@@ -6,12 +6,9 @@ import org.springframework.data.domain.Pageable
 /**
  * Creates, finds, lists and disables short links, and resolves them to their targets.
  *
- * - Who may call each operation is declared on the implementation with method security. A caller
- *   without the scope is denied (403).
- * - An operation that acts in a client's name takes it as an [Actor.Client], and method security
- *   denies the call unless it is the caller's own.
- * - A link that belongs to another client is reported as not found, never forbidden, so its
- *   existence is not revealed.
+ * - Who may call each operation is declared on the implementation with method security. A caller without the scope is denied (`403`).
+ * - An operation that acts in a client's name takes it as an [Actor.Client]. Method security denies the call unless it is the caller's own.
+ * - A link that belongs to another client is reported as not found, never forbidden.
  * - Other failures are exceptions that carry their HTTP status.
  */
 interface ShortLinkService {

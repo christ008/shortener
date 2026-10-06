@@ -5,12 +5,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 
-/**
- * Binds [ShortLinkScopes] and makes it available under the name method-security expressions use, `@scopes`.
- *
- * Constructor-bound properties cannot be components, which is how a bean gets a name of its own, so the name is given
- * here. It is the same object, and it is the primary one, so injection by type finds exactly one.
- */
+/** Binds [ShortLinkScopes] and exposes it as the primary bean `scopes`. */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ShortLinkScopes::class)
 class ShortLinkScopesConfiguration {

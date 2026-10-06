@@ -12,7 +12,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
  *
  * - The name is the [clientIdClaim] of the token.
  * - Each granted scope becomes an authority named exactly as the scope.
- * - A token without the claim is invalid: it cannot be attributed to a client.
+ * - A token without the claim is invalid.
  */
 class ClientJwtAuthenticationConverter(private val clientIdClaim: String) : Converter<Jwt, AbstractAuthenticationToken> {
 

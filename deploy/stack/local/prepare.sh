@@ -1,7 +1,7 @@
 #!/bin/sh
-# Makes everything a rehearsal of compose.prod.yaml on one machine needs: throwaway random passwords, a self-signed
-# certificate for localhost, and the settings that point the application at the Keycloak of compose.local.yaml. Nothing here
-# is for a real deployment. Run it from the repository root; it refuses to overwrite an existing secrets directory.
+# Makes what a rehearsal of compose.prod.yaml on one machine needs: throwaway random passwords, a self-signed certificate for
+# localhost, and the settings that point the application at the Keycloak of compose.local.yaml. Not for a real deployment. Run
+# it from the repository root. It refuses to overwrite an existing secrets directory.
 set -eu
 dir=${SECRETS_DIR:-secrets}
 [ ! -e "$dir" ] || { echo "$dir already exists; remove it first" >&2; exit 1; }
@@ -15,7 +15,7 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 
   -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' \
   -keyout "$dir/tls_key" -out "$dir/tls_cert" 2>/dev/null
 
-# Swarm mounts secrets with the mode of the source file; the containers run as other users than their owner here.
+# Readable by the containers, which run as other users.
 chmod 0444 "$dir"/*
 
 # The rehearsal uses the dev realm and its Keycloak password, which deploy/keycloak/dev-setup makes.

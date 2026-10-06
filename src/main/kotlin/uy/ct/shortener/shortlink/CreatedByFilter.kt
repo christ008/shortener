@@ -5,10 +5,8 @@ package uy.ct.shortener.shortlink
  *
  * - [Anyone]: every link. Only administrators may ask for this.
  * - [Only]: the links of one client.
- *
- * - [isLimitedTo] is what the method-security rules call, so the filter is checked against the caller
- *   without unpacking it.
- * - [of] is the default a listing takes when the caller does not name a client.
+ * - [isLimitedTo]: called by the method-security rules.
+ * - [of]: the filter for a caller who may have named a client.
  */
 sealed interface CreatedByFilter {
 
@@ -19,8 +17,8 @@ sealed interface CreatedByFilter {
         /**
          * The filter for a caller who may have asked for one client's links ([requestedClient]).
          *
-         * - A client that was named gets those links. Whether the caller may see them is decided by the service.
-         * - Otherwise an administrator gets every link, and anyone else gets their own.
+         * - A named client gets those links. The service decides whether the caller may see them.
+         * - Otherwise an administrator gets every link and anyone else gets their own.
          */
         fun of(requestedClient: String?, caller: String, callerIsAdministrator: Boolean): CreatedByFilter = when {
             requestedClient != null -> Only(requestedClient)

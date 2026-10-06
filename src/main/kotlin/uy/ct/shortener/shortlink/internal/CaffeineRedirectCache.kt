@@ -14,26 +14,21 @@ import java.util.concurrent.Executor
 import java.util.concurrent.ForkJoinPool
 
 /**
- * In-memory [RedirectCache] that takes the database read off the redirect path.
+ * In-memory [RedirectCache] in front of the database read of a redirect.
  *
- * - Keeps only active links. An unknown code is never cached, so a link works the moment it is
- *   created, and a disabled link is never served from here after its entry goes.
- * - One cache per instance. The instance that disables a link evicts it at once; the others serve
- *   it until their entry expires, so a takedown reaches every instance within the TTL.
- * - Concurrent misses for a code run one load, and the others wait for it.
- * - Bounded by entry count. Hits, misses, evictions and size are the `cache.*` metrics of the cache
- *   named `shortlink.redirect`.
+ * - Keeps only active links. An unknown or disabled code is never cached.
+ * - One cache per instance. The instance that disables a link evicts it at once. The others serve it until their entry
+ *   expires ([RedirectCacheProperties.ttl]).
+ * - Concurrent misses for a code run one load.
+ * - Bounded by entry count. Metrics: the `cache.*` metrics of the cache named `shortlink.redirect`.
  *
- * When the database cannot be reached, a link whose entry has expired is still served from the last
- * copy this instance read, for up to [RedirectCacheProperties.staleIfError].
- * - Redirects of known links carry on through an outage. A code this instance never read still fails
- *   with the 503, and so does any failure that is not the database being unreachable.
- * - The copies live in a second cache, consulted only on that failure, so the main cache and its hit
- *   ratio count only what memory answered. Serving a stale copy is not a hit.
- * - A link the database then reports gone or disabled is dropped from it, as is one disabled here.
- * - The cost: a link disabled through another instance just before an outage keeps redirecting here
- *   until its copy expires, which is why the window is short.
- * - Each redirect served this way increments `shortlink.redirect.cache.stale`, which should be zero.
+ * When the database cannot be reached, a link whose entry has expired is still served from the last copy this instance read,
+ * for up to [RedirectCacheProperties.staleIfError].
+ *
+ * - A code this instance never read still fails with `503`, and so does any failure that is not the database being unreachable.
+ * - The copies live in a second cache, consulted only on that failure. Serving a stale copy is not a hit.
+ * - A link the database then reports gone or disabled is dropped, as is one disabled here.
+ * - Each redirect served this way increments `shortlink.redirect.cache.stale`.
  */
 class CaffeineRedirectCache(
     properties: RedirectCacheProperties,

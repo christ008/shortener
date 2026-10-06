@@ -8,11 +8,11 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.StandardOpenOption
 
 /**
- * `Report hprof`: the classes of an HPROF heap dump by shallow size, such as the dump a native image writes on
- * OutOfMemoryError, with byte[] and char[] by size class and the count of a few classes that exist once per request.
+ * `Report hprof`: the classes of an HPROF heap dump by shallow size, with byte[] and char[] by size class and the count of a few
+ * classes that exist once per request.
  *
- * The file is mapped and read in place, which is why it must be under 2 GB. A record that is not one of those the format
- * defines is a failure that says where, because skipping it would read the rest of the file out of step.
+ * The file is mapped and read in place, so it must be under 2 GB. A record of a type the format does not define is a failure
+ * that says where.
  */
 internal object HeapHistogram {
 

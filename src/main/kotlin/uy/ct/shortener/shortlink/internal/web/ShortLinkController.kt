@@ -24,13 +24,12 @@ import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
 /**
  * The HTTP API of the short link service. Failures are problem details.
  *
- * - `POST /api/short-links` creates a link for the authenticated client under a generated or a
- *   custom code: 201 with a `Location` header.
- * - `GET /api/short-links` lists the client's own links a page at a time (`page`, `size`, `sort`).
- *   An administrator may list any client's.
- * - `GET /api/short-links/{shortCode}` reads one, and `DELETE` disables it: 204.
- * - `GET /{shortCode}` is public. It redirects with a 302, so clients do not cache the redirect, or
- *   answers 410 once the link is disabled.
+ * - `POST /api/short-links` creates a link for the authenticated client under a generated or a custom code: `201` with a
+ *   `Location` header.
+ * - `GET /api/short-links` lists the client's own links a page at a time (`page`, `size`, `sort`). An administrator may list
+ *   any client's.
+ * - `GET /api/short-links/{shortCode}` reads one, and `DELETE` disables it: `204`.
+ * - `GET /{shortCode}` is public. It answers `302`, or `410` once the link is disabled.
  */
 @RestController
 class ShortLinkController(

@@ -18,22 +18,20 @@ import java.time.Duration
 import java.util.Locale
 
 /**
- * Reads what the load tests and the profiling runs leave behind, and says it in words: a Markdown table comparing variants, a
- * summary of the garbage collections in an application log, and the class histogram of a heap dump.
+ * Reads what the load tests and the profiling runs leave behind: a Markdown table comparing variants, a summary of the garbage
+ * collections in an application log, and the class histogram of a heap dump.
  *
  *     tools/run Report summary RESULTS_DIR       the output of perf/bench.sh for several variants, one subdirectory each, as a table
  *     tools/run Report gc APP_LOG                how often a native image collects, how long it pauses and whether the live heap
  *                                                grows (needs the log of a run with -XX:+PrintGC)
- *     tools/run Report hprof DUMP [TOP]          the classes of an HPROF heap dump, such as the one a native image writes on
- *                                                OutOfMemoryError, by shallow size, with byte[] and char[] by size class and the
- *                                                count of a few classes that exist once per request
+ *     tools/run Report hprof DUMP [TOP]          the classes of an HPROF heap dump by shallow size, with byte[] and char[] by size
+ *                                                class and the count of a few classes that exist once per request
  *     tools/run Report profile OUT_DIR           one line for a run of perf/profile.sh: requests a second, failures, OutOfMemoryErrors
  *     tools/run Report server PROMETHEUS END DUR what Prometheus saw of the application over the DUR seconds that ended at END
  *                                                (epoch seconds), as the JSON object perf/bench.sh records under "server"
  *     tools/run Report json FILE                 says whether FILE is JSON, and exits 1 if it is not
  *
- * They replaced perf/report.py, gc-summary.py and hprof-histogram.py, and their output is what those printed. Numbers are
- * written with a point whatever the language of the machine.
+ * Numbers are written with a point whatever the language of the machine.
  */
 object Report : Tool(
     "Report",
@@ -65,10 +63,7 @@ object Report : Tool(
     /** [format] with numbers written with a point. */
     fun f(format: String, vararg values: Any?): String = String.format(Locale.ROOT, format, *values)
 
-    /**
-     * A number with [decimals] places, rounded as Python did when these reports were written: the exact value of the double,
-     * and a tie to the even digit. `%.1f` rounds a tie up, which moved a figure in a published table by one.
-     */
+    /** A number with [decimals] places: the exact value of the double, with a tie going to the even digit (`%.1f` rounds a tie up). */
     fun d(value: Double, decimals: Int): String = BigDecimal(value).setScale(decimals, RoundingMode.HALF_EVEN).toPlainString()
 
     // ---- summary ------------------------------------------------------------------------------------------------------

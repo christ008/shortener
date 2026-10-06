@@ -1,14 +1,11 @@
 /**
- * One command for each script of the repository, so that `./gradlew tasks --group tooling` is the list and nobody has to
- * remember a path. Each task only starts the script, which stays the thing that does the work and can still be run by hand
- * (docs/adr/0026-scripting-standard.md). Settings are Gradle properties: `./gradlew keygen -Pclient=my-client`.
+ * One task for each script a person runs: `./gradlew tasks --group tooling` lists them. A task only starts the script, which can
+ * still be run by hand (docs/adr/0026-scripting-standard.md). Settings are Gradle properties: `./gradlew keygen -Pclient=my-client`.
  *
- * - The tasks run with the JDK 25 of the project's toolchain, whichever `java` is first on the PATH. The tools of `tools/` are
- *   Kotlin that `tools/run` builds in a build of its own (docs/adr/0029-tools-in-kotlin.md), and need only a JDK 17 or newer.
- *   `DpopClient.java`, which people outside the project run, is written for 17 and runs here on 25 as well.
+ * - Tasks run with the project's JDK 25 toolchain. The tools of `tools/` need only a JDK 17 or newer, and `DpopClient.java` is
+ *   written for 17.
  * - A task that needs a setting says which one when it is missing.
- * - `dev-setup` asks questions when it can, and Gradle has no terminal for it, so `devSetup` takes the defaults. Run the script
- *   itself to be asked.
+ * - `devSetup` takes the defaults, because Gradle has no terminal. Run `deploy/keycloak/dev-setup` to be asked.
  */
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.Exec

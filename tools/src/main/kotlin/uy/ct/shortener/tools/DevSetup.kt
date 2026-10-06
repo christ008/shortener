@@ -6,7 +6,7 @@ import java.nio.file.Path
 import java.security.SecureRandom
 
 /**
- * Makes the cryptographic material and the passwords a local development setup needs, so none of it is committed.
+ * Makes the keys, realm and passwords of a local development setup.
  *
  *     deploy/keycloak/dev-setup              asks for each setting, offering a random value
  *     deploy/keycloak/dev-setup --yes        takes every default, and asks nothing (for CI and scripts)
@@ -20,9 +20,9 @@ import java.security.SecureRandom
  * - `deploy/keycloak/shortener-realm.json`: the dev realm, made from `shortener-realm.template.json` with their public keys.
  * - `.env`: the passwords `compose.yaml` reads, merged into what is already there.
  *
- * Each setting can also be given in the environment, which is how a script answers: DEV_KEYS_DIR, DEV_KEYCLOAK_ADMIN_USER,
- * DEV_KEYCLOAK_ADMIN_PASSWORD, DEV_POSTGRES_PASSWORD, DEV_APP_PASSWORD, DEV_MIGRATOR_PASSWORD, DEV_EXPORTER_PASSWORD,
- * DEV_USER_ALICE_PASSWORD and DEV_USER_BOB_PASSWORD. It asks when there is a terminal, and takes the defaults anywhere else.
+ * Each setting can also be given in the environment: DEV_KEYS_DIR, DEV_KEYCLOAK_ADMIN_USER, DEV_KEYCLOAK_ADMIN_PASSWORD,
+ * DEV_POSTGRES_PASSWORD, DEV_APP_PASSWORD, DEV_MIGRATOR_PASSWORD, DEV_EXPORTER_PASSWORD, DEV_USER_ALICE_PASSWORD and
+ * DEV_USER_BOB_PASSWORD. It asks when there is a terminal and takes the defaults anywhere else.
  */
 object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--force] [--show]", label = "dev-setup") {
 
@@ -149,12 +149,12 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
         context.out.println("  Making the keys (P-256, ES256)")
         Files.createDirectories(context.root.resolve(keysDirectory))
         val publicKeys = linkedMapOf<String, String>()
-        // The four keys do not depend on each other, and a process each costs about 0.8 s, so they are made together.
+        // The four keys are made in parallel.
         val pending = CLIENTS.map { it to startKeygen(it, context) }
         for ((client, process) in pending) {
             val pair = finishKeygen(client, process)
             val file = keysDirectory.resolve("$client.jwk.json")
-            // The load test reads the keys from a container that runs as another user, and these are throwaway keys.
+            // World-readable: the load test reads the keys from a container that runs as another user.
             context.writeAtomically(context.root.resolve(file), pair.privateKey + "\n", "rw-r--r--")
             publicKeys[client] = RealmTemplate.publicKey(pair.publicKey, "$client's public key")
             context.out.println("    $file")
@@ -183,14 +183,10 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
         )
     }
 
-    /** A new client key as the DPoP client makes it, the one place that knows how: line 1 the private JWK, line 2 the public. */
+    /** A client key as `DpopClient keygen` prints it: line 1 the private JWK, line 2 the public. */
     private class ClientKey(val privateKey: String, val publicKey: String)
 
-    /**
-     * Asks the client to make a key, in a process of its own, as it is when a person runs it: the client prints the key and
-     * knows nothing of this. The process starts from the classes this one runs with, which include the client, so nothing is
-     * compiled for it.
-     */
+    /** Starts `DpopClient keygen` in its own process, from the classpath this one runs with. */
     private fun startKeygen(client: String, context: Context): Process {
         val java = ProcessHandle.current().info().command().orElse("java")
         return ProcessBuilder(java, "-cp", System.getProperty("java.class.path"), "DpopClient", "keygen", client)
@@ -210,7 +206,7 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
         return ClientKey(lines[0], lines[1])
     }
 
-    /** The settings of `.env` in the order they are in the file, other lines of the file being ones it does not keep. */
+    /** The settings of `.env`, in file order. Other lines of the file are not kept. */
     private fun readEnv(context: Context): LinkedHashMap<String, String> {
         val env = LinkedHashMap<String, String>()
         val file = context.path(ENV_FILE)

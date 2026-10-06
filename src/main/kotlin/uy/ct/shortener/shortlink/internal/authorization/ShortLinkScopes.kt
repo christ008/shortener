@@ -7,21 +7,17 @@ import org.springframework.boot.context.properties.bind.DefaultValue
 import org.springframework.validation.annotation.Validated
 
 /**
- * The OAuth scope that grants each operation on short links, bound from `shortener.shortlink.scopes.*`
- * so the names are configuration, not code.
+ * The OAuth scope that grants each operation on short links, bound from `shortener.shortlink.scopes.*`.
  *
- * - Immutable: bound through the constructor, so the rules cannot change after the application starts. The defaults
- *   are `@DefaultValue`s, because Kotlin default arguments would add a no-argument constructor that Spring rejects.
- * - Available as the bean `scopes`, which the method-security expressions refer to (`@scopes.read`), through
- *   [ShortLinkScopesConfiguration].
+ * - Immutable, bound through the constructor. The defaults are `@DefaultValue`s.
+ * - Available as the bean `scopes` (`@scopes.read` in method-security expressions) through [ShortLinkScopesConfiguration].
  * - Tokens carry the scopes as plain authorities, with no prefix.
- * - A blank name would make an operation unreachable or open to the wrong tokens, so the
- *   application refuses to start with one.
+ * - A blank name stops the application from starting.
  *
  * The scopes:
  * - [create]: make a link with a generated code. [claim] is needed as well to choose the code.
  * - [read] and [delete]: read and disable the client's own links.
- * - [admin]: read and disable any client's links, for abuse takedowns.
+ * - [admin]: read and disable any client's links.
  */
 @Validated
 @ConfigurationProperties("shortener.shortlink.scopes")

@@ -6,9 +6,8 @@ import java.net.URI
 /**
  * Which targets this service will shorten, beyond being an absolute http(s) URL.
  *
- * - [AnyTarget] accepts every host. It stands in when no allowlist is configured, so callers have no
- *   "is there a policy" case to handle.
- * - [AllowedHosts] accepts only the configured hosts, which is how a public demo avoids becoming an open redirector.
+ * - [AnyTarget] accepts every host. Used when no allowlist is configured.
+ * - [AllowedHosts] accepts only the configured hosts.
  */
 fun interface TargetUrlPolicy {
 

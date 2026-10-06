@@ -7,10 +7,7 @@ import org.springframework.stereotype.Component
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkNotFoundException
 
-/**
- * Turns a denied lookup of a link into [ShortLinkNotFoundException], so a client cannot tell another
- * client's link from a missing one. The link's code is the first argument of the denied call.
- */
+/** Turns a denied lookup of a link into [ShortLinkNotFoundException]. The link's code is the first argument of the denied call. */
 @Component
 class NotFoundWhenDenied : MethodAuthorizationDeniedHandler {
 

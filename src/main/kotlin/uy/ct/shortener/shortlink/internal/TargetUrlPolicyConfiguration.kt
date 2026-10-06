@@ -10,10 +10,8 @@ import org.springframework.core.env.Profiles
 /**
  * Provides the [TargetUrlPolicy] that [TargetUrlProperties] describe.
  *
- * - Under the `production` profile the settings must say which hosts are accepted, or say [TargetUrlProperties.allowAny],
- *   or the application does not start.
- * - The profile is read when the bean is created, at run time. A native image fixes its beans when it is built, and that
- *   build runs under `production`, so a condition would be fixed there for every deployment.
+ * - Under the `production` profile the settings must list hosts or set [TargetUrlProperties.allowAny], or the application does not start.
+ * - The profile is read when the bean is created, not through a condition (native image: docs/INTERNALS.md).
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(TargetUrlProperties::class)

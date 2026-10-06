@@ -8,10 +8,8 @@ import java.time.Duration
 /**
  * In-memory token-bucket rate limiter keyed by a string, such as a client IP or an OAuth client id.
  *
- * - Buckets live in a size-bounded Caffeine cache and expire once idle for a full refill period, so
- *   a flood of distinct keys cannot exhaust memory.
- * - State is per process: with several replicas the effective limit is the limit times the replicas.
- * - [CaffeineRuntimeHints] says what Caffeine needs in a native image.
+ * - Buckets are held in a size-bounded Caffeine cache and expire once idle for a full refill period.
+ * - State is per process.
  */
 class RateLimiter(private val limit: SecurityProperties.Limit, maxKeys: Long = 100_000) {
 
