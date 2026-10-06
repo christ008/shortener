@@ -61,7 +61,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'  # all the tools of tools/ need, which dev-setup builds with Gradle and runs. The application needs 25, and this job does not build it
+          java-version: '17'  # the tools of tools/ need only 17, and dev-setup builds them with Gradle. The application needs 25, and this job does not build it
       - uses: gradle/actions/setup-gradle@v6
       - name: Check the compose files
         run: |

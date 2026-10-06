@@ -88,7 +88,7 @@ kover {
     reports {
         filters {
             excludes {
-                // What the framework generates for ahead-of-time and native builds is not code of the project.
+                // The classes that ahead-of-time and native builds generate, and `main`, which no test starts: not what the tests are about.
                 classes("*__*", "*\$\$*", "uy.ct.shortener.ShortenerApplicationKt")
             }
         }
