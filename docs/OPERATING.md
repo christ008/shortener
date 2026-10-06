@@ -179,11 +179,11 @@ When it is deployed, with the commands of [DEPLOY.md](DEPLOY.md):
 | scale | `docker service scale shortener_shortener=3`, mindful that limits and the DPoP replay cache are per task |
 | take a link down | `DELETE /api/short-links/<code>` as an administrator. Other instances stop serving it within the cache TTL (30 s) |
 | add a client | create it in the identity provider with the scopes it needs and the `owner` claim mapper, then give it a key |
-| restrict where links may point | set `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` and deploy |
+| restrict where links may point | set `ALLOWED_TARGET_HOSTS` in `.env` and deploy. The stack does not start with neither it nor `ALLOW_ANY_TARGET=true` |
 | look at the database | `perf/pg-diagnostics.sql`, see DEPLOY.md |
 | rotate a secret | a new secret under a new name, then deploy; Swarm secrets cannot change |
 
-What to watch is the five alerts in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). The two that mean "the database is in
+What to watch is the nine alerts in [OBSERVABILITY.md](OBSERVABILITY.md#alerts). The two that mean "the database is in
 trouble" are `ShortenerStorageUnavailable` and `ShortenerServingStaleRedirects`. The service keeps redirecting links it
 has read, for five minutes, while the database is down, and answers `503` with `Retry-After` for the rest.
 

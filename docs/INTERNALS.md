@@ -288,6 +288,9 @@ Rejected:
 
 ## Security
 
+The threats this section answers, checked against STRIDE and the OWASP Top 10, and what is still open, are in
+[THREAT_MODEL.md](THREAT_MODEL.md).
+
 ### Filter chain
 
 Stateless and deny by default, in this order: IP rate limit, authentication, client rate limit, authorization.
@@ -521,7 +524,7 @@ flowchart LR
 | Writable memory | long `volumes:` syntax with a size | applied. The short `tmpfs:` key is silently dropped |
 | Resources | memory and CPU limits, rotated logs | applied |
 | Secrets | Docker secrets, read as files by Spring's `configtree:` | applied: in memory at `/run/secrets` |
-| Network | `data` has no route out, and encrypts across nodes on Swarm | applied |
+| Network | `data` has no route out. `edge` and `data` encrypt across nodes on Swarm (IPsec overlay) | applied, one node only verified |
 | Exposure | only the edge publishes, in host mode so it sees client addresses | applied |
 | Health | Tiny Health Checker on the readiness probe; Swarm replaces unhealthy tasks | applied |
 
@@ -734,6 +737,8 @@ it, which puts the rule in one place and lets the type change without its caller
 | Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept. The ArchUnit test keeps JDBC and security types out of the contract and accepts Spring Data's paging types. Own paging types would be a copy of them |
 
 ## Decisions
+
+Each has a record with its problem, cost and alternatives in [adr/](adr/README.md). The list below is the summary.
 
 - **Plain JDBC, not JPA.** Two statements dominate and need SQL features JPA hides. Only the persistence adapter knows SQL.
 - **Spring facilities over bespoke code.** Method security with a `PermissionEvaluator`, `Pageable` and `Page`, Spring
