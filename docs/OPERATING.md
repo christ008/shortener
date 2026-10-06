@@ -15,10 +15,10 @@ How to run the service on your machine, try it, test it, and look after it when 
 
 | For | You need |
 |---|---|
-| Running and testing | Docker, and JDK 25 (Gradle finds one, or use SDKMAN) |
+| Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN), and `openssl` and `curl` for the tools |
 | Building the native image | about 7 GB of free memory, and 3 minutes |
 | The load test | Docker (k6 runs in a container), a few spare cores, and the warning under [Test it](#test-it) |
-| Trying the production stack | `openssl` and `keytool`, both of which come with a JDK and most systems |
+| Trying the production stack | `openssl` and `curl`, which most systems have |
 
 ## Three ways to run it
 
@@ -28,7 +28,7 @@ How to run the service on your machine, try it, test it, and look after it when 
 | The native image | `./gradlew bootBuildImage`, then `docker run` | checking what production runs |
 | The production stack | `deploy/stack/local/prepare.sh`, then deploy | rehearsing TLS, the edge, the migration job and rolling updates |
 
-**The JVM.** `bootRun` starts Postgres and Keycloak from `compose.yaml` and applies the migrations. The app listens on
+**The JVM.** Run `deploy/keycloak/dev-setup` once (see below), then `bootRun`. It starts Postgres and Keycloak from `compose.yaml` and applies the migrations. The app listens on
 `localhost:8080`, health and metrics on `localhost:8081`, Keycloak on `localhost:8180`. The `dev` profile samples every
 trace, shows health details and relaxes the rate limits.
 
@@ -40,7 +40,7 @@ docker compose up -d postgres keycloak
 port=$(docker compose port postgres 5432 | cut -d: -f2)
 docker run --rm --network host --memory 512m \
   -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:$port/mydatabase \
-  -e SPRING_DATASOURCE_USERNAME=myuser -e SPRING_DATASOURCE_PASSWORD=secret \
+  -e SPRING_DATASOURCE_USERNAME=myuser -e "SPRING_DATASOURCE_PASSWORD=$(deploy/keycloak/dev-setup --show | sed -n 's/^postgres *myuser \/ //p')" \
   shortener:$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
 ```
 
@@ -54,15 +54,49 @@ Stop everything with `docker compose down`. Add `-v` to forget the database.
 
 ## Try the API
 
+**First, once: `deploy/keycloak/dev-setup`.** It makes your own throwaway keys and passwords, because none are committed.
+It shows a banner and asks, offering a random value for each:
+
+| It asks for | Used by |
+|---|---|
+| where the client keys go (default `deploy/keycloak/dev-keys`) | the client below, `perf/smoke.sh`, the load test |
+| the Keycloak console user and password | the Keycloak at <http://localhost:8180> |
+| the passwords of the web users `alice` and `bob` | `dpop login`, and the web UI when it exists |
+| the Postgres password, and those of the roles `shortener_app`, `shortener_migrator` and `shortener_exporter` | `compose.yaml` |
+
+It writes a private key for each of the four dev clients, the dev realm that trusts them
+(`deploy/keycloak/shortener-realm.json`, made from `shortener-realm.template.json`), and the passwords to `.env`. All of it
+is ignored by Git. `--yes` takes every default without asking, for scripts and CI. `--force` replaces an existing setup,
+and `--show` prints the passwords again. Postgres and Keycloak keep the passwords they first started with, so after a
+new setup remove their data with `docker compose down -v`.
+
 Clients sign in with a signed assertion and get tokens bound to a key (DPoP), so `curl` alone cannot call the API. The
-JDK-only client in `deploy/keycloak` does it:
+client in `deploy/keycloak` does it:
 
 ```bash
-java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+deploy/keycloak/dpop call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 
-The response carries the short URL in `Location`. Following it needs no token: `curl -i http://localhost:8080/<code>`.
+**Where the client runs.** On the machine of whoever calls the API: a laptop, a CI runner, an operator's host, or a
+visitor's computer. It is a client, not a part of the service, so it is never deployed in the stack. It only needs to
+reach two URLs over HTTP or HTTPS: the identity provider's token endpoint (`TOKEN_URL`, by default the local Keycloak) and
+the API. Against another instance, set `TOKEN_URL` (and `ISSUER` if it differs).
+
+**What it needs.** `openssl` (1.1.1, or LibreSSL 3) and `curl`, with the `awk`, `sed`, `tr`, `od`, `head` and `tail` of any
+POSIX system. No JDK. It signs with `openssl`, builds the keys and the ES256 signatures itself, and speaks to the identity
+provider with `curl`, so it is a short script you can read: `deploy/keycloak/dpop`.
+
+| To | Do |
+|---|---|
+| trust a certificate of your own | `CURL_OPTS="--cacert cert.pem" deploy/keycloak/dpop ...` |
+| call another instance | `TOKEN_URL=https://auth.example.com/realms/x/protocol/openid-connect/token deploy/keycloak/dpop ...` |
+| force a sampled trace | `TRACEPARENT=00-<trace id>-<span id>-01 deploy/keycloak/dpop ...` |
+| make a key for a new client | `deploy/keycloak/dpop keygen my-client`: the first line is the private JWK, the second the public one |
+
+`DpopClientTest` runs the script against a stand-in server and checks what it sent with a different implementation, so
+the signatures are known to verify, with keys made by Nimbus and by the script itself, over many runs, and for signatures
+whose integers are shorter or longer than 32 bytes. `perf/smoke.sh` runs it against the real Keycloak.
 
 | Dev client | Scopes | What it is for |
 |---|---|---|
@@ -76,7 +110,7 @@ The response carries the short URL in `Location`. Following it needs no token: `
 | `call KEY CLIENT METHOD URL [BODY]` | gets a token and makes one request |
 | `token KEY CLIENT` | prints a token and the key it is bound to |
 | `keygen CLIENT` | makes a key pair for a new client |
-| `login USER PASSWORD METHOD URL [BODY]` | signs a person in the way a browser app would (`alice` / `alice`, `bob` / `bob`) |
+| `login USER PASSWORD METHOD URL [BODY]` | signs a person in the way a browser app would (`alice` or `bob`, with the password `dev-setup` made) |
 
 Useful requests, with the client shown after the key file:
 
@@ -88,7 +122,7 @@ Useful requests, with the client shown after the key file:
 | disable one | `DELETE /api/short-links/<code>` |
 | see every client's | `GET /api/short-links` as `admin-client`, or `?createdBy=<client>` |
 
-`docs/openapi.yaml` is the full contract. The dev keys are public and the dev realm must never be used anywhere real.
+`docs/openapi.yaml` is the full contract. The dev keys and passwords are yours alone, and the dev realm must never be used anywhere real.
 
 ## Test it
 

@@ -99,19 +99,18 @@ Everything, including a Keycloak with the dev realm and a self-signed certificat
 
 ```bash
 ./gradlew bootBuildImage                       # or use a published image
-deploy/stack/local/prepare.sh                  # throwaway secrets, a certificate for localhost, and .env
+deploy/stack/local/prepare.sh                  # throwaway secrets and a certificate for localhost; runs deploy/keycloak/dev-setup too
 docker swarm init --advertise-addr 127.0.0.1 --listen-addr 127.0.0.1:2377
 docker node update --label-add shortener.postgres=true "$(docker node ls -q)"
 COMPOSE_FILES="compose.prod.yaml deploy/stack/local/compose.local.yaml" RESOLVE_IMAGE=never deploy/stack/deploy.sh 0.20.0
 ```
 
-The `--listen-addr` keeps the Swarm manager off the network. Smoke test it, trusting the certificate for both Java and
-curl:
+The `--listen-addr` keeps the Swarm manager off the network. `prepare.sh` runs `deploy/keycloak/dev-setup --yes` if it has
+not been run, because the rehearsal's Keycloak needs the dev realm and its password. Smoke test it, telling `curl` and the
+DPoP client to trust the certificate:
 
 ```bash
-keytool -importcert -noprompt -alias local -file secrets/tls_cert -keystore ts.p12 -storetype PKCS12 -storepass changeit
-JAVA_TOOL_OPTIONS="-Djavax.net.ssl.trustStore=$PWD/ts.p12 -Djavax.net.ssl.trustStorePassword=changeit" \
-  CURL_OPTS="--cacert secrets/tls_cert" MGMT=http://localhost:8081 perf/smoke.sh https://localhost
+CURL_OPTS="--cacert secrets/tls_cert" MGMT=http://localhost:8081 perf/smoke.sh https://localhost
 ```
 
 Remove it with `docker stack rm shortener`, then `docker swarm leave --force`.

@@ -21,18 +21,24 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 
 ## Run it locally
 
-You need Docker and JDK 25.
+You need Docker and JDK 25, and `openssl` and `curl` for the tools below.
 
 ```bash
+deploy/keycloak/dev-setup     # once: makes your own dev keys and passwords, and asks what it needs
 ./gradlew bootRun
 ```
 
-`bootRun` runs the `dev` profile, starts Postgres and Keycloak from `compose.yaml` and applies the Flyway migrations.
-Clients authenticate with a signed assertion and get tokens bound to their key, so use the JDK-only client in
-`deploy/keycloak`:
+`dev-setup` shows a banner, then asks for the few things a development setup needs (the Keycloak console password, the
+passwords of the two web users and of Postgres), offering a random value for each. It writes a private key for each dev
+client, the dev realm that trusts them, and the passwords to `.env`. Git ignores all of it, so nothing secret is in the
+repository, and every developer has different keys.
+
+`bootRun` runs the `dev` profile, starts Postgres and Keycloak from `compose.yaml` with those passwords, and applies the
+Flyway migrations. Clients authenticate with a signed assertion and get tokens bound to their key, so use the client in
+`deploy/keycloak`. It is a shell script that needs only `openssl` and `curl`, and runs on your machine, not in the stack:
 
 ```bash
-java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+deploy/keycloak/dpop call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 
@@ -48,7 +54,7 @@ Optional observability: `docker compose --profile observability up -d` starts Pr
 <http://localhost:3000/d/shortener/shortener>. The `dev` profile samples every trace. What you will see is in
 [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md), with screenshots.
 
-The dev clients, keys and secrets in this repository are public on purpose. Never use them anywhere real.
+The dev keys and passwords are throwaway and belong to your machine. Never use them anywhere real.
 
 ## API
 
@@ -140,7 +146,7 @@ mindmap
       compose.prod.observability.yaml
         adds Prometheus and the alert rules
       deploy/
-        edge and stack scripts, Postgres setup, Keycloak realm and dev keys, alert rules, Grafana, Tempo
+        edge and stack scripts, Postgres setup, Keycloak realm template and dev tools, alert rules, Grafana, Tempo
       .github/workflows/
         CI on every push, a release on v* tags, a manual native image build
     docs/

@@ -15,8 +15,8 @@ production stack itself is rehearsed on one machine ([DEPLOY.md](DEPLOY.md)); th
 
 ## Goal
 
-Someone with a terminal and Java can follow the README against a real URL: get a token, create a link, follow it, see
-that another client cannot see it. No account of theirs, nothing to install but the JDK.
+Someone with a terminal can follow the README against a real URL: get a token, create a link, follow it, see
+that another client cannot see it. No account of theirs, nothing to install but `openssl` and `curl`.
 
 ## The shape
 
@@ -58,9 +58,9 @@ flowchart LR
 1. **A Keycloak service for the stack**, in production mode, with its own database, hostname set to the public issuer,
    behind the edge. The stack today expects an external identity provider.
 2. **An edge route for `/realms`** in `deploy/edge/nginx.conf`, and the request limits that suit it.
-3. **A demo realm.** The dev realm must not be used: it contains `admin-client` and keys published in the repository, so
-   anyone could administer the instance. The demo realm has one client that can create, read and disable its own
-   links, and no administrator the public can become.
+3. **A demo realm.** The dev realm must not be used: it has an `admin-client`, its clients and web users take their
+   keys and passwords from a developer's `.env`, and it does not require TLS. A demo realm has one client that can create,
+   read and disable its own links, and no administrator the public can become.
 4. **Certificate issuance and renewal**, with a reload of the edge.
 5. **A bootstrap script** that, on a fresh VM, installs Docker, makes the secrets, deploys, and installs the nightly dump.
 6. **Backups and a restore test.** The stack has none.
