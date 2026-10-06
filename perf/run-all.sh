@@ -16,4 +16,4 @@ perf/bench.sh native shortener:$VERSION "$OUT/native"
 perf/bench.sh native-young30 shortener:$VERSION "$OUT/native-young30" -XX:MaximumYoungGenerationSizePercent=30
 
 printf '\n\033[1m== comparison (%s)\033[0m\n\n' "$OUT"
-python3 perf/report.py "$OUT"
+tools/run Report summary "$OUT"

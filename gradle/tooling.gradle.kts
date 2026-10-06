@@ -71,3 +71,8 @@ tooling(
 tooling("stackPrepare", "Makes throwaway secrets and a certificate to rehearse the production stack on this machine.") {
     listOf("deploy/stack/local/prepare.sh")
 }
+
+tooling("report", "Reads results. -Preport=summary|gc|hprof|profile|json -Ptarget=DIRECTORY_OR_FILE, and -Ptop=N for hprof") {
+    listOf(java, "tools/Report.java", setting("report"), setting("target")) + listOfNotNull(optional("top"))
+}
+

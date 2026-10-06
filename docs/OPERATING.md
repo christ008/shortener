@@ -224,7 +224,7 @@ client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr
 | `tools/Realms.java`, `tools/RealmTemplate.java`, `tools/Cli.java` | make a realm from a template and public keys, the part of that which `dev-setup` shares, and what every tool shares | Java 25 | done |
 | `tools/Smoke.java`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Java 25 | done: 2.4 s against 16 s |
 | `tools/run` | find a JDK 25 and start a tool of `tools/` | sh | done |
-| `perf/gc-summary.py`, `hprof-histogram.py`, `report.py` | read GC logs, heap dumps and k6 results | Python | to `perf/Report.java` |
+| `tools/Report.java` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Java 25 | done: the Python scripts are gone, and its output is theirs on every committed result |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | bash | to POSIX sh |
 | `perf/k6/mixed.js` | the load workload | k6 | stays: it is k6's own language |
 | `gradlew` | the Gradle wrapper | generated | not ours |
@@ -239,6 +239,7 @@ Each script a person runs has a Gradle task, listed by `./gradlew tasks --group 
 | `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL`, `-Pmethod`, `-Pbody` |
 | `smoke` | `tools/Smoke.java` | `-PbaseUrl=URL`, `-Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
+| `report` | `tools/Report.java` | `-Preport=summary\|gc\|hprof\|profile\|json`, `-Ptarget=PATH`, `-Ptop=N` |
 
 The tools run on the toolchain's JDK 25 even when `java` on the PATH is older. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself
 to be asked. The scripts that run inside the stack, and `deploy.sh`, which runs on a manager, have no task.

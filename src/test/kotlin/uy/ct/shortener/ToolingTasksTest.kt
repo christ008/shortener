@@ -26,7 +26,7 @@ class ToolingTasksTest {
     fun `every task names itself in the tooling group, with a description`() {
         val tasks = Regex("""(?m)^tooling\(\s*"(\w+)",\s*"([^"]+)"""").findAll(tooling).toList()
 
-        assertThat(tasks.map { it.groupValues[1] }).containsExactly("devSetup", "devPasswords", "keygen", "productionRealm", "dpopCall", "smoke", "stackPrepare")
+        assertThat(tasks.map { it.groupValues[1] }).containsExactly("devSetup", "devPasswords", "keygen", "productionRealm", "dpopCall", "smoke", "stackPrepare", "report")
         tasks.forEach { assertThat(it.groupValues[2]).isNotBlank }
     }
 

@@ -678,8 +678,8 @@ Two changes closed it:
   It trades about 1% failed requests for flat memory and latency. Creates still queue for seconds at that load, so a
   limit is protection, not capacity.
 
-Not yet tested: turning off Spring Security observations. Tooling: `perf/profile.sh`, `perf/gc-summary.py`,
-`perf/hprof-histogram.py`, `perf/tune-connections.sh`.
+Not yet tested: turning off Spring Security observations. Tooling: `perf/profile.sh`, `tools/Report.java` (`gc` and `hprof`),
+`perf/tune-connections.sh`.
 
 ### Running load tests safely
 

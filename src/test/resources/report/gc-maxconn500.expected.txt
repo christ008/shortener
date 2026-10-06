@@ -1,0 +1,4 @@
+1807 collections in 114s: 1749 incremental (15.4/s), 58 full (0.51/s)
+total pause 4.5s = 3.9% of time; max pause 60ms
+incremental: live after GC first quarter avg 28.7MB, last quarter avg 56.8MB, max 106.1MB; avg pause 1.7ms
+full: live after GC first quarter avg 25.3MB, last quarter avg 51.2MB, max 81.6MB; avg pause 26.3ms

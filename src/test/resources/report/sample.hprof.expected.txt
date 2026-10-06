@@ -1,0 +1,21 @@
+21 objects, 0 MB shallow
+     MB      count  class
+    0.1          6  byte[]
+    0.0          2  char[]
+    0.0          5  java.lang.VirtualThread
+    0.0          3  org.apache.catalina.connector.Request
+    0.0          3  com.example.Foo
+    0.0          1  int[]
+    0.0          1  long[]
+-- byte[] by size class (upper bound of bytes): count, total MB
+   <=  131,072 B:        1      0.1 MB
+   <=    8,192 B:        2      0.0 MB
+   <=      128 B:        1      0.0 MB
+   <=        1 B:        1      0.0 MB
+   <=        0 B:        1      0.0 MB
+-- char[] by size class (upper bound of bytes): count, total MB
+   <=    1,024 B:        1      0.0 MB
+   <=       64 B:        1      0.0 MB
+-- selected classes: count, shallow MB
+          5     0.0  java.lang.VirtualThread
+          3     0.0  org.apache.catalina.connector.Request
