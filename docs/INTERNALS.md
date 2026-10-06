@@ -42,7 +42,8 @@ flowchart LR
 
 ArchUnit tests enforce what Modulith does not check inside a module:
 
-- The public API depends on no JDBC type and no security type.
+- The public API depends on no JDBC type and no security type. It does use Spring Data's `Page` and `Pageable`, on purpose
+  (see [Design review](#design-review)).
 - The web adapter talks only to the service interface.
 - Nothing depends on the web or persistence adapters.
 - JDBC types never leave `persistence`.
@@ -736,7 +737,7 @@ it, which puts the rule in one place and lets the type change without its caller
 | Open/closed | which targets are accepted was going to be an `if` in the service | `TargetUrlPolicy`: `AnyTarget` and `AllowedHosts`. A new rule is a new implementation |
 | Liskov | the two null objects, `NoRedirectCache` and `AnyTarget`, must honor their contracts | each has tests for its contract |
 | Interface segregation | the repository has four operations, each used by the service or `ManageableLinks` | nothing to split |
-| Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept. The ArchUnit test keeps JDBC and security types out of the contract and accepts Spring Data's paging types. Own paging types would be a copy of them |
+| Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept, and looked at again in the polish pass. The ArchUnit tests keep JDBC and security types out of the contract and accept Spring Data's paging types. Own paging types would be a copy of them, and the web adapter would have to parse `page`, `size` and `sort` itself, which `Pageable`'s resolver does today with the defaults and the cap of `spring.data.web.pageable.*`. The cost is that the contract is tied to `spring-data-commons`, a library with no persistence in it: a different paging library would change the contract, not only an adapter |
 
 ## Decisions
 
