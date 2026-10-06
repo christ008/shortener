@@ -210,7 +210,7 @@ has read, for five minutes, while the database is down, and answers `503` with `
 Every script is one of two kinds, decided in [ADR 0026](adr/0026-scripting-standard.md): **sh** starts programs in order and
 is POSIX `sh` checked with `shellcheck --shell=sh`, and **Java** computes (parses, templates, signs, checks, reports) and is one
 source file run with `java File.java`: the tools of `tools/` on JDK 25, as compact source files that share `tools/Cli.java`, and the
-client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr/0027-tools-on-jdk-25.md)). Nothing else is added. Python and bash are on their way out.
+client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr/0027-tools-on-jdk-25.md)). Nothing else is added. Python and bash are gone.
 
 | Script | Is for | Kind | Status |
 |---|---|---|---|
@@ -225,7 +225,7 @@ client that strangers run, `DpopClient.java`, on JDK 17 or newer ([ADR 0027](adr
 | `tools/Smoke.java`, started by `perf/smoke.sh` | check every endpoint on a running instance, in one process | Java 25 | done: 2.4 s against 16 s |
 | `tools/run` | find a JDK 25 and start a tool of `tools/` | sh | done |
 | `tools/Report.java` | read GC logs, heap dumps and bench results, and ask Prometheus what a run did | Java 25 | done: the Python scripts are gone, and its output is theirs on every committed result |
-| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | bash | to POSIX sh |
+| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test and profile | sh | done: run end to end with short runs |
 | `perf/k6/mixed.js` | the load workload | k6 | stays: it is k6's own language |
 | `gradlew` | the Gradle wrapper | generated | not ours |
 
@@ -244,5 +244,5 @@ Each script a person runs has a Gradle task, listed by `./gradlew tasks --group 
 The tools run on the toolchain's JDK 25 even when `java` on the PATH is older. `dev-setup` asks its questions when it has a terminal, and Gradle has none, so `devSetup` takes the defaults: run the script itself
 to be asked. The scripts that run inside the stack, and `deploy.sh`, which runs on a manager, have no task.
 
-CI lints the `deploy` scripts as `sh`, and the `perf` scripts as `bash` until they are rewritten.
+CI lints every script as `sh`, with no severity filter.
 
