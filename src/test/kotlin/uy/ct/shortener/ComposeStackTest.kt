@@ -135,6 +135,14 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `both networks are encrypted between nodes, since the edge carries tokens and the data network carries rows`() {
+        val networks = files.first().map("networks")
+        listOf("edge", "data").forEach { name ->
+            assertThat(networks.map(name).map("driver_opts")["encrypted"]).describedAs("$name network encrypted").isEqualTo("true")
+        }
+    }
+
+    @Test
     fun `the services the stack depends on have a health check, and the application's is the readiness probe`() {
         listOf("edge", "shortener", "postgres").forEach { name ->
             assertThat(services.getValue(name).map("healthcheck")["test"]).describedAs("$name health check").isNotNull

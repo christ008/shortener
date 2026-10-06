@@ -24,7 +24,8 @@ what it gives up, is in [INTERNALS.md](INTERNALS.md#deployment).
 ## First deploy
 
 1. Settings. Copy `deploy/stack/.env.example` to `.env` and fill it in: the image version, the issuer and the key
-   endpoint of the identity provider.
+   endpoint of the identity provider, and which hosts links may point to (`ALLOWED_TARGET_HOSTS`, or `ALLOW_ANY_TARGET=true`
+   for a private instance). The application does not start without one of the two.
 2. Secrets. Make a directory for them, readable only by you (`secrets/`, which Git ignores), with these files, each
    `chmod 0444` because the containers run as other users and Swarm mounts a secret with the file's mode:
 

@@ -73,7 +73,7 @@ The order, once the parts above exist:
 2. Install Docker, `docker swarm init`, label the node (`shortener.postgres=true`).
 3. Obtain the certificate for the host name and place it, with the key, in the secrets directory.
 4. Make the secrets (database passwords, Keycloak admin) and the `.env`: image version, issuer, key endpoint, and
-   `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS`.
+   `ALLOWED_TARGET_HOSTS` (the stack does not start without it).
 5. `OBSERVABILITY=1 deploy/stack/deploy.sh <version>`, then check with `docker service ls`.
 6. Run `perf/smoke.sh` against the public URL with the demo client.
 7. Publish the demo client's key and the three commands from the README with the URL.
@@ -85,7 +85,7 @@ A URL shortener that anyone can create links in is a favorite of phishers: the l
 Before anyone is invited:
 
 - **Restrict targets.** Set `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` to a short list, for example `example.com` and
-  `*.example.org`. Anything else is refused with `400`. With no list the service redirects to anywhere.
+  `*.example.org`. Anything else is refused with `400`. With no list the production stack does not start, unless `ALLOW_ANY_TARGET=true` says on purpose that it redirects to anywhere: never on a public instance.
 - **Use a demo realm,** never the dev one.
 - **Keep the limits.** Per address (300 a minute) and per client (60 a minute) are the defaults. Do not raise them.
 - **Expect to take links down.** Keep an administrator client whose key only you hold, and know the call:
