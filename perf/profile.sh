@@ -4,6 +4,7 @@
 # Output goes to perf/results/profiles/NAME: app.log (with GC lines when -XX:+PrintGC is passed), k6 results, stats.txt and
 # anything the app writes to /out, such as a JFR recording or a heap dump. Analyse it with `tools/run Report gc` and
 # `tools/run Report hprof`.
+# The k6 summary is cleaned of the DPoP key and the token by perf/scrub-k6-summary.sh (needs jq).
 # Needs the compose Postgres and Keycloak. A native image built with -PnativeProfiling can record JFR and dump the heap:
 #   perf/profile.sh native-5000 shortener:0.14.0-profiling 5000 60s 0.003 3000 -XX:+PrintGC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/out/oom.hprof
 set -u
@@ -30,6 +31,7 @@ docker run --rm --network host --cpuset-cpus 6-9 -v "$ROOT/perf/k6:/scripts:ro" 
   -e RATE=2000 -e DURATION=20s -e CREATE_SHARE=0.005 -e SEEDS=300 -e MAX_VUS="$MAXVUS" grafana/k6 run --quiet /scripts/mixed.js >"$OUT/warmup.txt" 2>&1 </dev/null
 docker run --rm --network host --cpuset-cpus 6-9 -v "$ROOT/perf/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
   -e RATE="$RATE" -e DURATION="$DUR" -e CREATE_SHARE="$SHARE" -e SEEDS=300 -e MAX_VUS="$MAXVUS" grafana/k6 run --quiet --summary-export /out/k6.json /scripts/mixed.js >"$OUT/k6.txt" 2>&1 </dev/null
+"$ROOT/perf/scrub-k6-summary.sh" "$OUT/k6.json"
 kill $SAMPLER 2>/dev/null
 docker stop -t 40 prof-app >/dev/null 2>&1
 docker logs prof-app >"$OUT/app.log" 2>&1; docker rm -f prof-app >/dev/null

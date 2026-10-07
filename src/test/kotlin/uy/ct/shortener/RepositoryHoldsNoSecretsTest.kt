@@ -11,9 +11,8 @@ import java.nio.file.Path
  * and production secrets are never repository configuration. It asks Git, so what it checks is what a clone would carry.
  *
  * - The files that `dev-setup` and the stack write (`.env`, `secrets/`, client keys, the realms made from them) are ignored.
- * - No tracked file holds a private key: a PEM block, or a JWK with its private member `d`.
- * - `perf/results/` is out of the second check. The k6 summaries there keep the setup data of each run: a throwaway DPoP
- *   proof key and a token of the local development realm, long expired. Remove it from them and this exception goes.
+ * - No tracked file holds a private key: a PEM block, or a JWK with its private member `d`. That includes the k6 summaries
+ *   under `perf/results/`: `perf/scrub-k6-summary.sh` removes the DPoP proof key and the token that k6 copies into them.
  */
 class RepositoryHoldsNoSecretsTest {
 
@@ -55,7 +54,6 @@ class RepositoryHoldsNoSecretsTest {
     @Test
     fun `no tracked file holds a private key`() {
         val offenders = trackedFiles()
-            .filterNot { it.startsWith("perf/results/") }
             .map(Path::of)
             .filter(Files::isRegularFile)
             .filter { path -> runCatching { Files.readString(path) }.getOrNull()?.let { pemPrivateKey.containsMatchIn(it) || jwkPrivateMember.containsMatchIn(it) } == true }

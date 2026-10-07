@@ -4,7 +4,8 @@
 # DATASET_FILE=FILE [DATASET_HOT=H] [DATASET_HOT_SHARE=0.8] reads the codes of the file that perf/load-dataset.sh loaded, not seeds made through
 # the API: it keeps the table instead of truncating it. Every read goes to a code at random, or the share of them to the first H.
 # CPUs: the app 0-1 with the production memory limit, Postgres 2-5, k6 6-9. Needs Postgres, Keycloak and Prometheus (profile
-# observability) running: the compose services, or containers of your own with PGPORT and PG_CONTAINER set. Needs GNU date (`%N`).
+# observability) running: the compose services, or containers of your own with PGPORT and PG_CONTAINER set. Needs GNU date (`%N`) and jq.
+# A k6 summary never keeps the DPoP key or the token of the run (perf/scrub-k6-summary.sh).
 set -eu
 
 VARIANT=$1
@@ -22,6 +23,7 @@ PGPORT=${PGPORT:-$(docker compose -f "$ROOT/compose.yaml" port postgres 5432 | c
 PG_CONTAINER=${PG_CONTAINER:-$(docker compose -f "$ROOT/compose.yaml" ps -q postgres)}
 PROM=http://localhost:9090
 say() { printf '\n\033[1m[%s] %s\033[0m\n' "$(date +%T)" "$*"; }
+command -v jq >/dev/null 2>&1 || { echo "perf/bench.sh needs jq: it removes the DPoP key and the token from the k6 summaries" >&2; exit 1; }
 
 say "== $VARIANT: $IMAGE $*"
 docker update --cpuset-cpus 2-5 "$PG_CONTAINER" >/dev/null
@@ -62,6 +64,7 @@ k6() { # name rate duration share
     -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS="$SEEDS" -e MAX_VUS=3000 \
     ${DATASET_FILE:+-v "$DATASET_FILE:/dataset.txt:ro" -e DATASET_FILE=/dataset.txt} -e DATASET_HOT="${DATASET_HOT:-0}" -e DATASET_HOT_SHARE="${DATASET_HOT_SHARE:-0.8}" \
     grafana/k6 run --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" --summary-export "/out/$1.k6.json" /scripts/mixed.js </dev/null 2>&1 | tee "$OUT/$1.k6.txt" || true
+  "$HERE/scrub-k6-summary.sh" "$OUT/$1.k6.json"
 }
 
 sampler() { while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-app 2>/dev/null)"; done; }
