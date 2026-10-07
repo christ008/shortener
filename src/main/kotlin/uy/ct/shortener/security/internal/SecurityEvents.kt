@@ -12,6 +12,8 @@ import java.time.Duration
  * What the security filter chain reports about requests it turned away, as a log line and a counter.
  *
  * - One event per `401` ([unauthenticated]), `403` ([forbidden]) and `429` ([rateLimited]), on the logger [LOGGER_NAME].
+ * - A `401` that only asks for the current DPoP nonce is not an authentication failure: [nonceRequested] counts it as its own
+ *   type and logs it at info, so it does not raise the alert on failed authentications.
  * - A line has the type, the reason (the OAuth error code), the scheme, the method and path, the address and the client when
  *   there is one. It never has a token, a proof, a query string, a header value or an exception message.
  * - Every event increments `shortener.security.events`, tagged with the type only.
@@ -32,6 +34,11 @@ class SecurityEvents(
     fun unauthenticated(request: HttpServletRequest, reason: String) {
         count(UNAUTHENTICATED)
         logger.atWarn().describing(UNAUTHENTICATED, request, reason).log("Authentication failed")
+    }
+
+    fun nonceRequested(request: HttpServletRequest) {
+        count(NONCE_REQUESTED)
+        logger.atInfo().describing(NONCE_REQUESTED, request, "use_dpop_nonce").log("DPoP nonce requested")
     }
 
     fun forbidden(request: HttpServletRequest, client: String?, reason: String) {
@@ -61,6 +68,7 @@ class SecurityEvents(
         const val METRIC = "shortener.security.events"
         const val UNAUTHENTICATED = "unauthenticated"
         const val FORBIDDEN = "forbidden"
+        const val NONCE_REQUESTED = "dpop_nonce_requested"
         const val RATE_LIMITED = "rate_limited"
         private const val MAX_REMEMBERED_KEYS = 10_000L
         private const val MAX_PATH = 200

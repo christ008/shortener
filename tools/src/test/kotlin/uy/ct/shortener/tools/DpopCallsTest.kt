@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * `DpopCalls` is the client the tools sign in with, so what it sends is checked as the identity provider and the API would check
@@ -37,6 +38,10 @@ class DpopCallsTest {
     private lateinit var server: HttpServer
     private val received = mutableListOf<Received>()
     private var tokenStatus = 200
+    private var apiNonce: String? = null
+    private var tokenNonce: String? = null
+    private var alwaysAsks = false
+    private val asked = AtomicInteger()
     private var tokenBody = """{"access_token":"the-access-token","token_type":"DPoP"}"""
     private lateinit var clientKey: ECKey
     private lateinit var keyFile: Path
@@ -61,7 +66,20 @@ class DpopCallsTest {
         val headers = exchange.requestHeaders.entries.associate { (name, values) -> name.lowercase() to values.first() }
         val body = exchange.requestBody.readAllBytes().decodeToString()
         received += Received(exchange.requestMethod, exchange.requestURI.path, headers, body)
-        val (status, answer) = if (exchange.requestURI.path.endsWith(DpopCalls.TOKEN_ENDPOINT_PATH)) tokenStatus to tokenBody else 201 to """{"shortCode":"abc"}"""
+        val isToken = exchange.requestURI.path.endsWith(DpopCalls.TOKEN_ENDPOINT_PATH)
+        val askingAlways = alwaysAsks && !isToken
+        val nonce = if (askingAlways) "n-${asked.incrementAndGet()}" else if (isToken) tokenNonce else apiNonce
+        nonce?.let { exchange.responseHeaders.add("DPoP-Nonce", it) }
+        val asksForIt = nonce != null && (askingAlways || SignedJWT.parse(headers.getValue("dpop")).jwtClaimsSet.getStringClaim("nonce") != nonce)
+        val (status, answer) = when {
+            asksForIt && isToken -> 400 to """{"error":"use_dpop_nonce"}"""
+            asksForIt -> {
+                exchange.responseHeaders.add("WWW-Authenticate", """DPoP realm="shortener", error="use_dpop_nonce"""")
+                401 to """{"status":401}"""
+            }
+            isToken -> tokenStatus to tokenBody
+            else -> 201 to """{"shortCode":"abc"}"""
+        }
         val bytes = answer.toByteArray()
         exchange.sendResponseHeaders(status, bytes.size.toLong())
         exchange.responseBody.write(bytes)
@@ -120,6 +138,63 @@ class DpopCallsTest {
         assertThat(proof.jwtClaimsSet.jwtid).isNotBlank()
         val tokenProof = verified(tokenRequest.headers.getValue("dpop"))
         assertThat(proof.header.jwk.toJSONString()).describedAs("the token was asked for with this key").isEqualTo(tokenProof.header.jwk.toJSONString())
+    }
+
+    private fun nonceOf(request: Received): String? = SignedJWT.parse(request.headers.getValue("dpop")).jwtClaimsSet.getStringClaim("nonce")
+
+    private fun jtiOf(request: Received): String = SignedJWT.parse(request.headers.getValue("dpop")).jwtClaimsSet.jwtid
+
+    @Test
+    fun `a call is repeated once with the nonce the API asks for, in a new proof, without signing in again`() {
+        apiNonce = "api-nonce-1"
+
+        val answer = calls.call(keyFile, "demo-client", "POST", "$base/api/short-links", """{"targetUrl":"https://example.com"}""")
+
+        assertThat(answer.status).isEqualTo(201)
+        val api = received.filter { !it.path.endsWith(DpopCalls.TOKEN_ENDPOINT_PATH) }
+        assertThat(api).hasSize(2)
+        assertThat(nonceOf(api[0])).isNull()
+        assertThat(nonceOf(api[1])).isEqualTo("api-nonce-1")
+        assertThat(jtiOf(api[1])).isNotEqualTo(jtiOf(api[0]))
+        assertThat(api[1].body).isEqualTo(api[0].body)
+        assertThat(received.filter { it.path.endsWith(DpopCalls.TOKEN_ENDPOINT_PATH) }).hasSize(1)
+    }
+
+    @Test
+    fun `the token request is repeated with the nonce the identity provider asks for, with a new assertion`() {
+        tokenNonce = "token-nonce-1"
+
+        assertThat(calls.token(keyFile, "demo-client")).isEqualTo("the-access-token")
+
+        val (first, second) = received
+        assertThat(nonceOf(first)).isNull()
+        assertThat(nonceOf(second)).isEqualTo("token-nonce-1")
+        assertThat(form(second)["client_assertion"]).isNotEqualTo(form(first)["client_assertion"])
+        assertThat(SignedJWT.parse(form(second).getValue("client_assertion")).jwtClaimsSet.jwtid)
+            .isNotEqualTo(SignedJWT.parse(form(first).getValue("client_assertion")).jwtClaimsSet.jwtid)
+    }
+
+    @Test
+    fun `a nonce is kept for the calls that follow, so they need no repeat`() {
+        apiNonce = "api-nonce-1"
+        val client = calls
+
+        client.call(keyFile, "demo-client", "GET", "$base/api/short-links", null)
+        received.clear()
+        val second = client.call(keyFile, "demo-client", "GET", "$base/api/short-links", null)
+
+        assertThat(second.status).isEqualTo(201)
+        assertThat(received.filter { !it.path.endsWith(DpopCalls.TOKEN_ENDPOINT_PATH) }).hasSize(1)
+    }
+
+    @Test
+    fun `a server that keeps asking is repeated to once, and its last answer is the answer`() {
+        alwaysAsks = true
+
+        val answer = calls.call(keyFile, "demo-client", "GET", "$base/api/short-links", null)
+
+        assertThat(answer.status).isEqualTo(401)
+        assertThat(received.filter { !it.path.endsWith(DpopCalls.TOKEN_ENDPOINT_PATH) }).hasSize(2)
     }
 
     @Test

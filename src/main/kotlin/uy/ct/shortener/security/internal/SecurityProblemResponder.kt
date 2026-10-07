@@ -18,7 +18,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver
  *
  * - Each failure is built as a [SecurityProblem] and handed to MVC's exception resolver.
  * - A `401` carries the challenge, with `error` set to `invalid_token` or `invalid_dpop_proof` when a token or proof was
- *   rejected. A `403` carries `error="insufficient_scope"`.
+ *   rejected, or to `use_dpop_nonce` when the proof lacks the current nonce, which is not counted as a failed authentication. A `403` carries `error="insufficient_scope"`.
  * - The challenge names `DPoP` with the accepted proof algorithms (RFC 9449), and `Bearer` as well unless [dpopRequired] or
  *   the request already used one scheme.
  * - A `429` carries `Retry-After`.
@@ -32,10 +32,19 @@ class SecurityProblemResponder(
 
     override fun commence(request: HttpServletRequest, response: HttpServletResponse, authException: AuthenticationException) {
         val error = (authException as? OAuth2AuthenticationException)?.error?.errorCode
-        events?.unauthenticated(request, error ?: if (AuthScheme.of(request) == AuthScheme.NONE) "missing_credentials" else "invalid_credentials")
+        val nonceNeeded = error == DpopNonceAuthenticationConverter.USE_DPOP_NONCE
+        if (nonceNeeded) {
+            events?.nonceRequested(request)
+        } else {
+            events?.unauthenticated(request, error ?: if (AuthScheme.of(request) == AuthScheme.NONE) "missing_credentials" else "invalid_credentials")
+        }
         respond(
             request, response,
-            SecurityProblem(HttpStatus.UNAUTHORIZED, "A valid access token is required", challenge(AuthScheme.of(request), error)),
+            SecurityProblem(
+                HttpStatus.UNAUTHORIZED,
+                if (nonceNeeded) "The DPoP proof needs the current nonce, sent in the DPoP-Nonce header" else "A valid access token is required",
+                challenge(AuthScheme.of(request), error),
+            ),
         )
     }
 

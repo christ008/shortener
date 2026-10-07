@@ -19,7 +19,7 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 
 ## Run it locally
 
-Needs Docker and JDK 25. The DPoP client needs JDK 17 or newer.
+Needs Docker and JDK 25. The reference DPoP client needs JDK 17 or newer.
 
 ```bash
 deploy/keycloak/dev-setup     # once: generates keys and passwords (builds its tools the first time)
@@ -31,6 +31,8 @@ java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.j
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 curl -i http://localhost:8080/<shortCode>
 ```
+
+That client is a reference implementation. For your own program, see [other clients and libraries](docs/OPERATING.md#other-clients-and-libraries).
 
 `dev-setup` writes git-ignored keys, a dev realm and `.env`. These are throwaway: never use them anywhere real.
 
