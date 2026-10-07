@@ -4,15 +4,15 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
+import org.springframework.test.web.servlet.client.RestTestClient
+import uy.ct.shortener.RestTestClientSupport.request
 
 /**
  * What an operator actually reads in production: the JSON the `production` log format writes. A security event must come
@@ -21,17 +21,17 @@ import org.springframework.http.HttpMethod
 @WithTestIdp
 @ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = ["logging.structured.format.console=ecs"])
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class StructuredSecurityLogTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
 
     @Test
     fun `a rejected token is one JSON line with its fields and its trace, and without the token`(output: CapturedOutput) {
         val headers = HttpHeaders().apply { set(HttpHeaders.AUTHORIZATION, "Bearer a.SECRET-TOKEN.c") }
-        restTemplate.exchange("/api/short-links", HttpMethod.GET, HttpEntity<Void>(headers), String::class.java)
+        rest.request(HttpMethod.GET, "/api/short-links", headers)
 
         val line = output.all.lines().single { it.contains("Authentication failed") }
         assertThat(line).startsWith("{").contains(

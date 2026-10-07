@@ -4,17 +4,15 @@ import io.micrometer.core.instrument.MeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.http.ResponseEntity
+import org.springframework.test.web.servlet.client.RestTestClient
+import uy.ct.shortener.RestTestClientSupport.request
 import uy.ct.shortener.TestDpopClient
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.WithTestIdp
@@ -29,12 +27,12 @@ import uy.ct.shortener.WithTestIdp
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["shortener.security.dpop.required=true", "shortener.security.dpop.nonce.enabled=true", "shortener.security.dpop.nonce.secret=test-secret"],
 )
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class DpopNonceIntegrationTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
 
     @Autowired
     lateinit var meters: MeterRegistry
@@ -46,16 +44,19 @@ class DpopNonceIntegrationTest {
 
     private val url get() = "http://localhost:$port/api/short-links"
 
-    private fun list(token: String = client.token(), nonce: String? = null, signWith: TestDpopClient = client): ResponseEntity<String> {
+    private fun list(token: String = client.token(), nonce: String? = null, signWith: TestDpopClient = client): RestTestClient.ResponseSpec {
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
             set(HttpHeaders.AUTHORIZATION, "DPoP $token")
             set("DPoP", signWith.proof("GET", url, token, nonce = nonce))
         }
-        return restTemplate.exchange(url, HttpMethod.GET, HttpEntity<String>(headers), String::class.java)
+        return rest.request(HttpMethod.GET, url, headers)
     }
 
-    private fun nonceOf(response: ResponseEntity<String>): String = response.headers.getFirst("DPoP-Nonce").orEmpty()
+    private fun nonceOf(response: RestTestClient.ResponseSpec): String = response.returnResult().responseHeaders.getFirst("DPoP-Nonce").orEmpty()
+
+    private fun RestTestClient.ResponseSpec.unauthorizedWith(check: (String) -> Unit) = expectStatus().isUnauthorized()
+        .expectHeader().values(HttpHeaders.WWW_AUTHENTICATE) { challenges -> assertThat(challenges).singleElement().satisfies({ check(it) }) }
 
     private fun events(type: String) = meters.counter("shortener.security.events", "type", type).count()
 
@@ -64,13 +65,10 @@ class DpopNonceIntegrationTest {
         val token = client.token()
 
         val asked = list(token)
-        assertThat(asked.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(asked.headers[HttpHeaders.WWW_AUTHENTICATE]).singleElement().satisfies({
-            assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("error=\"use_dpop_nonce\"")
-        })
+        asked.unauthorizedWith { assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("error=\"use_dpop_nonce\"") }
         assertThat(nonceOf(asked)).isNotBlank()
 
-        assertThat(list(token, nonce = nonceOf(asked)).statusCode).isEqualTo(HttpStatus.OK)
+        list(token, nonce = nonceOf(asked)).expectStatus().isOk()
     }
 
     @Test
@@ -80,7 +78,7 @@ class DpopNonceIntegrationTest {
 
         val served = list(token, nonce = nonce)
 
-        assertThat(served.statusCode).isEqualTo(HttpStatus.OK)
+        served.expectStatus().isOk()
         assertThat(nonceOf(served)).isEqualTo(nonce)
     }
 
@@ -91,8 +89,7 @@ class DpopNonceIntegrationTest {
 
         val response = list(token, nonce = foreign)
 
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(response.headers[HttpHeaders.WWW_AUTHENTICATE]).singleElement().satisfies({ assertThat(it).contains("error=\"use_dpop_nonce\"") })
+        response.unauthorizedWith { assertThat(it).contains("error=\"use_dpop_nonce\"") }
         assertThat(nonceOf(response)).isNotBlank().isNotEqualTo(foreign)
     }
 
@@ -101,10 +98,7 @@ class DpopNonceIntegrationTest {
         val token = client.token()
         val nonce = nonceOf(list(token))
 
-        val response = list(token, nonce = nonce, signWith = TestDpopClient())
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(response.headers[HttpHeaders.WWW_AUTHENTICATE]).singleElement().satisfies({ assertThat(it).contains("error=\"invalid_dpop_proof\"") })
+        list(token, nonce = nonce, signWith = TestDpopClient()).unauthorizedWith { assertThat(it).contains("error=\"invalid_dpop_proof\"") }
     }
 
     @Test
@@ -120,9 +114,8 @@ class DpopNonceIntegrationTest {
 
     @Test
     fun `a request that is not under the DPoP scheme is handed no nonce`() {
-        val response = restTemplate.exchange(url, HttpMethod.GET, HttpEntity<String>(HttpHeaders()), String::class.java)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(response.headers.containsHeader("DPoP-Nonce")).isFalse()
+        rest.request(HttpMethod.GET, url)
+            .expectStatus().isUnauthorized()
+            .expectHeader().doesNotExist("DPoP-Nonce")
     }
 }

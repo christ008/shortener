@@ -3,13 +3,14 @@ package uy.ct.shortener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.http.client.HttpRedirects
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalManagementPort
+import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpStatus
+import org.springframework.test.web.servlet.client.RestTestClient
+import uy.ct.shortener.RestTestClientSupport.text
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkRepository
 import java.net.URI
@@ -21,12 +22,17 @@ import java.net.URI
  */
 @WithTestIdp
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class MetricsIntegrationTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
+
+    @LocalServerPort
+    var port: Int = 0
+
+    private val noRedirects by lazy { RestTestClientSupport.withoutRedirects(port) }
 
     @Autowired
     lateinit var repository: ShortLinkRepository
@@ -34,12 +40,11 @@ class MetricsIntegrationTest {
     @LocalManagementPort
     var managementPort: Int = 0
 
-    private fun scrape() =
-        restTemplate.getForEntity("http://localhost:$managementPort/actuator/prometheus", String::class.java).body!!
+    private fun scrape() = rest.get().uri("http://localhost:$managementPort/actuator/prometheus").exchange().text()
 
     @Test
     fun `exposes request latency histograms tagged by route template, the pool and the jvm`() {
-        restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/unknownCode", String::class.java)
+        noRedirects.get().uri("/unknownCode").exchange()
 
         val metrics = scrape()
         val serverRequests = metrics.lines().filter { it.startsWith("http_server_requests") }
@@ -52,9 +57,8 @@ class MetricsIntegrationTest {
     @Test
     fun `counts redirects served from the cache as hits`() {
         repository.insertIfAbsent(ShortCode("cacheMe"), URI.create("https://example.com/cached"), "metrics-test")
-        val client = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW)
 
-        repeat(3) { assertThat(client.getForEntity("/cacheMe", Void::class.java).statusCode).isEqualTo(HttpStatus.FOUND) }
+        repeat(3) { noRedirects.get().uri("/cacheMe").exchange().expectStatus().isFound() }
 
         val hits = scrape().lines().first { it.startsWith("cache_gets_total") && it.contains("shortlink.redirect") && it.contains("result=\"hit\"") }
         assertThat(hits.substringAfterLast(' ').toDouble()).isGreaterThanOrEqualTo(2.0)
@@ -62,8 +66,7 @@ class MetricsIntegrationTest {
 
     @Test
     fun `does not serve metrics on the public port`() {
-        val response = restTemplate.getForEntity("/actuator/prometheus", String::class.java)
-
-        assertThat(response.statusCode).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.NOT_FOUND)
+        rest.get().uri("/actuator/prometheus").exchange()
+            .expectStatus().value { assertThat(it).isIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.NOT_FOUND.value()) }
     }
 }

@@ -1,16 +1,15 @@
 package uy.ct.shortener.security.internal
 
-import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalManagementPort
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.client.RestTestClient
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.WithTestIdp
 
@@ -23,25 +22,24 @@ import uy.ct.shortener.WithTestIdp
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["shortener.security.rate-limit.per-ip.capacity=5"],
 )
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class IpRateLimitIntegrationTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
 
     @LocalManagementPort
     var managementPort: Int = 0
 
     @Test
     fun `limits requests per client ip but never actuator endpoints`() {
-        repeat(5) { assertThat(restTemplate.getForEntity("/zzzzzzz", String::class.java).statusCode).isEqualTo(HttpStatus.NOT_FOUND) }
+        repeat(5) { rest.get().uri("/zzzzzzz").exchange().expectStatus().isNotFound() }
 
-        val limited = restTemplate.getForEntity("/zzzzzzz", String::class.java)
-
-        assertThat(limited.statusCode).isEqualTo(HttpStatus.TOO_MANY_REQUESTS)
-        assertThat(limited.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
-        assertThat(limited.headers.getFirst(HttpHeaders.RETRY_AFTER)).isNotNull
-        assertThat(restTemplate.getForEntity("http://localhost:$managementPort/actuator/health", String::class.java).statusCode).isEqualTo(HttpStatus.OK)
+        rest.get().uri("/zzzzzzz").exchange()
+            .expectStatus().isEqualTo(HttpStatus.TOO_MANY_REQUESTS)
+            .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectHeader().exists(HttpHeaders.RETRY_AFTER)
+        rest.get().uri("http://localhost:$managementPort/actuator/health").exchange().expectStatus().isOk()
     }
 }
