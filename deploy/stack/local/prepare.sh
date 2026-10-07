@@ -25,7 +25,7 @@ fi
 
 # Adds the settings the stack needs to .env, and leaves what is there, such as the dev passwords, alone.
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
-for line in "SHORTENER_IMAGE=shortener" "SHORTENER_VERSION=$version" "SHORTENER_MIGRATE_VERSION=$version" \
+for line in "SHORTENER_IMAGE=shortener" "VERIFY_SIGNATURE=never" "SHORTENER_VERSION=$version" "SHORTENER_MIGRATE_VERSION=$version" \
   "ISSUER_URI=http://localhost:8180/realms/shortener" \
   "JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs"; do
   grep -q "^${line%%=*}=" .env 2>/dev/null || echo "$line" >>.env
