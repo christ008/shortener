@@ -13,6 +13,6 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: docker-compose
-    directories: ['/', '/deploy/stack/overlays']
+    directories: ['/', '/deploy/stack/overlays', '/deploy/stack/local']
     schedule:
       interval: weekly
