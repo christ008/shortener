@@ -58,6 +58,48 @@ class ReportTest {
         assertThat(result.stderr).contains("fewer than two GC lines", "-XX:+PrintGC")
     }
 
+    private fun repeated(variant: String, rate: Int, achieved: List<Int>, failed: List<Double>, p99: List<Double>, acquire: List<Double>, timeouts: List<Int>) {
+        val dir = Files.createDirectories(directory.resolve(variant))
+        Files.writeString(dir.resolve("docker-stats.txt"), "1 10% 100MiB / 512MiB\n")
+        val runs = achieved.indices.joinToString(",") { i ->
+            Files.writeString(
+                dir.resolve("r$rate-${i + 1}.k6.json"),
+                """{"metrics":{"http_reqs":{"rate":${achieved[i]}},"http_req_failed":{"value":${failed[i]}},"redirect_latency":{"p(95)":${i + 1}.0}}}""",
+            )
+            """{"name":"r$rate-${i + 1}","rate":$rate,"duration":"60s","create_share":0.01,"repeat":${i + 1},"start":1,"end":2,""" +
+                """"server":{"redirect_p50":0.0005,"redirect_p95":0.001,"redirect_p99":${p99[i]},"create_p50":0.002,"create_p99":0.006,""" +
+                """"hikari_acquire_max":${acquire[i]},"hikari_timeouts":${timeouts[i]}}}"""
+        }
+        Files.writeString(dir.resolve("summary.json"), """{"variant":"$variant","ready_ms":1000,"idle_mem":"100MiB","started":"Started X in 1.5 seconds","runs":[$runs]}""")
+    }
+
+    @Test
+    fun `runs of one rate that were repeated are one block with the median and the range`() {
+        repeated("a", 1000, listOf(990, 1000, 995), listOf(0.0, 0.001, 0.0), listOf(0.001, 0.0049, 0.002), listOf(0.5, 0.9, 0.7), listOf(0, 0, 2))
+        repeated("b", 1000, listOf(1000), listOf(0.0), listOf(0.003), listOf(0.1), listOf(0))
+
+        val table = run("summary", directory.toString()).stdout
+
+        assertThat(table).contains("| **1000 req/s for 60s, median of 3 runs** |  |  |")
+        assertThat(table).contains("| achieved req/s | 995 (990-1000) | 1000 |")
+        assertThat(table).contains("| failed requests | 0.00% (0.00-0.10%) | 0.00% |")
+        assertThat(table).contains("| redirect p50 / p95 / p99 (ms, server) | 0.5 / 1.0 / 2.0 | 0.5 / 1.0 / 3.0 |")
+        assertThat(table).contains("| redirect p99 over the runs, lowest to highest (ms) | 1.0-4.9 | 3.0-3.0 |")
+        assertThat(table).contains("| redirect p95 (ms, as k6 saw it) | 2.0 | 1.0 |")
+        assertThat(table).describedAs("the worst run of the pool figures").contains("| pool acquire max (ms) / timeouts | 900.0 / 2 | 100.0 / 0 |")
+    }
+
+    @Test
+    fun `a variant without the runs of another is said in words`() {
+        repeated("a", 1000, listOf(990), listOf(0.0), listOf(0.001), listOf(0.5), listOf(0))
+        repeated("b", 2000, listOf(1990), listOf(0.0), listOf(0.001), listOf(0.5), listOf(0))
+
+        val result = run("summary", directory.toString())
+
+        assertThat(result.status).isEqualTo(1)
+        assertThat(result.stderr).contains("b has no run r1000-1")
+    }
+
     @Test
     fun `the heap histogram is what the Python one printed for a dump with every kind of record`() {
         assertThat(run("hprof", "tools/src/test/resources/report/sample.hprof", "8").stdout).isEqualTo(expected("sample.hprof.expected.txt"))

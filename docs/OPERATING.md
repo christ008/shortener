@@ -26,7 +26,7 @@ Reference:
 | Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
 | `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 25 (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
 | The native image | about 7 GB free memory, 3 minutes |
-| The load test | Docker (k6 runs in a container), spare cores |
+| The load test | Docker (k6 runs in a container), spare cores, `jq` |
 | The production stack on one machine | `openssl`, `keytool` |
 
 ## Develop
@@ -444,7 +444,7 @@ says why.
 | Stack hardening | `./gradlew test --tests '*ComposeStackTest'` | |
 | Alert rules | `promtool` in a container, see [OBSERVABILITY.md](OBSERVABILITY.md#alerts) | Docker |
 | Every endpoint, on the image | `perf/smoke.sh` | a running instance, the dev Keycloak |
-| Load | `perf/bench.sh` | Docker, spare cores |
+| Load | `perf/bench.sh` | Docker, spare cores, `jq` |
 
 The suite has unit tests (in-memory repository), integration tests (real Postgres, stand-in identity provider),
 architecture tests, and tests of the deployment files (stack, profiles, alert rules, release version).
@@ -459,6 +459,17 @@ Against the stack: give it the address, the certificate and the management port 
 
 **Load test.** `perf/bench.sh VARIANT IMAGE OUT_DIR` runs one image with 2 cores and 512 MB against Postgres and k6.
 `perf/run-all.sh` compares the JVM and the native image.
+
+```bash
+RATES="250 500 1000 1500 2000" REPEAT=3 COOLDOWN=15 perf/bench.sh native shortener:0.21.0 perf/results/ladder
+tools/run Report summary perf/results            # a column for each variant; repeated runs show the median and the range
+```
+
+- `RATES` is one run for each rate, `DURATION` (default 60s) long, with `CREATES_PER_SECOND` (default 15) creates. `REPEAT` runs each
+  N times and `COOLDOWN` waits between them. `RUNS="name rate duration share|..."` still writes the runs out by hand.
+- `APP_CPUSET`, `APP_CPUS` and `APP_MEMORY` (default `0-1`, `2`, `512m`) change the application's limits.
+- Each run leaves `summary.json`, `metadata.json` (commit, limits, workload), the k6 summaries and the container's log. The k6
+  summaries have the DPoP key and the token removed by `perf/scrub-k6-summary.sh`, which needs `jq`.
 
 **Links the cache has not seen.** The default workload reads 300 links, so the redirect cache absorbs it. To read many:
 
@@ -538,6 +549,7 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 | `ClientKeys`, `DpopCalls` | client keys, and DPoP sign-in and calls, for `DevSetup` and `Smoke` | Kotlin |
 | `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test, profile | sh |
+| `perf/scrub-k6-summary.sh` | remove the DPoP key and the token from a k6 summary | sh |
 | `perf/load-dataset.sh` | generate a dataset with `Dataset` and load it into Postgres | sh |
 | `perf/k6/mixed.js` | the load workload | k6 |
 

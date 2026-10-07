@@ -662,7 +662,7 @@ release workflow produces a signature `deploy.sh` accepts. See [Limitations](#li
 ## Performance
 
 > [!IMPORTANT]
-> One laptop, one run per rate, with the database and the load generator on the same machine. Treat the numbers as shape, not
+> One laptop, one run per rate in the results below, with the database and the load generator on the same machine. Treat the numbers as shape, not
 > capacity.
 
 ### Method
@@ -675,6 +675,11 @@ release workflow produces a signature `deploy.sh` accepts. See [Limitations](#li
   [Links the cache has not seen](#links-the-cache-has-not-seen).
 - Each variant warms up 30 s, then runs 1,500, 5,000 and 10,000 requests a second. Server-side percentiles come from
   Prometheus. `perf/run-all.sh` runs the variants.
+- For a curve and not three points: `RATES="250 500 1000 1500 2000"` is one run a rate, `REPEAT=5` repeats each of them with a
+  `COOLDOWN` between, and `tools/run Report summary` gives the median and the range of the repeats. A rate is what the generator
+  offers; the achieved rate and the failures say what was served, and the latency knee is where they part from it.
+- Each variant directory also holds `metadata.json`: commit, image, limits, workload and settings of the run, so a result says
+  what produced it. The k6 summaries have the DPoP key and token of the run removed.
 
 ### Results
 
