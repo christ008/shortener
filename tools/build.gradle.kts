@@ -22,7 +22,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.assertj:assertj-core")
-    testImplementation("com.nimbusds:nimbus-jose-jwt:10.9.1") // not in the Boot BOM: the version the application resolves, through Spring Security
+    testImplementation("com.nimbusds:nimbus-jose-jwt:10.10") // not in the Boot BOM: the version the application resolves, through Spring Security
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
