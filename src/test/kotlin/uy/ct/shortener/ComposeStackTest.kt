@@ -162,6 +162,16 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `the migration job decides its targets, since the production profile does not start the context until they are decided`() {
+        val environment = environmentOf(services.getValue("migrate"))
+
+        assertThat(environment["SPRING_PROFILES_ACTIVE"]).isEqualTo("production")
+        assertThat(environment["SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY"])
+            .describedAs("without this the job migrates, fails to start the context, and is retried until it gives up")
+            .isEqualTo("true")
+    }
+
+    @Test
     fun `the database has no route out and only the stack's own services attach to it`() {
         val data = files.first().map("networks").map("data")
         assertThat(data["internal"]).isEqualTo(true)

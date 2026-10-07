@@ -662,7 +662,17 @@ On Docker 29.8, a single-node swarm and plain Compose, with the native image:
 - Prometheus discovering both tasks and loading the five alert rules, and the exporter reporting `pg_up`;
 - a rolling update under load.
 
-Not verified: more than one node (overlay encryption, host-mode edge on several nodes, where Postgres lands), real
+Checked again on 2026-10-07 on a single-node swarm, after the image updates of Dependabot (nginx 1.31.5, Keycloak 26.8.0,
+Prometheus 3.15.0, Grafana 13.2.3, Tempo 3.1.0), with a JVM image standing in for the native one:
+
+- the smoke test through the edge on port 443 and on a published port other than 443 (9443). Without `X-Forwarded-Port` the
+  same call on 9443 is refused with `invalid_dpop_proof`; with it, it is served;
+- the development stack: Keycloak issuing a DPoP-bound token that the nonce flow accepts, the 21-check smoke test, the 25
+  queries of the dashboard returning data, the dashboard drawn by Grafana 13, and traces in Tempo;
+- the migration job, which failed on every attempt under the `production` profile after Flyway had run, because it never
+  decided the link targets (ADR 0023). It now sets `allow-any`, since it checks no link, and completes.
+
+Not verified: the native image since the nonces (it needs about 7 GB of free memory), more than one node (overlay encryption, host-mode edge on several nodes, where Postgres lands), real
 certificates and ACME, pulling from a registry, and any failure of the database node.
 
 ## Releasing

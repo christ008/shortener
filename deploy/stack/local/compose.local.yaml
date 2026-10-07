@@ -13,7 +13,7 @@ services:
     deploy:
       replicas: 1
   keycloak:
-    image: 'quay.io/keycloak/keycloak:26.7.5'
+    image: 'quay.io/keycloak/keycloak:26.8.0'
     command: ['start-dev', '--import-realm']
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${DEV_KEYCLOAK_ADMIN_USER:-admin}

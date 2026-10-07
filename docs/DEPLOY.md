@@ -129,7 +129,7 @@ the `shortener` realm and its static files only. The master realm and the consol
 1. **Build the image** on the node, or push it to a registry (`KEYCLOAK_IMAGE`):
 
    ```bash
-   docker build -t shortener-keycloak:26.7.5 deploy/keycloak
+   docker build -t shortener-keycloak:26.8.0 deploy/keycloak
    ```
 2. **Make the keys and the realm.** The realm holds only public keys:
 

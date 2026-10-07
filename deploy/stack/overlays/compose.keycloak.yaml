@@ -2,7 +2,7 @@
 #   KEYCLOAK=1 deploy/stack/deploy.sh <version>
 #   docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.keycloak.yaml up -d
 #
-# - Image: built from deploy/keycloak/Dockerfile: `docker build -t shortener-keycloak:26.7.5 deploy/keycloak`. On more than one
+# - Image: built from deploy/keycloak/Dockerfile: `docker build -t shortener-keycloak:26.8.0 deploy/keycloak`. On more than one
 #   node, push it to a registry (KEYCLOAK_IMAGE).
 # - Database: its own, in the stack's Postgres (deploy/postgres/keycloak-database.sh), with a role only it uses.
 # - Edge: forwards the shortener realm and its static files only (deploy/edge/keycloak.conf). Administer from the node
@@ -17,7 +17,7 @@ services:
     security_opt: ['no-new-privileges:true']
     init: true
     logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
-    image: '${KEYCLOAK_IMAGE:-shortener-keycloak}:${KEYCLOAK_VERSION:-26.7.5}'
+    image: '${KEYCLOAK_IMAGE:-shortener-keycloak}:${KEYCLOAK_VERSION:-26.8.0}'
     user: '1000:0'
     command: ['start', '--optimized', '--import-realm']
     environment:

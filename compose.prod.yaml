@@ -121,6 +121,8 @@ services:
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: '${JWKS_URI:?set JWKS_URI}'
       # Serves no requests, so it has no use for nonces or their secret.
       SHORTENER_SECURITY_DPOP_NONCE_ENABLED: 'false'
+      # Checks no link, but the production profile does not start the context until the targets are decided.
+      SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY: 'true'
     secrets:
       - {source: db_app_password, target: spring.datasource.password}
       - {source: db_migrator_password, target: spring.flyway.password}
