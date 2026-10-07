@@ -16,7 +16,7 @@ is in [OBSERVABILITY.md](OBSERVABILITY.md), the design is in [INTERNALS.md](INTE
 | For | You need |
 |---|---|
 | Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
-| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 17 or newer (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
+| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 25 (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
 | The native image | about 7 GB free memory, 3 minutes |
 | The load test | Docker (k6 runs in a container), spare cores |
 | The production stack on one machine | `openssl`, `keytool` |
@@ -207,6 +207,19 @@ Against the stack: give it the address, the certificate and the management port 
 **Load test.** `perf/bench.sh VARIANT IMAGE OUT_DIR` runs one image with 2 cores and 512 MB against Postgres and k6.
 `perf/run-all.sh` compares the JVM and the native image.
 
+**Links the cache has not seen.** The default workload reads 300 links, so the redirect cache absorbs it. To read many:
+
+```bash
+perf/load-dataset.sh 10M        # 10M distinct codes into short_link (about 10 minutes, 2 GB), kept in perf/data/
+DATASET_FILE=perf/data/codes-10M-seed1.txt perf/bench.sh native shortener:0.21.0 perf/results/dataset
+```
+
+- With `DATASET_FILE` the bench does not truncate `short_link`, and k6 reads codes of the file by position. `DATASET_HOT=H`
+  with `DATASET_HOT_SHARE` (default 0.8) sends that share of the reads to the first `H` codes: a small `H` is a stampede on a
+  few codes.
+- `perf/profile.sh` still truncates the table, and so does `perf/bench.sh` without `DATASET_FILE`.
+- Do not limit the memory of the Postgres container below the size of the data: the kernel killed its processes at 512 MB.
+
 > Stay at or below 5,000 requests a second. Overload runs can take down the network of a machine with an application
 > firewall that inspects new connections. See [INTERNALS.md](INTERNALS.md#running-load-tests-safely).
 
@@ -251,7 +264,7 @@ minutes, and answers `503` with `Retry-After` for the rest.
 ## Scripts
 
 Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`. Scripts that compute are Kotlin tools in
-`tools/`, built by `tools/run` the first time and when a source changes (JDK 17 or newer). The one exception is
+`tools/`, built by `tools/run` the first time and when a source changes (JDK 25). The one exception is
 `DpopClient.java`, a single Java file for JDK 17 or newer with no build, which the tools do not use. See
 [ADR 0026](adr/0026-scripting-standard.md), [0029](adr/0029-tools-in-kotlin.md) and [0020](adr/0020-dpop-client-in-java.md).
 
@@ -268,9 +281,11 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 | `Realms` | realm from a template and public keys | Kotlin |
 | `Smoke` | check every endpoint of a running instance | Kotlin |
 | `Report` | read GC logs, heap dumps and bench results; query Prometheus | Kotlin |
+| `Dataset` | distinct short codes, in parallel, for loads that the redirect cache does not absorb | Kotlin |
 | `ClientKeys`, `DpopCalls` | client keys, and DPoP sign-in and calls, for `DevSetup` and `Smoke` | Kotlin |
 | `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test, profile | sh |
+| `perf/load-dataset.sh` | generate a dataset with `Dataset` and load it into Postgres | sh |
 | `perf/k6/mixed.js` | the load workload | k6 |
 
 Gradle tasks (`./gradlew tasks --group tooling`):
@@ -287,5 +302,5 @@ Gradle tasks (`./gradlew tasks --group tooling`):
 | `report` | `tools/run Report` | `-Preport=summary\|gc\|hprof\|profile\|json -Ptarget=PATH -Ptop=N` |
 
 The tasks run with the project's JDK 25 toolchain. `devSetup` takes the defaults because Gradle has no terminal: run the
-script to be asked. `tools/run` works by hand with any JDK 17 or newer. Tests: `./gradlew test` (with the application's) or
+script to be asked. `tools/run` works by hand with any JDK 25. Tests: `./gradlew test` (with the application's) or
 `./gradlew -p tools test`.

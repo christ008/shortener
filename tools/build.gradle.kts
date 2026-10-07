@@ -1,7 +1,7 @@
 /**
  * The tools of the repository: dev-setup, the realm maker, the smoke test and the report reader (docs/adr/0029-tools-in-kotlin.md).
  *
- * - A build of its own, not a module of the application's. Needs a JDK 17 or newer.
+ * - A build of its own, not a module of the application's. Needs a JDK 25, the application's (`Dataset` uses stream gatherers, final in 24).
  * - `tools/run` builds and starts them. Tests: `./gradlew -p tools test`.
  * - They do not use `deploy/keycloak/DpopClient.java`, the reference client: `ClientKeys` and `DpopCalls` do what they need of it.
  * - Versions follow the application's: Kotlin as in ../build.gradle.kts, the rest from the Spring Boot BOM of the same version.
@@ -28,16 +28,16 @@ dependencies {
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-        // Compile against the JDK 17 API only.
-        freeCompilerArgs.add("-Xjdk-release=17")
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
+        // Compile against the JDK 25 API only.
+        freeCompilerArgs.add("-Xjdk-release=25")
         allWarningsAsErrors = true
     }
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
 
 application {
