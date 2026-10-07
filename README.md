@@ -19,8 +19,7 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 - Creates a link with a generated code (7 base62 characters) or a custom one. `GET /{code}` answers `302`, not `301`, so a
   browser does not keep following a link after a takedown.
 - A client lists, reads and disables its own links. An administrator can act on any.
-- Another client's link answers `404`. A disabled link answers `410` and keeps its code. A code is never handed out twice: in
-  production the application's database role cannot delete a row or change a code.
+- Another client's link answers `404`. A disabled link answers `410` and keeps its code. A code is never handed out twice.
 - A takedown reaches every instance within the cache TTL (30 s).
 - Every authentication, authorization and rate-limit failure is an RFC 9457 problem detail.
 
