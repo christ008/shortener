@@ -207,6 +207,19 @@ Against the stack: give it the address, the certificate and the management port 
 **Load test.** `perf/bench.sh VARIANT IMAGE OUT_DIR` runs one image with 2 cores and 512 MB against Postgres and k6.
 `perf/run-all.sh` compares the JVM and the native image.
 
+**Links the cache has not seen.** The default workload reads 300 links, so the redirect cache absorbs it. To read many:
+
+```bash
+perf/load-dataset.sh 10M        # 10M distinct codes into short_link (about 10 minutes, 2 GB), kept in perf/data/
+DATASET_FILE=perf/data/codes-10M-seed1.txt perf/bench.sh native shortener:0.21.0 perf/results/dataset
+```
+
+- With `DATASET_FILE` the bench does not truncate `short_link`, and k6 reads codes of the file by position. `DATASET_HOT=H`
+  with `DATASET_HOT_SHARE` (default 0.8) sends that share of the reads to the first `H` codes: a small `H` is a stampede on a
+  few codes.
+- `perf/profile.sh` still truncates the table, and so does `perf/bench.sh` without `DATASET_FILE`.
+- Do not limit the memory of the Postgres container below the size of the data: the kernel killed its processes at 512 MB.
+
 > Stay at or below 5,000 requests a second. Overload runs can take down the network of a machine with an application
 > firewall that inspects new connections. See [INTERNALS.md](INTERNALS.md#running-load-tests-safely).
 
@@ -268,9 +281,11 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 | `Realms` | realm from a template and public keys | Kotlin |
 | `Smoke` | check every endpoint of a running instance | Kotlin |
 | `Report` | read GC logs, heap dumps and bench results; query Prometheus | Kotlin |
+| `Dataset` | distinct short codes, in parallel, for loads that the redirect cache does not absorb | Kotlin |
 | `ClientKeys`, `DpopCalls` | client keys, and DPoP sign-in and calls, for `DevSetup` and `Smoke` | Kotlin |
 | `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test, profile | sh |
+| `perf/load-dataset.sh` | generate a dataset with `Dataset` and load it into Postgres | sh |
 | `perf/k6/mixed.js` | the load workload | k6 |
 
 Gradle tasks (`./gradlew tasks --group tooling`):

@@ -799,7 +799,8 @@ release workflow produces a signature `deploy.sh` accepts. See [Limitations](#li
   6-9.
 - k6 uses an arrival-rate executor, so slow responses do not slow the load: 99% redirects on a hot subset, 1% creates
   signed with DPoP. The redirects go to 300 seeded links, 80% of them to the first 60 (`perf/k6/mixed.js`), so after the warm-up
-  nearly every redirect is a cache hit. A workload of many links that the cache has not seen was not run.
+  nearly every redirect is a cache hit. With `DATASET_FILE` the reads go to a dataset of millions of links instead, see
+  [Links the cache has not seen](#links-the-cache-has-not-seen).
 - Each variant warms up 30 s, then runs 1,500, 5,000 and 10,000 requests a second. Server-side percentiles come from
   Prometheus. `perf/run-all.sh` runs the variants.
 - One laptop, one run per rate, database and load generator on the same machine. Treat the numbers as shape, not capacity.
@@ -821,6 +822,27 @@ These predate the [redirect cache](#redirect-cache). With it:
   probed. Only those two rates were run, because saturation runs can take the development machine's network down.
 - Native: 4,936 req/s at 5,000, no failures, p99 1.0 ms, peak 142 MiB, where it failed before.
 - Results: `perf/results/2026-10-03-cache`.
+
+### Links the cache has not seen
+
+`tools/run Dataset` makes distinct 7-character codes (a Feistel permutation of the 62^7 codes, in parallel: 10M in 0.14 s on 12
+cores), `perf/load-dataset.sh` loads them with `COPY`, and `perf/bench.sh` or `perf/k6/mixed.js` reads them with `DATASET_FILE`.
+Reads go to a random code of the file, so nearly every one misses the redirect cache.
+
+- **The data.** 10M links: table 806 MB, indexes 1.2 GB (primary key 280 MB), about 200 bytes a link with 40-character URLs. The
+  `COPY` took 622 s, 16,000 rows a second with all three indexes kept.
+- **1,000 req/s for 30 s, native image, Postgres unrestricted.** 999 served, none failed, 29,802 of the reads missed. Redirect
+  median 0.5 ms. p99 was 7 ms in one run and 49 ms in another with the same settings, which follows how much of the data the
+  operating system had cached. Each miss read about one table block and one index block that Postgres did not have.
+- **250 req/s with the database files evicted from the operating system's cache:** none failed, p99 1.7 ms. A random read of
+  the table file with `O_DIRECT` took about 120 µs here.
+- **A stampede on one code.** 40,001 reads of 10 codes, starting with an empty cache, ran 21 queries: 10 at the start, one
+  of the check that the dataset is loaded, and 10 when the 30 s TTL expired.
+- **Postgres limited to 512 MB** had its processes killed by the kernel (out of memory) twice, even at 250 req/s, so there is no
+  figure for it. Two runs at 250 req/s a few minutes after one of those restarts failed (3 to 6% errors, p99 of 60 s). Three
+  later runs with the same steps did not, and the cause is unknown.
+- **Limits.** One machine, one run each, Postgres and k6 beside the application, the native image only. The ceiling with misses
+  was not probed.
 
 ### Native image under overload
 
@@ -951,9 +973,9 @@ Each has a record with its problem, cost and alternatives in [adr/](adr/README.m
   publishes or listens to events, and the table is not in the schema now. It stays in the history because an applied migration
   is not edited: Flyway checks its checksum. Anything that wants events again needs a migration that creates the table.
 - A link disabled on one instance can redirect on the others for up to the cache TTL (30 s).
-- No workload has read links the cache has not seen, so the figures are for the cache and not for the database. A miss is a
-  primary-key read with a 5 s limit, and concurrent misses for one code share one load, but a cold start over many distinct
-  codes is unmeasured.
+- Reads of links the cache has not seen were measured only up to 1,000 req/s over 10M links, one run each, on one machine
+  ([Links the cache has not seen](#links-the-cache-has-not-seen)). A miss is a primary-key read with a 5 s limit, and concurrent
+  misses for one code share one load. Where misses saturate Postgres is unknown.
 - The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
 - Rate limits and the DPoP replay cache are per instance.
 - Beyond capacity (about 5,800 req/s on two cores) the service sheds load, but creates still queue for seconds. nginx
