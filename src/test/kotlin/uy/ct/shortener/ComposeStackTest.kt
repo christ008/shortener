@@ -233,6 +233,18 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `every proxied location tells the application the port the client used, taken from its Host header`() {
+        val confs = Files.list(Path.of("deploy/edge")).use { files -> files.filter { it.toString().endsWith(".conf") }.toList() }
+        val lines = confs.flatMap { Files.readAllLines(it) }.filterNot { it.trimStart().startsWith("#") }
+
+        assertThat(lines.count { it.trim().startsWith("proxy_pass ") }).isGreaterThan(0)
+        assertThat(lines.count { it.trim() == "proxy_set_header X-Forwarded-Port \$forwarded_port;" })
+            .describedAs("a proxied location without the port makes the application rebuild the proof's URL on 443")
+            .isEqualTo(lines.count { it.trim().startsWith("proxy_pass ") })
+        assertThat(lines.joinToString("\n")).contains("map \$http_host \$forwarded_port", "default 443;")
+    }
+
+    @Test
     fun `the primary archives its WAL with pgBackRest at least every five minutes, and bounds what a missing replica can keep`() {
         val command = services.getValue("postgres").list("command").map { it.toString() }
 
