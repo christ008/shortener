@@ -74,7 +74,7 @@ Done first; each item is testable without a front end.
    configuration. Add a test with a user token.
 3. **Gateway:** `/app/*` to the UI, `/api/*` and single-segment short codes to the API, `/realms/*` to Keycloak. The short-code
    route must not match `/app`.
-4. **Reserved code:** add `app` to the reserved short codes.
+4. **Reserved code:** `app` is among the reserved short codes (done).
 
 ## Structure
 

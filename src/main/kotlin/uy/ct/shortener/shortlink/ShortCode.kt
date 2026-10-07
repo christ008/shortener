@@ -25,7 +25,7 @@ data class ShortCode(val value: String) {
 
         const val GENERATED_LENGTH = 7
 
-        val RESERVED = setOf("api", "actuator", "error")
+        val RESERVED = setOf("api", "actuator", "error", "app")
 
         private val REGEX = PATTERN.toRegex()
     }

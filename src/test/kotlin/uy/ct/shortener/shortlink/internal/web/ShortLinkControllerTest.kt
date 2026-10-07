@@ -51,13 +51,25 @@ class ShortLinkControllerTest {
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
         val shortCode = created.body!!.shortCode
         assertThat(shortCode).hasSize(ShortCode.GENERATED_LENGTH)
-        assertThat(created.headers.location.toString()).endsWith("/$shortCode")
+        assertThat(created.headers.location.toString()).endsWith("/api/short-links/$shortCode")
+        assertThat(created.body!!.shortUrl).endsWith("/$shortCode").doesNotContain("/api/")
         assertThat(repository.findByShortCode(ShortCode(shortCode)).found().createdBy).isEqualTo(Actor.Client(TestIdp.CLIENT))
 
         val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/$shortCode", Void::class.java)
 
         assertThat(redirect.statusCode).isEqualTo(HttpStatus.FOUND)
         assertThat(redirect.headers.location.toString()).isEqualTo("https://example.com/some/long/path")
+    }
+
+    @Test
+    fun `the Location of a created link is the link, and following it reads what was created`() {
+        val created = create(CreateShortLinkRequest("https://example.com/located"), ShortLinkResponse::class.java)
+        val headers = HttpHeaders().apply { setBearerAuth(TestIdp.token()) }
+
+        val read = restTemplate.exchange(created.headers.location!!, HttpMethod.GET, HttpEntity<Void>(headers), ShortLinkResponse::class.java)
+
+        assertThat(read.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(read.body).isEqualTo(created.body)
     }
 
     @Test
@@ -102,7 +114,8 @@ class ShortLinkControllerTest {
 
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(created.body!!.shortCode).isEqualTo("promo-2026")
-        assertThat(created.headers.location.toString()).endsWith("/promo-2026")
+        assertThat(created.headers.location.toString()).endsWith("/api/short-links/promo-2026")
+        assertThat(created.body!!.shortUrl).endsWith("/promo-2026").doesNotContain("/api/")
 
         val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/promo-2026", Void::class.java)
 

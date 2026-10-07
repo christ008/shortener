@@ -80,7 +80,7 @@ Before anyone is invited:
   refused with `400`. Never use `ALLOW_ANY_TARGET=true` on a public instance.
 - Use the realm `./gradlew productionRealm` writes, never the dev one.
 - Keep the default rate limits (300 a minute per address, 60 per client).
-- Keep an administrator client whose key only you hold. Takedown: `DELETE /api/short-links/<code>`.
+- Keep an administrator client whose key only you hold. Takedown: `PATCH /api/short-links/<code>` with `{"disabled": true}`.
 - Say in the README, next to the URL, that availability is not promised.
 - Store nothing you would mind losing: one disk, one machine, no backup yet.
 

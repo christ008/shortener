@@ -83,11 +83,12 @@ class DefaultShortLinkService(
     }
 
     @MayDisable
-    override fun disable(shortCode: ShortCode, disabledBy: Actor.Client) {
+    override fun disable(shortCode: ShortCode, disabledBy: Actor.Client): ShortLink {
         val link = manageableLinks.get(shortCode)
-        repository.disable(shortCode, disabledBy.name)
+        val disabled = repository.disable(shortCode, disabledBy.name).orThrow(shortCode)
         redirectCache.evict(shortCode)
         audit.disabled(link, disabledBy)
+        return disabled
     }
 
     private fun insert(shortCode: ShortCode, uri: URI, createdBy: Actor.Client): InsertResult =

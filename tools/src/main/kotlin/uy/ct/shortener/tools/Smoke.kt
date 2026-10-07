@@ -28,6 +28,9 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
 
     private val SHORT_CODE = Regex("\"shortCode\":\"([^\"]*)\"")
 
+    /** The only change a link takes: it is disabled. */
+    private const val DISABLE = """{"disabled":true}"""
+
     private val HTTP: HttpClient = HttpClient.newHttpClient()
 
     /** What a request answered, or the reason it did not: a refused connection is a failed check, not the end of the run. */
@@ -77,8 +80,10 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
             check("no-scope client cannot create", 403, call("no-scope-client", "POST", api, """{"targetUrl":"https://example.com/x"}"""))
             check("redirect is public", 302, plain("$base/$code", emptyMap()))
             check("unknown code", 404, plain("$base/zzzzzzz", emptyMap()))
-            check("another client cannot disable", 404, call("other-client", "DELETE", "$api/$code", null))
-            check("owner disables", 204, call("demo-client", "DELETE", "$api/$code", null))
+            check("another client cannot disable", 404, call("other-client", "PATCH", "$api/$code", DISABLE))
+            check("owner disables", 200, call("demo-client", "PATCH", "$api/$code", DISABLE))
+            check("disabling again is harmless", 200, call("demo-client", "PATCH", "$api/$code", DISABLE))
+            check("a link cannot be deleted", 405, call("demo-client", "DELETE", "$api/$code", null))
             check("disabled link answers gone", 410, plain("$base/$code", emptyMap()))
             check("bearer scheme is refused", 401, plain(api, mapOf("Authorization" to "Bearer " + token("demo-client"))))
             check("no credentials", 401, plain(api, emptyMap()))

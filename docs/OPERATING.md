@@ -152,7 +152,7 @@ does `DpopCalls` in `tools/src/main/kotlin`, which `Smoke` uses.
 | choose the code | `POST /api/short-links` with `{"targetUrl": "...", "customCode": "my-promo"}` |
 | list your links | `GET /api/short-links?page=0&size=20&sort=createdAt,desc` |
 | read one | `GET /api/short-links/<code>` |
-| disable one | `DELETE /api/short-links/<code>` |
+| disable one | `PATCH /api/short-links/<code>` with `{"disabled": true}` |
 | list every client's | `GET /api/short-links` as `admin-client`, or `?createdBy=<client>` |
 
 Contract: [openapi.yaml](openapi.yaml).
@@ -197,7 +197,7 @@ Commands of [DEPLOY.md](DEPLOY.md), on a deployed stack:
 | update | `deploy/stack/deploy.sh <version>` (checks the image's signature first) |
 | roll back | `deploy/stack/deploy.sh <previous version>` |
 | scale | `docker service scale shortener_shortener=3` (limits and the DPoP replay cache are per task) |
-| take a link down | `DELETE /api/short-links/<code>` as an administrator (other instances stop within 30 s) |
+| take a link down | `PATCH /api/short-links/<code>` with `{"disabled": true}` as an administrator (other instances stop within 30 s, or within 5 minutes on one that cannot reach the database) |
 | add a client | create it in the identity provider with its scopes and the `owner` claim mapper, then give it a key |
 | restrict target hosts | set `ALLOWED_TARGET_HOSTS` in `.env`, deploy |
 | inspect the database | `perf/pg-diagnostics.sql` ([DEPLOY.md](DEPLOY.md#operate)) |
@@ -218,7 +218,7 @@ minutes, and answers `503` with `Retry-After` for the rest.
 | `429` | rate limit: 300 a minute per address, 60 per client | wait `Retry-After`; limits are per instance. Everyone behind one NAT shares the address limit |
 | `503` with `Retry-After` | no database connection, a statement over 5 s, or a lock over 2 s | check Postgres, `perf/pg-diagnostics.sql` |
 | `400` "not accepted by this service" | target host not on the allowlist | add the host |
-| `409` creating a code | code taken or reserved (`api`, `actuator`, `error`) | choose another |
+| `409` creating a code | code taken or reserved (`api`, `actuator`, `error`, `app`) | choose another |
 | app exits at start with `permission denied` | schema behind, and the application role cannot change it | run the migration job first |
 | native build exits with 137 | out of memory | free about 7 GB |
 | `docker ps` shows nothing you started | Docker Desktop switched the CLI to its own daemon | `DOCKER_CONTEXT=default`; for Gradle `DOCKER_HOST=unix:///var/run/docker.sock` |

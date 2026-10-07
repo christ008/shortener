@@ -45,6 +45,9 @@ class AuthorizationIntegrationTest {
         return restTemplate.exchange(path, method, HttpEntity(body, headers), String::class.java)
     }
 
+    private fun disable(code: String, client: String?, scopes: String = manage) =
+        call(HttpMethod.PATCH, "/api/short-links/$code", client, scopes, """{"disabled":true}""")
+
     private fun create(client: String, scopes: String = manage, customCode: String? = null): ResponseEntity<String> {
         val custom = customCode?.let { ""","customCode":"$it"""" } ?: ""
         return call(HttpMethod.POST, "/api/short-links", client, scopes, """{"targetUrl":"https://example.com/${UUID.randomUUID()}"$custom}""")
@@ -77,10 +80,10 @@ class AuthorizationIntegrationTest {
         val code = codeOf(create(alice))
 
         val read = call(HttpMethod.GET, "/api/short-links/$code", bob)
-        val delete = call(HttpMethod.DELETE, "/api/short-links/$code", bob)
+        val disable = disable(code, bob)
 
         assertThat(read.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat(delete.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(disable.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
         assertThat(read.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
         assertThat(redirectStatus(code).statusCode).isEqualTo(HttpStatus.FOUND)
     }
@@ -92,10 +95,10 @@ class AuthorizationIntegrationTest {
 
         val cannotRead = call(HttpMethod.GET, "/api/short-links/$code", alice, scopes = "shortlinks:create")
         val cannotList = call(HttpMethod.GET, "/api/short-links", alice, scopes = "shortlinks:create")
-        val cannotDelete = call(HttpMethod.DELETE, "/api/short-links/$code", alice, scopes = "shortlinks:create shortlinks:read")
+        val cannotDisable = disable(code, alice, scopes = "shortlinks:create shortlinks:read")
         val cannotCreate = create(alice, scopes = "shortlinks:read")
 
-        listOf(cannotRead, cannotList, cannotDelete, cannotCreate).forEach {
+        listOf(cannotRead, cannotList, cannotDisable, cannotCreate).forEach {
             assertThat(it.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
             assertThat(it.headers.getFirst(HttpHeaders.WWW_AUTHENTICATE)).contains("""error="insufficient_scope"""")
         }
@@ -115,13 +118,18 @@ class AuthorizationIntegrationTest {
     }
 
     @Test
-    fun `disabling a link makes it answer 410, keeps its code taken and is idempotent`() {
+    fun `disabling a link answers it disabled, makes it answer 410, keeps its code taken and is idempotent`() {
         val alice = client()
         val code = "gone-${UUID.randomUUID().toString().take(8)}"
         create(alice, scopes = "$manage shortlinks:claim", customCode = code)
 
-        assertThat(call(HttpMethod.DELETE, "/api/short-links/$code", alice).statusCode).isEqualTo(HttpStatus.NO_CONTENT)
-        assertThat(call(HttpMethod.DELETE, "/api/short-links/$code", alice).statusCode).isEqualTo(HttpStatus.NO_CONTENT)
+        val first = disable(code, alice)
+        val second = disable(code, alice)
+
+        assertThat(first.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(first.body).contains(""""shortCode":"$code"""").contains(""""disabledAt":"2""")
+        assertThat(second.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(second.body).describedAs("the second answer keeps the time of the first").isEqualTo(first.body)
 
         val redirect = redirectStatus(code)
         assertThat(redirect.statusCode).isEqualTo(HttpStatus.GONE)
@@ -139,7 +147,7 @@ class AuthorizationIntegrationTest {
 
         assertThat(call(HttpMethod.GET, "/api/short-links/$code", admin, adminScope).statusCode).isEqualTo(HttpStatus.OK)
         assertThat(codesIn(call(HttpMethod.GET, "/api/short-links?createdBy=$alice", admin, adminScope))).containsExactly(code)
-        assertThat(call(HttpMethod.DELETE, "/api/short-links/$code", admin, adminScope).statusCode).isEqualTo(HttpStatus.NO_CONTENT)
+        assertThat(disable(code, admin, adminScope).statusCode).isEqualTo(HttpStatus.OK)
         assertThat(redirectStatus(code).statusCode).isEqualTo(HttpStatus.GONE)
         assertThat(call(HttpMethod.GET, "/api/short-links/$code", alice).body).contains(""""disabledAt"""")
     }
@@ -234,6 +242,24 @@ class AuthorizationIntegrationTest {
 
         assertThat(call(HttpMethod.GET, "/api/short-links", null).statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
         assertThat(call(HttpMethod.GET, "/api/short-links/$code", null).statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(call(HttpMethod.DELETE, "/api/short-links/$code", null).statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat(disable(code, null).statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+    }
+
+    @Test
+    fun `a link cannot be removed, there is no DELETE, and a PATCH takes nothing but disabled true`() {
+        val alice = client()
+        val code = codeOf(create(alice))
+
+        val delete = call(HttpMethod.DELETE, "/api/short-links/$code", alice)
+        val enable = call(HttpMethod.PATCH, "/api/short-links/$code", alice, body = """{"disabled":false}""")
+        val empty = call(HttpMethod.PATCH, "/api/short-links/$code", alice, body = "{}")
+
+        assertThat(delete.statusCode).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED)
+        assertThat(delete.headers.getFirst(HttpHeaders.ALLOW)).contains("PATCH")
+        listOf(enable, empty).forEach {
+            assertThat(it.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+            assertThat(it.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
+        }
+        assertThat(redirectStatus(code).statusCode).isEqualTo(HttpStatus.FOUND)
     }
 }

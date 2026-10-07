@@ -42,10 +42,10 @@ class ShortLinkModelTest {
     }
 
     @Test
-    fun `the reserved codes are the three that would shadow a route of the application`() {
-        // The test above takes its codes from this set, so it would pass with none: this fixes which they are (api, actuator and
-        // error, as docs/openapi.yaml says).
-        assertThat(ShortCode.RESERVED).containsExactlyInAnyOrder("api", "actuator", "error")
+    fun `the reserved codes are the four that would shadow a route of the application`() {
+        // The test above takes its codes from this set, so it would pass with none: this fixes which they are (api, actuator,
+        // error and app, as docs/openapi.yaml says). `app` is where the gateway sends the web UI.
+        assertThat(ShortCode.RESERVED).containsExactlyInAnyOrder("api", "actuator", "error", "app")
     }
 
     @Test

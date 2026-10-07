@@ -58,7 +58,7 @@ class SmokeTest {
         assertThat(result.status).describedAs(result.stdout + result.stderr).isEqualTo(0)
         assertThat(result.stdout).contains("all checks passed")
         assertThat(result.lines("FAIL")).isEmpty()
-        assertThat(result.lines("ok    ")).hasSize(21).contains("ok    create with a generated code", "ok    owner disables", "ok    disabled link answers gone")
+        assertThat(result.lines("ok    ")).hasSize(23).contains("ok    create with a generated code", "ok    owner disables", "ok    disabling again is harmless", "ok    a link cannot be deleted", "ok    disabled link answers gone")
     }
 
     @Test
@@ -70,7 +70,7 @@ class SmokeTest {
         assertThat(result.status).isEqualTo(1)
         assertThat(result.lines("FAIL")).containsExactly("FAIL  custom code taken (expected 409, got 201)")
         assertThat(result.stdout).contains("1 checks failed").doesNotContain("all checks passed")
-        assertThat(result.lines("ok    ")).hasSize(20)
+        assertThat(result.lines("ok    ")).hasSize(22)
     }
 
     @Test
@@ -81,8 +81,8 @@ class SmokeTest {
 
         assertThat(result.status).isEqualTo(1)
         assertThat(result.stderr).isEmpty()
-        assertThat(result.lines("FAIL")).hasSize(21)
-        assertThat(result.stdout).contains("21 checks failed")
+        assertThat(result.lines("FAIL")).hasSize(23)
+        assertThat(result.stdout).contains("23 checks failed")
     }
 
     @Test
@@ -160,7 +160,7 @@ class SmokeTest {
                 method == "POST" -> create(exchange, body, client)
                 method == "GET" && code.isEmpty() -> reply(exchange, if (query?.contains("sort=targetUrl") == true) 400 else 200, "{}")
                 method == "GET" -> if (mayManage) reply(exchange, 200, "{}") else reply(exchange, 404)
-                method == "DELETE" -> if (link != null && link.owner == client) { link.disabled = true; reply(exchange, 204) } else reply(exchange, 404)
+                method == "PATCH" -> if (link != null && link.owner == client && body.contains("\"disabled\":true")) { link.disabled = true; reply(exchange, 200, """{"shortCode":"$code"}""") } else reply(exchange, 404)
                 else -> reply(exchange, 405)
             }
         }

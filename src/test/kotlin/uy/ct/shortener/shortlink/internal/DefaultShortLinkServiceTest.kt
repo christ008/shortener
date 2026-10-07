@@ -113,7 +113,7 @@ class DefaultShortLinkServiceTest {
     fun `refuses custom codes that would shadow application routes`() {
         val (service, _) = serviceWith("aaaaaaa")
 
-        listOf("api", "actuator", "error").forEach {
+        listOf("api", "actuator", "error", "app").forEach {
             assertFailsWith<ShortCodeUnavailableException>("expected '$it' to be reserved") {
                 service.claim(ShortCode(it), "https://example.com", owner)
             }
@@ -145,6 +145,19 @@ class DefaultShortLinkServiceTest {
         service.disable(ShortCode("aaaaaaa"), owner)
 
         assertFailsWith<ShortLinkDisabledException> { service.resolve(ShortCode("aaaaaaa")) }
+    }
+
+    @Test
+    fun `disabling answers the link as disabled, and disabling again answers it as the first time left it`() {
+        val (service, _) = serviceWith("aaaaaaa")
+        service.shorten("https://example.com/target", owner)
+
+        val first = service.disable(ShortCode("aaaaaaa"), owner)
+        val second = service.disable(ShortCode("aaaaaaa"), Actor.Client("someone-else"))
+
+        assertThat(first.isDisabled).isTrue
+        assertThat(first.disabledBy).isEqualTo(owner)
+        assertThat(second).isEqualTo(first)
     }
 
     @Test
