@@ -1,4 +1,4 @@
-# Prometheus of the production stack (compose.prod.observability.yaml). The application is found through Docker's DNS:
+# Prometheus of the production stack (deploy/stack/overlays/compose.observability.yaml). The application is found through Docker's DNS:
 # `shortener` resolves to the address of every task, so a scrape reaches each one and an instance that fails its health
 # check drops out.
 global:

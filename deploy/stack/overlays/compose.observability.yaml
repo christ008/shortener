@@ -1,6 +1,6 @@
 # Prometheus with the alert rules, and the Postgres exporter, for compose.prod.yaml. Add it with a second file:
-#   docker stack deploy -c compose.prod.yaml -c compose.prod.observability.yaml shortener
-#   docker compose -f compose.prod.yaml -f compose.prod.observability.yaml up -d
+#   docker stack deploy -c compose.prod.yaml -c deploy/stack/overlays/compose.observability.yaml shortener
+#   docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.observability.yaml up -d
 # Prometheus is not published (it has no login, and Swarm cannot publish to loopback only): see docs/DEPLOY.md.
 # Grafana dashboard: deploy/observability/grafana.
 services:

@@ -1,6 +1,6 @@
 # Keycloak in production mode behind the edge, for a stack with no identity provider. Add it with a second file:
 #   KEYCLOAK=1 deploy/stack/deploy.sh <version>
-#   docker compose -f compose.prod.yaml -f compose.prod.keycloak.yaml up -d
+#   docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.keycloak.yaml up -d
 #
 # - Image: built from deploy/keycloak/Dockerfile: `docker build -t shortener-keycloak:26.7.5 deploy/keycloak`. On more than one
 #   node, push it to a registry (KEYCLOAK_IMAGE).
