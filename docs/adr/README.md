@@ -53,6 +53,8 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0028](0028-postgres-backups-and-a-replica.md) | Backups with pgBackRest, a replica promoted by hand, no partitioning | losing the one disk that holds every link | an image, a cron entry, a promotion runbook | needed when exposed |
 | [0029](0029-tools-in-kotlin.md) | The tools are Kotlin, in a build of their own | a second language, tests that start a process per case, a tool with no test | a build on the first run, and Gradle for `dev-setup` | earned |
 | [0030](0030-web-ui-as-a-static-spa.md) | A static single-page app that signs requests with a browser key (**proposed**) | people need a browser front end, and the API takes only DPoP-bound tokens | a DPoP implementation in the browser, an unverified Keycloak assumption | not built |
+| [0031](0031-human-administrators-need-a-second-factor.md) | A human administrator needs a second factor, and the API checks it (**proposed**) | a password that takes down any link, once users can be administrators | a converter change, a Keycloak flow to verify, a first factor to enrol | needed before users are admins |
+| [0032](0032-dpop-nonces.md) | The server hands out DPoP nonces and a proof must carry the current one | a proof the client made ahead or kept | a retry for clients that cannot, a shared secret, a round trip when the nonce changes | needed |
 
 0001 is the [format](0001-record-architecture-decisions.md).
 

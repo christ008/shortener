@@ -129,7 +129,7 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 |---|---|---|---|
 | S | Forging or confusing a token | signature against the provider's keys, issuer, audience `shortener-api`, expiry, type `at+jwt`, a token without `owner` is invalid (`SecurityIntegrationTest`) | the provider issues what it is told to |
 | S | Using a stolen token | DPoP: a proof for this method, URL and token, signed by the bound key. `Bearer` refused even for a valid token (`DpopIntegrationTest`) | stealing the key as well |
-| S | Replaying a captured request | the `jti` must be new, proofs expire in 30 s (`DpopIntegrationTest`) | the cache is per instance, so each of two instances accepts one replay inside the window. Needs a break of TLS first |
+| S | Replaying a captured request | the `jti` must be new, proofs expire in 30 s (`DpopIntegrationTest`), and a proof must carry the server's current nonce, so one made ahead or kept stops working within ten minutes at most ([ADR 0032](adr/0032-dpop-nonces.md), `DpopNonceIntegrationTest`) | the cache is per instance, so each of two instances accepts one replay inside the window. Needs a break of TLS first |
 | S | Token in a query string or body | only the `Authorization` header is read (`SecurityIntegrationTest`) | |
 | T | Altering a request in flight | TLS. The proof covers method, URL and token, **not the body** | a party past TLS can change the body of a signed request |
 | T | Choosing another owner, sorting by a column, a bad code | the owner argument must equal the caller, `sort` is a whitelist of columns, the code is validated by regex, the target twice | |
@@ -137,7 +137,7 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 | I | Reading another client's link | `404`, not `403`, so existence is not revealed (`AuthorizationIntegrationTest`, `UserOwnershipIntegrationTest`). A listing filter must be the caller's | an administrator sees everything, by design |
 | I | Error text | RFC 9457 bodies without internals in production | |
 | D | Flooding as a client | 60 a minute per client, 300 per address, `429` with `Retry-After` | readers behind one NAT share the address limit and can be refused for what others did ([ADR 0008](adr/0008-rate-limits-per-instance-in-memory.md)). No quota on stored links ([F-04](#findings)). A deep page costs more than a shallow one ([F-12](#findings)) |
-| E | Taking another scope | scopes are the token's. `claim` needs `create` too. `admin` is its own scope, and a client with only `admin` cannot create | what the provider grants. An admin scope is the key to every link |
+| E | Taking another scope | scopes are the token's. `claim` needs `create` too. `admin` is its own scope, and a client with only `admin` cannot create | what the provider grants. An admin scope is the key to every link. A person holding it needs a second factor ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)) |
 | E | CSRF | no cookies, no session, the token is a header. CSRF protection is off on purpose | a future UI that stores tokens in the browser changes this |
 
 ### E3. The redirect (public)
@@ -270,6 +270,7 @@ Decided. Revisit the reason, not the decision, when it stops being true.
 | Rate limits and the proof replay cache are per instance | no shared store to run. The limit is multiplied by the replicas ([ADR 0008](adr/0008-rate-limits-per-instance-in-memory.md)) |
 | `410` tells a visitor that a code once existed | the contract says a disabled link keeps its code taken, and links are public |
 | The DPoP proof does not cover the body | DPoP does not define it, and TLS protects the body in transit |
+| Administrators need no second factor | the only administrator is a service account with a key and a DPoP-bound token, and the realm has no users. The console is not on the edge. Revisit before any user holds `shortlinks:admin` ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)) |
 | Management metrics have no login | the port is never proxied and only stack containers reach it |
 | The application role can disable any link | disabling is its job, and nothing in it can delete or re-point one |
 | Swarm ignores `no-new-privileges` | the images have no setuid binaries, and Postgres has no capabilities to escalate with |

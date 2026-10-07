@@ -39,9 +39,10 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
    | `db_app_password` | `shortener_app`, serves requests |
    | `db_migrator_password` | `shortener_migrator`, owns the tables |
    | `db_exporter_password` | `shortener_exporter`, reads statistics |
+   | `dpop_nonce_secret` | key of the DPoP nonces, shared by every instance of the application |
 
    ```bash
-   for name in db_postgres_password db_app_password db_migrator_password db_exporter_password; do
+   for name in db_postgres_password db_app_password db_migrator_password db_exporter_password dpop_nonce_secret; do
      openssl rand -hex 24 | tr -d '\n' > "secrets/$name"
    done
    chmod 0444 secrets/*
@@ -69,7 +70,7 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
 - **Roll back:** `deploy/stack/deploy.sh <previous version>`. Nothing to undo in the schema.
 - **Edge configuration:** edit `deploy/edge/nginx.conf`, deploy again.
 - **Rotate a secret:** create the file under a new name in `compose.prod.yaml`, deploy. A database password needs
-  `ALTER ROLE` first.
+  `ALTER ROLE` first. Rotating `dpop_nonce_secret` makes clients ask for a nonce again once, while the instances disagree.
 
 ## Operate
 
@@ -140,7 +141,7 @@ the `shortener` realm and its static files only. The master realm and the consol
    ./gradlew productionRealm -Pdemo=demo-client.public.json -Padmin=admin-client.public.json
    ```
 
-   Keep line 1 of `admin.keys` private: it can take down any link. Line 1 of `demo.keys` is published so visitors can try the
+   Keep line 1 of `admin.keys` private, on your machine and encrypted at rest, and never on the VM: it can take down any link. Line 1 of `demo.keys` is published so visitors can try the
    instance as `demo-client`.
 3. **Two more secrets** (`0444`): `db_keycloak_password` (role `keycloak`, created with its database at first Postgres
    start) and `keycloak_admin_password` (bootstrap administrator of the master realm).

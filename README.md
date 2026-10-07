@@ -26,7 +26,7 @@ Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 
 ## Run it locally
 
-Needs Docker and JDK 25. The DPoP client needs JDK 17 or newer.
+Needs Docker and JDK 25. The reference DPoP client needs JDK 17 or newer.
 
 ```bash
 deploy/keycloak/dev-setup     # once: generates keys and passwords (builds its tools the first time)
@@ -38,6 +38,8 @@ java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.j
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 curl -i http://localhost:8080/<shortCode>
 ```
+
+That client is a reference implementation. For your own program, see [other clients and libraries](docs/OPERATING.md#other-clients-and-libraries).
 
 > [!WARNING]
 > `dev-setup` writes git-ignored keys, a dev realm and `.env`. These are throwaway: never use them anywhere real.
@@ -84,7 +86,7 @@ The latter fails at start with `The configuration of the pool is sealed once sta
 
 ## Evidence
 
-- **Tests:** 349, all passing, 233 of them on the service. Line coverage 97.1%, branch coverage 87.6%.
+- **Tests:** 380, all passing, 255 of them on the service. Line coverage 96.9%, branch coverage 87.5%.
 - **Mutation score:** 92% on the core logic (95 mutants), with the survivors explained.
   [INTERNALS.md#testing](docs/INTERNALS.md#testing)
 - **Threats:** a STRIDE model, a register of findings with severities and fix dates, and the risks accepted.

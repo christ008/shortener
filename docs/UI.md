@@ -155,7 +155,7 @@ Browser                                   Keycloak                     nginx -> 
 | # | Phase | Done when |
 |---|---|---|
 | 0 | **Spike:** public Keycloak client, a throwaway page that completes code, PKCE and DPoP and calls the API | the API answers `200` to a call signed by a browser key; otherwise switch to a backend-for-frontend |
-| 1 | **Identity and service:** users, scopes, `owner` claim, gateway routes, reserved `app` | tests show user and client tokens get distinct owners |
+| 1 | **Identity and service:** users, scopes, `owner` claim, gateway routes, reserved `app` | tests show user and client tokens get distinct owners, and a user token with `shortlinks:admin` and no second factor is not an administrator |
 | 2 | **Scaffold:** TanStack Start (SPA), Mantine, tooling, agent skills, generated client | `pnpm build` produces the shell, CI is green |
 | 3 | **Auth module:** all of `src/auth`, with unit tests | a signed-in page lists links through the gateway |
 | 4 | **Features:** list, create, disable, errors, admin view, themes | the Playwright suite passes |
@@ -163,7 +163,7 @@ Browser                                   Keycloak                     nginx -> 
 
 ## Risks and open questions
 
-- Keycloak DPoP support for public clients in the browser flow is assumed, not verified (phase 0). Fallback: a
+- Keycloak DPoP support for public clients in the browser flow is assumed, not verified (phase 0), and so is a step-up to `acr` 2 for `shortlinks:admin` ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)). Fallback: a
   backend-for-frontend that holds the tokens, with no browser-side DPoP.
 - TanStack Start was a release candidate when this was written. Check the shell file name and base path under `/app` in phase 2.
 - Mantine's CSS must load before the app's, and its color scheme script must work in a static shell without a flash.

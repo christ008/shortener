@@ -21,7 +21,7 @@ import java.util.UUID
  * asks [TestIdp] for an access token bound to the key's thumbprint, and [proof] builds the DPoP
  * header value for one request, with each claim overridable so that every way a proof can be wrong
  * can be produced: the wrong method, URL, token hash, age or key, a repeated identifier, or a
- * wrong JOSE type.
+ * wrong JOSE type. A server nonce goes in the `nonce` claim.
  */
 class TestDpopClient(private val key: ECKey = ECKeyGenerator(Curve.P_256).generate()) {
 
@@ -39,6 +39,7 @@ class TestDpopClient(private val key: ECKey = ECKeyGenerator(Curve.P_256).genera
         signWith: ECKey = key,
         type: String = "dpop+jwt",
         athOverride: String? = null,
+        nonce: String? = null,
     ): String {
         val claims = JWTClaimsSet.Builder()
             .jwtID(jti)
@@ -46,6 +47,7 @@ class TestDpopClient(private val key: ECKey = ECKeyGenerator(Curve.P_256).genera
             .claim("htu", URI.create(url).let { URI(it.scheme, it.authority, it.path, null, null).toString() })
             .issueTime(Date.from(issuedAt))
             .apply { (athOverride ?: accessToken?.let(::hash))?.let { claim("ath", it) } }
+            .apply { nonce?.let { claim("nonce", it) } }
             .build()
         val header = JWSHeader.Builder(JWSAlgorithm.ES256).type(JOSEObjectType(type)).jwk(signWith.toPublicJWK()).build()
         return SignedJWT(header, claims).apply { sign(ECDSASigner(signWith)) }.serialize()

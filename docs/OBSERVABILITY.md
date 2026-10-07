@@ -80,7 +80,7 @@ A create request in Tempo: the HTTP span, and under it `shortlink.insert`.
 | `cache_size`, `cache_evictions_total` | gauge, counter | cache fill |
 | `shortlink_redirect_cache_stale_total` | counter | redirects served from an expired entry while the database was down (should be zero) |
 | `shortlink_load_seconds`, `shortlink_insert_seconds` | timer | database read of a redirect, each insert attempt |
-| `shortener_security_events_total` | counter | `401`, `403`, `429` by `type` |
+| `shortener_security_events_total` | counter | `401`, `403`, `429` and requests for a DPoP nonce (`dpop_nonce_requested`) by `type` |
 | `shortener_audit_events_total` | counter | creates, disables, administrator actions by `type` |
 | `jvm_*`, `process_*` | | memory, GC, threads, CPU |
 | `pg_*` | | the database, from the Postgres exporter |
@@ -135,7 +135,7 @@ nested ECS names and the request's `traceId`. [ADR 0024](adr/0024-logging-and-au
 
 | Look for | Logger | Fields |
 |---|---|---|
-| failed authentication, denied call, limited client | `uy.ct.shortener.security.events` | `event.action`, `event.reason`, `client.ip`, `auth.scheme`, `url.path`, `owner` (denied call) |
+| failed authentication, denied call, limited client, request for a DPoP nonce (info) | `uy.ct.shortener.security.events` | `event.action`, `event.reason`, `client.ip`, `auth.scheme`, `url.path`, `owner` (denied call) |
 | link created or disabled, administrator acting on others | `uy.ct.shortener.audit` | `event.action`, `shortlink.code`, `actor`, `owner`, target host (create) |
 | storage failing, configuration at start | the class that wrote it | exception type, settings |
 

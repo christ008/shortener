@@ -353,9 +353,11 @@ Every access token must be bound to the client's key:
 1. The client authenticates to the token endpoint with a signed assertion (`private_key_jwt`, ES256) and a DPoP proof.
    It receives a token whose `cnf.jkt` is the thumbprint of its DPoP key.
 2. Each call sends `Authorization: DPoP <token>` and a `DPoP` proof for that exact request: method (`htm`), URL without
-   query (`htu`), token hash (`ath`), a unique `jti` and the time.
-3. Spring Security checks the signature, that the key matches `cnf.jkt`, method, URL, token hash, age and that the
-   `jti` is new.
+   query (`htu`), token hash (`ath`), a unique `jti`, the time and the server's nonce (`nonce`).
+3. The nonce is checked first, then Spring Security checks the signature, that the key matches `cnf.jkt`, method, URL, token
+   hash, age and that the `jti` is new.
+4. A proof without the current nonce is answered `401` with `error="use_dpop_nonce"` and the nonce in `DPoP-Nonce`, and the
+   client repeats the request once with a new proof ([ADR 0032](adr/0032-dpop-nonces.md)).
 
 ```mermaid
 sequenceDiagram
@@ -367,8 +369,10 @@ sequenceDiagram
     Client->>IdP: token request with a signed assertion and a DPoP proof
     IdP-->>Client: access token whose cnf.jkt is the key's thumbprint
     Client->>API: Authorization DPoP token, and a DPoP proof for this exact request
-    Note over API: checks the proof's signature, that its key matches cnf.jkt,<br/>the method, the URL, the token hash, the age, and that the jti is new
-    API-->>Client: the response
+    API-->>Client: 401 use_dpop_nonce, with DPoP-Nonce (when the proof has no current nonce)
+    Client->>API: the same request, with a new proof that carries the nonce
+    Note over API: checks the nonce, the proof's signature, that its key matches cnf.jkt,<br/>the method, the URL, the token hash, the age, and that the jti is new
+    API-->>Client: the response, with the nonce to use next
 ```
 
 Properties:
@@ -380,7 +384,10 @@ Properties:
   trust-aware valve.
 - The replay cache is in memory and per instance. A proof is remembered 30 s, at most 1,000 per DPoP key, about 30
   requests a second per key. A client can use several keys, so this is not a client limit.
-- DPoP nonces are not supported.
+- The nonce is an HMAC of the current five-minute interval, good for that interval and the next, and stateless: any instance with
+  the secret checks one it did not make. The secret is the Docker secret `dpop_nonce_secret`, required in `production`, and
+  `shortener.security.dpop.nonce.enabled=false` turns nonces off. Asking for one is counted as `dpop_nonce_requested`, not as a
+  failed authentication.
 - `shortener.security.dpop.required=false` also accepts plain bearer tokens (development and tests).
 - `/.well-known/oauth-protected-resource` (RFC 9728) tells clients the authorization server and that DPoP is required.
 
@@ -456,7 +463,8 @@ flowchart LR
   `SecurityProblem` (also an `ErrorResponseException`, with `WWW-Authenticate` or `Retry-After`) and hands it to MVC's
   exception resolver, so the body has the same shape as every other error and follows the client's `Accept`.
 - A `401` challenge names `DPoP` with the accepted algorithms, and `Bearer` as well unless DPoP is required. The error
-  is `invalid_token` (bad token or wrong scheme), `invalid_request` (missing proof) or `invalid_dpop_proof`.
+  is `invalid_token` (bad token or wrong scheme), `invalid_request` (missing proof), `invalid_dpop_proof` or `use_dpop_nonce`
+  (the proof lacks the current nonce, and `DPoP-Nonce` has it).
 
 ## Observability
 
@@ -680,7 +688,7 @@ Notes:
 ## Testing
 
 How the tests are counted, and what coverage and mutation testing say about them. Everything below was measured on 2026-10-06 on
-one machine, at `153d888`, **with Docker**: `./gradlew test koverHtmlReport koverXmlReport` and `./gradlew mutationTest`, on a JDK
+one machine, with the DPoP nonces ([ADR 0032](adr/0032-dpop-nonces.md)) and the port fix of the edge, **with Docker**: `./gradlew test koverHtmlReport koverXmlReport` and `./gradlew mutationTest`, on a JDK
 25.0.2 (SDKMAN).
 
 ### What is counted
@@ -690,21 +698,21 @@ files and scripts of the repository.
 
 | | Tests | Where | Needs Docker |
 |---|---|---|---|
-| The application: domain, service, cache, policy, web, persistence, security, architecture | 233 | `src/test` | 108 of them (23 classes, every one imports `TestcontainersConfiguration`) |
-| Infrastructure of the repository: `ComposeStackTest` 21, `DpopClientTest` 18, `MigrationConventionsTest` 8, `DeployScriptTest` 6, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 59 | `src/test` | none |
-| The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 13, `ClientKeysTest` 5, `DpopCallsTest` 6 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 57 | `tools/src/test` | none |
-| **Total** | **349** | | |
+| The application: domain, service, cache, policy, web, persistence, security, architecture | 255 | `src/test` | 114 of them (24 classes, every one imports `TestcontainersConfiguration`) |
+| Infrastructure of the repository: `ComposeStackTest` 22, `DpopClientTest` 22, `MigrationConventionsTest` 8, `DeployScriptTest` 6, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 64 | `src/test` | none |
+| The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 13, `ClientKeysTest` 5, `DpopCallsTest` 10 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 61 | `tools/src/test` | none |
+| **Total** | **380** | | |
 
-So 233 tests are about the service and 116 are about its tooling and infrastructure. All 349 ran and passed (`./gradlew test`, which
-runs the tools' tests too). Of the 233, 125 need no database and 108 do.
+So 255 tests are about the service and 125 are about its tooling and infrastructure. All 380 ran and passed (`./gradlew test`, which
+runs the tools' tests too). Of the 255, 141 need no database and 114 do.
 
 ### Coverage (Kover)
 
 - **Tool.** Kover 0.9.11, which works with Kotlin 2.3.21 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
   writes `build/reports/kover`, and CI keeps it as the `coverage` artifact. It is a measurement: there is no threshold.
-- **Scope.** The classes of `uy.ct.shortener`, from the 292 tests of `src/test`, all of which ran. The tools are a build of their own
+- **Scope.** The classes of `uy.ct.shortener`, from the 319 tests of `src/test`, all of which ran. The tools are a build of their own
   and are not measured.
-- **Result.** Lines 97.1% (574 of 591), branches 87.6% (211 of 241), methods 93.8% (183 of 195), classes 95.1% (78 of 82). By
+- **Result.** Lines 96.9% (632 of 652), branches 87.5% (258 of 295), methods 93.6% (206 of 220), classes 94.4% (84 of 89). By
   package, lines:
 
   | Package | Covered |
@@ -712,14 +720,14 @@ runs the tools' tests too). Of the 233, 125 need no database and 108 do.
   | `shortlink` (the contract) | 68 of 69, 98.6% |
   | `shortlink.internal` (service, cache, policy) | 153 of 155, 98.7% |
   | `shortlink.internal.web` | 52 of 53, 98.1% |
-  | `security.internal` | 133 of 136, 97.8% |
+  | `security.internal` | 183 of 189, 96.8% |
   | `shortlink.internal.authorization` | 32 of 33, 97.0% |
   | `shortlink.internal.persistence` | 81 of 85, 95.3% |
-  | `security` | 48 of 52, 92.3% |
+  | `security` | 56 of 60, 93.3% |
   | `uy.ct.shortener` (the migration runner) | 7 of 8, 87.5% |
 
 - **How to read it.** Covered is not checked: a line a test runs is a line a test could have asserted nothing about, which is what
-  the mutation score below looks at. The branch figure is the lower one, 30 of 241 not taken.
+  the mutation score below looks at. The branch figure is the lower one, 37 of 295 not taken.
 
 ### Mutation testing (PIT)
 
@@ -742,7 +750,7 @@ runs the tools' tests too). Of the 233, 125 need no database and 108 do.
   | `Actor.of` negated (no coverage) | how a stored name becomes a client, or an unknown creator, was covered only by the tests with a database | `a stored name is a client, and an absent one is a creator that is not known` |
   | `CreatedByFilter.Only.client` returning `""` (no coverage) | covered by tests that PIT was not running | no new test: `AuditTrailTest` and `ShortLinkAuthorizationTest`, which need no Docker and read it, were added to the tests PIT runs |
 
-- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same at `280200b` and at `153d888`, with the whole suite around it). Eight survive, and none is behaviour of the
+- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same again with the whole suite, the DPoP nonces and the port fix). Eight survive, and none is behaviour of the
   project: six are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
   `CaffeineRedirectCache` and `AllowedHosts`), and two are in code of the standard library that Kotlin inlines (the early return
   of `none` and `any` for an empty collection, an optimisation whose result is the same), so no test can kill them. PIT can be told
@@ -758,7 +766,7 @@ What each control of the documents rests on, so that a claim can be followed to 
 | Claim | Evidence | Docker |
 |---|---|---|
 | The application's role cannot delete a link or change a target, so a code is never handed out twice | `DatabaseRolesTest`, `ShortLinkSchemaTest` | yes |
-| Every request needs a token bound to the client's key and a proof for that request, including its port behind the edge | `DpopIntegrationTest`, `DpopClientTest`, `ComposeStackTest` | yes, except the last two |
+| Every request needs a token bound to the client's key, a proof for that request (including its port behind the edge) and the server's current nonce | `DpopIntegrationTest`, `DpopNonceIntegrationTest`, `DpopNoncesTest`, `DpopClientTest`, `ComposeStackTest` | yes, except the last three |
 | A takedown is bounded by the cache TTL, and a disabled or unknown link is never cached | `RedirectCacheTest`, `DefaultShortLinkServiceTest` | no |
 | Limits per address and per client answer `429` with `Retry-After` | `RateLimiterTest`, `IpRateLimitIntegrationTest`, `ClientRateLimitIntegrationTest` | the integration tests |
 | A database outage is `503`, and links already read keep redirecting | `StorageUnavailableIntegrationTest`, `JdbcShortLinkRepositoryUnavailableTest` | yes |
@@ -907,7 +915,7 @@ Each has a record with its problem, cost and alternatives in [adr/](adr/README.m
 - **Ownership is the client id.** There are no end users yet, so the token's `azp` is the owner and scopes are the only
   permission model.
 - **Sender-constrained tokens by default.** A leaked bearer token is the main risk of a token API. DPoP removes it at the
-  cost of a client that can sign. A client is provided: `deploy/keycloak/DpopClient.java`, one file that needs only a JDK 17
+  cost of a client that can sign. A reference client is provided: `deploy/keycloak/DpopClient.java`, one file that needs only a JDK 17
   or newer and no build, and that CI compiles for 17 and runs on 17.
 - **In-process redirect cache.** Caffeine, active links only, short TTL, local eviction on disable. See
   [Redirect cache](#redirect-cache) for what was rejected.
