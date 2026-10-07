@@ -3,6 +3,20 @@
 How the service works and why. The [README](../README.md) covers running it and [openapi.yaml](openapi.yaml) is the API
 contract (a test keeps it in step with the code).
 
+> [!NOTE]
+> This documents a *designed* system, and the tests are the evidence that the design is the system. A statement that names a
+> test or a measurement is a result. One that names neither is a decision, and [Limitations](#limitations) says what is
+> not shown.
+
+**A reading path for a reviewer**
+
+1. [Request flows](#request-flows): what each endpoint does, and the redirect hot path.
+2. [Security](#security), then [THREAT_MODEL.md](THREAT_MODEL.md): what is defended, the findings register with its fix dates,
+   and the risks accepted.
+3. [Testing](#testing): the counts, coverage, and what the mutation survivors showed.
+4. [Performance](#performance), starting with its warning about what the figures are.
+5. [Decisions](#decisions) and the [ADRs](adr/README.md): why this and not the alternative.
+
 - [Structure](#structure)
 - [Request flows](#request-flows)
 - [Domain types](#domain-types)
@@ -17,6 +31,11 @@ contract (a test keeps it in step with the code).
 - [Native image](#native-image)
 - [Deployment](#deployment)
 - [Releasing](#releasing)
+- [Testing](#testing)
+  - [What is counted](#what-is-counted)
+  - [Coverage (Kover)](#coverage-kover)
+  - [Mutation testing (PIT)](#mutation-testing-pit)
+  - [Where the evidence is](#where-the-evidence-is)
 - [Performance](#performance)
 - [Design review](#design-review)
 - [Decisions](#decisions)
@@ -90,6 +109,11 @@ sequenceDiagram
 
 - Looks up the [redirect cache](#redirect-cache), then loads by primary key on a miss.
 - `302`, `404` when unknown, `410` when disabled.
+- `302`, not `301`: a browser keeps a `301` indefinitely, which would outlive a takedown ([ADR 0011](adr/0011-in-process-redirect-cache.md)).
+- A code is never handed out twice. It is the primary key, a disabled link keeps its row, and the application's database role
+  has no `DELETE` and can update only `disabled_at` and `disabled_by`
+  ([ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md)). In development, where the application connects as
+  the database's superuser, that is the code's behaviour and not the database's.
 
 ```mermaid
 flowchart TD
@@ -394,6 +418,8 @@ Wiring that is easy to break:
 
 - Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): 300 requests a minute per IP before
   authentication, 60 a minute per client after it.
+- Everyone behind one address shares the IP bucket (5 a second): a newsletter link or a carrier NAT can be answered with `429`
+  by readers who did nothing ([ADR 0008](adr/0008-rate-limits-per-instance-in-memory.md)).
 - State is per instance, so the effective limit is the limit times the replicas. A global limit needs a shared store.
 - Buckets live in a size-bounded Caffeine cache and expire once idle for a full refill period, so a flood of distinct keys
   cannot exhaust memory.
@@ -561,7 +587,8 @@ flowchart LR
 - Certificates are files (`tls_cert`, `tls_key` secrets). Issuing and renewing them is outside the stack. nginx has an
   ACME module (HTTP-01 and TLS-ALPN-01, no wildcards), which is the way to automate it. It was not tried.
 - Replaces the forwarded headers rather than appending, because the application builds the DPoP proof's URL from them
-  and trusts them only from private addresses.
+  and trusts them only from private addresses. It also sends the port of the client's `Host` header as `X-Forwarded-Port`:
+  the stack may publish the edge on a port other than 443, a proof names that port, and without the header Tomcat assumes 443.
 - Caps bodies at 16 KiB, sets header, body and proxy timeouts, and caps connections per address. Never proxies the
   management port.
 - Resolves `shortener` every 5 s, so tasks that come and go are followed without a reload.
@@ -645,12 +672,15 @@ Notes:
 - It has not run yet. Only amd64 is built.
 - The package is private after the first release. Make it public in the repository's package settings, or give the
   hosts that pull it a registry login.
-- Dependabot proposes updates to the actions weekly. Pin them to commit hashes once the workflow is stable.
+- Dependabot proposes updates weekly to the actions, Gradle (the application and `tools/`), the Dockerfiles and the compose
+  files. Pin the actions to commit hashes once the workflow is stable.
+- `deploy/stack/deploy.sh` verifies the signature of a version (`cosign verify`, against the identity of this workflow for that
+  tag) before it deploys, so a deployment from a registry needs `cosign` on the manager.
 
 ## Testing
 
 How the tests are counted, and what coverage and mutation testing say about them. Everything below was measured on 2026-10-06 on
-one machine, at `280200b`, **with Docker**: `./gradlew test koverHtmlReport koverXmlReport` and `./gradlew mutationTest`, on a JDK
+one machine, at `153d888`, **with Docker**: `./gradlew test koverHtmlReport koverXmlReport` and `./gradlew mutationTest`, on a JDK
 25.0.2 (SDKMAN).
 
 ### What is counted
@@ -660,19 +690,19 @@ files and scripts of the repository.
 
 | | Tests | Where | Needs Docker |
 |---|---|---|---|
-| The application: domain, service, cache, policy, web, persistence, security, architecture | 232 | `src/test` | 107 of them (23 classes, every one imports `TestcontainersConfiguration`) |
-| Infrastructure of the repository: `ComposeStackTest` 20, `DpopClientTest` 18, `MigrationConventionsTest` 8, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 52 | `src/test` | none |
+| The application: domain, service, cache, policy, web, persistence, security, architecture | 233 | `src/test` | 108 of them (23 classes, every one imports `TestcontainersConfiguration`) |
+| Infrastructure of the repository: `ComposeStackTest` 21, `DpopClientTest` 18, `MigrationConventionsTest` 8, `DeployScriptTest` 6, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 59 | `src/test` | none |
 | The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 13, `ClientKeysTest` 5, `DpopCallsTest` 6 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 57 | `tools/src/test` | none |
-| **Total** | **341** | | |
+| **Total** | **349** | | |
 
-So 232 tests are about the service and 109 are about its tooling and infrastructure. All 341 ran and passed (`./gradlew test`, which
-runs the tools' tests too). Of the 232, 125 need no database and 107 do.
+So 233 tests are about the service and 116 are about its tooling and infrastructure. All 349 ran and passed (`./gradlew test`, which
+runs the tools' tests too). Of the 233, 125 need no database and 108 do.
 
 ### Coverage (Kover)
 
 - **Tool.** Kover 0.9.11, which works with Kotlin 2.3.21 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
   writes `build/reports/kover`, and CI keeps it as the `coverage` artifact. It is a measurement: there is no threshold.
-- **Scope.** The classes of `uy.ct.shortener`, from the 284 tests of `src/test`, all of which ran. The tools are a build of their own
+- **Scope.** The classes of `uy.ct.shortener`, from the 292 tests of `src/test`, all of which ran. The tools are a build of their own
   and are not measured.
 - **Result.** Lines 97.1% (574 of 591), branches 87.6% (211 of 241), methods 93.8% (183 of 195), classes 95.1% (78 of 82). By
   package, lines:
@@ -712,7 +742,7 @@ runs the tools' tests too). Of the 232, 125 need no database and 107 do.
   | `Actor.of` negated (no coverage) | how a stored name becomes a client, or an unknown creator, was covered only by the tests with a database | `a stored name is a client, and an absent one is a creator that is not known` |
   | `CreatedByFilter.Only.client` returning `""` (no coverage) | covered by tests that PIT was not running | no new test: `AuditTrailTest` and `ShortLinkAuthorizationTest`, which need no Docker and read it, were added to the tests PIT runs |
 
-- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same at `280200b`, with the whole suite around it). Eight survive, and none is behaviour of the
+- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same at `280200b` and at `153d888`, with the whole suite around it). Eight survive, and none is behaviour of the
   project: six are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
   `CaffeineRedirectCache` and `AllowedHosts`), and two are in code of the standard library that Kotlin inlines (the early return
   of `none` and `any` for an empty collection, an optimisation whose result is the same), so no test can kill them. PIT can be told
@@ -720,6 +750,24 @@ runs the tools' tests too). Of the 232, 125 need no database and 107 do.
   rose without the tests having changed: it is not used.
 - **How to read it.** 92% is a statement about 95 mutants of the logic of one module, run against the tests of those classes. It
   does not say how well the project is tested, and a mutant that survives is a question to read, not a defect.
+
+### Where the evidence is
+
+What each control of the documents rests on, so that a claim can be followed to the test that would fail without it.
+
+| Claim | Evidence | Docker |
+|---|---|---|
+| The application's role cannot delete a link or change a target, so a code is never handed out twice | `DatabaseRolesTest`, `ShortLinkSchemaTest` | yes |
+| Every request needs a token bound to the client's key and a proof for that request, including its port behind the edge | `DpopIntegrationTest`, `DpopClientTest`, `ComposeStackTest` | yes, except the last two |
+| A takedown is bounded by the cache TTL, and a disabled or unknown link is never cached | `RedirectCacheTest`, `DefaultShortLinkServiceTest` | no |
+| Limits per address and per client answer `429` with `Retry-After` | `RateLimiterTest`, `IpRateLimitIntegrationTest`, `ClientRateLimitIntegrationTest` | the integration tests |
+| A database outage is `503`, and links already read keep redirecting | `StorageUnavailableIntegrationTest`, `JdbcShortLinkRepositoryUnavailableTest` | yes |
+| The stack is hardened, only the edge publishes ports, and the edge forwards the port | `ComposeStackTest` | no |
+| `deploy.sh` verifies the signature, and refuses a bad name in `.env` | `DeployScriptTest` | no |
+| The code and the contract agree, and the module boundaries hold | `OpenApiContractTest`, `ModularityTests`, `ShortLinkArchitectureTest` | the first |
+
+What no test shows: that the stack behaves under a real multi-node Swarm, a real certificate, or a registry pull, and that the
+release workflow produces a signature `deploy.sh` accepts. See [Limitations](#limitations).
 
 ## Performance
 
@@ -881,6 +929,10 @@ Each has a record with its problem, cost and alternatives in [adr/](adr/README.m
   publishes or listens to events, and the table is not in the schema now. It stays in the history because an applied migration
   is not edited: Flyway checks its checksum. Anything that wants events again needs a migration that creates the table.
 - A link disabled on one instance can redirect on the others for up to the cache TTL (30 s).
+- No workload has read links the cache has not seen, so the figures are for the cache and not for the database. A miss is a
+  primary-key read with a 5 s limit, and concurrent misses for one code share one load, but a cold start over many distinct
+  codes is unmeasured.
+- The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
 - Rate limits and the DPoP replay cache are per instance.
 - Beyond capacity (about 5,800 req/s on two cores) the service sheds load, but creates still queue for seconds. nginx
   caps connections per address but not in total, which Tomcat does at 500.

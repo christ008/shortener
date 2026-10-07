@@ -47,6 +47,11 @@ docker run --rm --network host --memory 512m \
 
 It runs without a profile. Add `-e SPRING_PROFILES_ACTIVE=production` for the production settings.
 
+> [!NOTE]
+> `mydatabase` and `myuser` are the development database and its superuser, from `compose.yaml`. Connecting as that user
+> bypasses the role split of [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md): the stack connects as
+> `shortener_app`, which cannot delete a link, change a target or alter the schema.
+
 **Production stack.** See [DEPLOY.md](DEPLOY.md#rehearse-it-on-one-machine).
 
 Stop everything with `docker compose down`; add `-v` to drop the database.
@@ -156,7 +161,7 @@ Commands of [DEPLOY.md](DEPLOY.md), on a deployed stack:
 |---|---|
 | check health | `docker service ls`; `curl https://<host>/<unknown code>` answers `404` |
 | read logs | `docker service logs shortener_shortener` |
-| update | `deploy/stack/deploy.sh <version>` |
+| update | `deploy/stack/deploy.sh <version>` (checks the image's signature first) |
 | roll back | `deploy/stack/deploy.sh <previous version>` |
 | scale | `docker service scale shortener_shortener=3` (limits and the DPoP replay cache are per task) |
 | take a link down | `DELETE /api/short-links/<code>` as an administrator (other instances stop within 30 s) |
@@ -174,10 +179,10 @@ minutes, and answers `503` with `Retry-After` for the rest.
 | You see | Cause | Do |
 |---|---|---|
 | `401`, `error="invalid_token"` | bad or expired token, wrong audience, or `Bearer` while DPoP is required | send `Authorization: DPoP <token>` with a proof; check issuer and audience |
-| `401`, `error="invalid_dpop_proof"` | proof does not match the request: method, URL, token or time | make a fresh proof per request; behind a proxy, check `X-Forwarded-*` |
+| `401`, `error="invalid_dpop_proof"` | proof does not match the request: method, URL (including the port), token or time | make a fresh proof per request; behind a proxy, check `X-Forwarded-Host`, `-Proto` and `-Port` |
 | `403`, `insufficient_scope` | token lacks the scope | give the client the scope |
 | `404` for a link that exists | it belongs to another client | use that client, or an administrator |
-| `429` | rate limit: 300 a minute per address, 60 per client | wait `Retry-After`; limits are per instance |
+| `429` | rate limit: 300 a minute per address, 60 per client | wait `Retry-After`; limits are per instance. Everyone behind one NAT shares the address limit |
 | `503` with `Retry-After` | no database connection, a statement over 5 s, or a lock over 2 s | check Postgres, `perf/pg-diagnostics.sql` |
 | `400` "not accepted by this service" | target host not on the allowlist | add the host |
 | `409` creating a code | code taken or reserved (`api`, `actuator`, `error`) | choose another |

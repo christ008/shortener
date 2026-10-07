@@ -1,7 +1,7 @@
 # 0025. Keycloak in the stack, optional, behind the edge
 
 - Status: Accepted, 2026-10-06. Builds on [0005](0005-oauth2-resource-server-with-scopes.md)
-- Evidence: `compose.prod.keycloak.yaml`, `deploy/keycloak/`, `ComposeStackTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) F-02, rehearsed
+- Evidence: `deploy/stack/overlays/compose.keycloak.yaml`, `deploy/keycloak/`, `ComposeStackTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) F-02, rehearsed
   on one machine with Compose
 
 ## Problem
@@ -13,7 +13,7 @@ tokens, could not run without building the provider first, and the provider is t
 
 ## Decision
 
-- An optional overlay, `compose.prod.keycloak.yaml`, so an organization with its own provider takes nothing from it.
+- An optional overlay, `deploy/stack/overlays/compose.keycloak.yaml`, so an organization with its own provider takes nothing from it.
 - **The image** is built from `deploy/keycloak/Dockerfile`: Keycloak built for Postgres, run as `start --optimized`, so it starts as
   it is on a read-only filesystem instead of building itself on first run. An entrypoint reads the database and administrator
   passwords from files, because Keycloak has no such convention, and unsets the variable that named them.
