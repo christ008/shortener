@@ -75,7 +75,7 @@ health, 5% trace sampling, DPoP required) and:
 | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres, as `shortener_app` |
 | `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as `shortener_migrator`. Set only on the migration job. With `SHORTENER_MIGRATE_ONLY=true` the process migrates and exits |
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
-| `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default. `false` also accepts bearer tokens (development and tests only) |
+| `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default. `false` also accepts bearer tokens (development and tests only): `production` does not start with it |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests a minute per IP (300) and per client (60). Everyone behind one NAT shares the IP limit |
 | `SERVER_TOMCAT_MAXCONNECTIONS` | connections accepted before refusing (500), about 150 KB of heap each |
 | `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts links may point to: `example.com`, `*.example.org` (subdomains only). Under `production` the service does not start without this or `..._ALLOWANY=true`. The stack's `.env` calls them `ALLOWED_TARGET_HOSTS` and `ALLOW_ANY_TARGET` |
