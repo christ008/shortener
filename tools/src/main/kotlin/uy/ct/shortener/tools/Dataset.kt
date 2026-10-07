@@ -17,7 +17,8 @@ import java.util.stream.IntStream
  *   of the same `--seed` (default 1) starts with the smaller one. Custom codes are not generated.
  * - A stream of chunks of indexes goes through `Gatherers.mapConcurrent`: up to `--threads` (default: the processors) run at once,
  *   each in a virtual thread, and the results come out in order, so they reach `--out` one code a line in the order of the
- *   indexes. It starts no more chunks than it can hold, which bounds the memory however slow the file is. Without `--out`
+ *   indexes, 8 bytes each (7 characters and a newline), so that the code at index `i` is at byte `8 * i` and a reader can seek to it without
+ *   loading the file, as `perf/k6/mixed.js` does. It starts no more chunks than it can hold, which bounds the memory however slow the file is. Without `--out`
  *   nothing is kept: it measures the generator.
  * - `--verify` sorts every value and counts repeated ones, to confirm the construction. It holds 8 bytes a code in memory, so it
  *   takes up to 250M.

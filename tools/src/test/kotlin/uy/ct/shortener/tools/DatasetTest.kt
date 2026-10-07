@@ -47,6 +47,14 @@ class DatasetTest {
     }
 
     @Test
+    fun `the first codes of seed 1 do not change, so a loaded dataset can be read again`() {
+        val permutation = CodePermutation(1)
+
+        assertThat((0L until 5).map { Base62.encode(permutation.valueAt(it)) }).containsExactly("34b7luA", "wXdzLHV", "0pJ1QuI", "s3QYvIN", "G8ePOIn")
+        assertThat(Base62.encode(permutation.valueAt(4_999_999))).isEqualTo("Bj58f7q")
+    }
+
+    @Test
     fun `an index outside the space is refused`() {
         org.junit.jupiter.api.assertThrows<IllegalArgumentException> { CodePermutation(1, 1_000).valueAt(1_000) }
         org.junit.jupiter.api.assertThrows<IllegalArgumentException> { CodePermutation(1, 1_000).valueAt(-1) }
@@ -73,6 +81,7 @@ class DatasetTest {
         assertThat(output.status).isZero()
         assertThat(output.stderr).isEmpty()
         assertThat(output.stdout).contains("100,000 codes of 7 base62 characters", "100%", "generated 100,000 codes", "0 duplicates", "first codes:")
+        assertThat(Files.size(directory.resolve("codes.txt"))).describedAs("8 bytes a code: perf/k6/mixed.js reads the code at index i from byte 8 * i").isEqualTo(800_000)
         val codes = Files.readAllLines(directory.resolve("codes.txt"))
         assertThat(codes).hasSize(100_000).doesNotHaveDuplicates().allMatch { Regex("[A-Za-z0-9]{7}").matches(it) }
     }

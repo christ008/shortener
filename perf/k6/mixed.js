@@ -2,6 +2,7 @@ import http from 'k6/http';
 import encoding from 'k6/encoding';
 import { check } from 'k6';
 import { Trend } from 'k6/metrics';
+import { open as openFile } from 'k6/experimental/fs';
 
 const BASE = __ENV.BASE_URL || 'http://localhost:8080';
 const ISSUER = __ENV.ISSUER || 'http://localhost:8180/realms/shortener';
@@ -10,6 +11,24 @@ const CLIENT_ID = __ENV.CLIENT_ID || 'demo-client';
 const CLIENT_KEY = JSON.parse(open(__ENV.CLIENT_KEY_FILE || '/keys/demo-client.jwk.json'));
 const SEEDS = parseInt(__ENV.SEEDS || '500');
 const CREATE_SHARE = parseFloat(__ENV.CREATE_SHARE || '0.01');
+const DATASET_HOT = parseInt(__ENV.DATASET_HOT || '0');
+const DATASET_HOT_SHARE = parseFloat(__ENV.DATASET_HOT_SHARE || '0.8');
+
+// The file `tools/run Dataset --out` writes: a code and a newline, 8 bytes each, so the code at index i is the one at byte 8 * i. It is read
+// by position, a code per request, and not loaded: 10M codes are 80 MB, and each VU would have its own copy.
+const RECORD = 8;
+const dataset = __ENV.DATASET_FILE ? await openFile(__ENV.DATASET_FILE) : null;
+const DATASET_COUNT = dataset ? (await dataset.stat()).size / RECORD : 0;
+
+async function codeAt(index) {
+  const record = new Uint8Array(RECORD);
+  await dataset.seek(index * RECORD, 0);
+  await dataset.read(record);
+  return String.fromCharCode(...record.subarray(0, RECORD - 1));
+}
+
+const randomCode = () => codeAt(Math.floor(Math.random() * DATASET_COUNT));
+const hotCode = (size) => codeAt(Math.floor(Math.random() * Math.min(size, DATASET_COUNT)));
 
 const redirectLatency = new Trend('redirect_latency', true);
 const createLatency = new Trend('create_latency', true);
@@ -102,6 +121,12 @@ export async function setup() {
     }), dpop, 'POST', url, token);
     if (created.status === 201) codes.push(created.json('shortCode'));
   }
+  if (dataset) {
+    for (const code of [await codeAt(0), await codeAt(DATASET_COUNT - 1)]) {
+      const res = http.get(`${BASE}/${code}`, { redirects: 0 });
+      if (res.status !== 302) throw new Error(`/${code} answered ${res.status}: the ${DATASET_COUNT} codes of ${__ENV.DATASET_FILE} are not in the database (perf/load-dataset.sh)`);
+    }
+  }
   return { token, dpopJwk, codes, nonce };
 }
 
@@ -118,6 +143,11 @@ export default async function (data) {
     }), dpop, 'POST', url, data.token);
     createLatency.add(res.timings.duration);
     check(res, { created: (r) => r.status === 201 });
+  } else if (dataset) {
+    const code = await (DATASET_HOT > 0 && Math.random() < DATASET_HOT_SHARE ? hotCode(DATASET_HOT) : randomCode());
+    const res = http.get(`${BASE}/${code}`, { redirects: 0, tags: { name: 'redirect' } });
+    redirectLatency.add(res.timings.duration);
+    check(res, { redirected: (r) => r.status === 302 });
   } else {
     const hot = Math.random() < 0.8;
     const pool = hot ? Math.max(1, Math.floor(data.codes.length * 0.2)) : data.codes.length;
