@@ -1,7 +1,8 @@
 # Architecture decision records
 
-Why the system is the way it is, one decision per file. [INTERNALS.md](../INTERNALS.md) says how it works, and each ADR
-says why that choice and not another, what it costs and what would make us undo it.
+Why the system is the way it is, one decision per file. [INTERNALS.md](../INTERNALS.md) says how it works,
+[DESIGN.md](../DESIGN.md) says why the code has its shape, and each ADR says why that choice and not another, what it costs
+and what would make us undo it.
 
 The decisions are recorded after the fact, from the history of the repository, and dated by the commit that made them.
 
@@ -67,7 +68,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 - The history already shows the correction: [0016](0016-compose-and-swarm-instead-of-kubernetes.md) removed four cluster
   operators that had never run on a cluster, and [0014](0014-offset-pagination-with-totals.md) reverted cursors that the
   product did not need.
-- Security reasoning is in [THREAT_MODEL.md](../THREAT_MODEL.md). An ADR names the threat it answers, and the model
+- Security controls are in [SECURITY.md](../SECURITY.md) and the reasoning is in [THREAT_MODEL.md](../THREAT_MODEL.md). An ADR names the threat it answers, and the model
   names the ADR that mitigates it.
 
 ## Writing one

@@ -14,7 +14,7 @@ import kotlin.system.exitProcess
  *
  * - Flyway runs while the context starts, before any runner, so the schema is current when this runs.
  * - A failed migration fails the context, so the process exits with an error.
- * - The property is read when the runner runs, not through `@ConditionalOnProperty` (native image: docs/INTERNALS.md).
+ * - The property is read when the runner runs, not through `@ConditionalOnProperty` (native image: docs/INTERNALS.md, "What the native image had to be taught").
  */
 @Component
 class MigrateOnlyRunner(private val context: ConfigurableApplicationContext, environment: Environment) : ApplicationRunner {

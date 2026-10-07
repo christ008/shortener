@@ -50,7 +50,7 @@ data class ShortLinkResponse(
  * - [page] is zero-based and [size] is the size that applied.
  * - [totalItems] and [totalPages] count every match, so a client can offer any page, including the last.
  * - [hasNext] says whether a page follows this one.
- * - Each item carries its `shortUrl`, from the `shortUrlOf` the page was built with.
+ * - Each item carries its `shortUrl`, which [from] builds with the `shortUrlOf` it is given.
  */
 data class ShortLinkPageResponse(
     val items: List<ShortLinkResponse>,

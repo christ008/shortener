@@ -34,7 +34,7 @@ import java.net.URI
  * - Custom codes may not be [ShortCode.RESERVED]. Claiming one the caller already has, for the same target, answers that link.
  * - Which hosts a link may point to is the [TargetUrlPolicy]'s decision.
  * - A disabled link keeps its code.
- * - Creates, disables and listings across clients go to the [AuditTrail].
+ * - Creates and disables, and listings of other clients' links, go to the [AuditTrail].
  * - Redirects go through the [RedirectCache]. Every other read uses the repository.
  */
 @Service
@@ -95,6 +95,7 @@ class DefaultShortLinkService(
 
     @MayDisable
     override fun disable(shortCode: ShortCode, disabledBy: Actor.Client): ShortLink {
+        // Loading through ManageableLinks is the ownership check: anyone but the owner or an administrator gets `404`.
         val link = manageableLinks.get(shortCode)
         val disabled = repository.disable(shortCode, disabledBy.name).orThrow(shortCode)
         redirectCache.evict(shortCode)

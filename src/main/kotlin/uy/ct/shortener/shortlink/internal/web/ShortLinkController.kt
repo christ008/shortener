@@ -35,9 +35,9 @@ import java.net.URI
  * - `GET /api/short-links` lists the client's own links a page at a time (`page`, `size`, `sort`). An administrator may list
  *   any client's.
  * - `GET /api/short-links/{shortCode}` reads one, and `PATCH` with `{"disabled": true}` disables it: `200` with the link.
- * - `GET /{shortCode}` is public. It answers `302`, or `410` once the link is disabled.
+ * - `GET /{shortCode}` is public. It answers `302`, `404` for an unknown code, or `410` once the link is disabled.
  *
- * A short URL is built from the request's own scheme, host and port, as the `Location` always was.
+ * The `Location` and every `shortUrl` are built from the request's own scheme, host and port.
  */
 @RestController
 class ShortLinkController(
@@ -92,7 +92,7 @@ class ShortLinkController(
     fun get(@PathVariable shortCode: ShortCode, uriBuilder: UriComponentsBuilder): ShortLinkResponse =
         ShortLinkResponse.from(service.get(shortCode), uriBuilder.shortUrl(shortCode))
 
-    /** The only change a link takes is being disabled, which the request has already been checked to ask for. */
+    /** [UpdateShortLinkRequest] accepts only `{"disabled": true}`, so disabling is the one change a link takes. */
     @PatchMapping("/api/short-links/{shortCode}")
     fun update(
         @PathVariable shortCode: ShortCode,
