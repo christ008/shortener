@@ -1,4 +1,4 @@
-# Postgres with pgBackRest and the replica and restore-test scripts (compose.prod.postgres-ha.yaml).
+# Postgres with pgBackRest and the replica and restore-test scripts (deploy/stack/overlays/compose.postgres-ha.yaml).
 #   docker build -t shortener-postgres:18.6 deploy/postgres
 FROM postgres:18.6
 RUN apt-get update \

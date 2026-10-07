@@ -7,8 +7,9 @@
 # On an update the migration job runs first, then the application is updated. A first deploy starts everything at once.
 #
 # Settings, all optional:
-#   COMPOSE_FILES   files to deploy, default "compose.prod.yaml"; OBSERVABILITY=1 adds compose.prod.observability.yaml and
-#                   KEYCLOAK=1 adds compose.prod.keycloak.yaml, and POSTGRES_HA=1 adds compose.prod.postgres-ha.yaml
+#   COMPOSE_FILES   files to deploy, default "compose.prod.yaml". The overlays in deploy/stack/overlays/ are added with
+#                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
+#                   POSTGRES_HA=1 (compose.postgres-ha.yaml)
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
 #   WAIT            seconds to wait for the migration job, default 300
 set -eu
@@ -16,9 +17,9 @@ set -eu
 version=${1:?usage: deploy/stack/deploy.sh VERSION [STACK]}
 stack=${2:-shortener}
 files=${COMPOSE_FILES:-compose.prod.yaml}
-[ -z "${OBSERVABILITY:-}" ] || files="$files compose.prod.observability.yaml"
-[ -z "${KEYCLOAK:-}" ] || files="$files compose.prod.keycloak.yaml"
-[ -z "${POSTGRES_HA:-}" ] || files="$files compose.prod.postgres-ha.yaml"
+[ -z "${OBSERVABILITY:-}" ] || files="$files deploy/stack/overlays/compose.observability.yaml"
+[ -z "${KEYCLOAK:-}" ] || files="$files deploy/stack/overlays/compose.keycloak.yaml"
+[ -z "${POSTGRES_HA:-}" ] || files="$files deploy/stack/overlays/compose.postgres-ha.yaml"
 args=""
 for f in $files; do args="$args -c $f"; done
 

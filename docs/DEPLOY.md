@@ -117,7 +117,7 @@ that `ports` entry from `compose.local.yaml` to run two.
 
 ## Keycloak
 
-`compose.prod.keycloak.yaml` adds Keycloak in production mode behind the edge, for a stack with no identity provider. With
+`deploy/stack/overlays/compose.keycloak.yaml` adds Keycloak in production mode behind the edge, for a stack with no identity provider. With
 your own provider, point `ISSUER_URI` and `JWKS_URI` at it and skip this. [ADR 0025](adr/0025-keycloak-in-the-stack.md).
 
 It adds a `keycloak` service with its own database in the stack's Postgres, a realm with two clients, and an edge route for
@@ -172,7 +172,7 @@ Notes:
 
 ## Backups and a replica
 
-`compose.prod.postgres-ha.yaml` adds pgBackRest backups and a streaming replica ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)).
+`deploy/stack/overlays/compose.postgres-ha.yaml` adds pgBackRest backups and a streaming replica ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)).
 
 1. Build the image on the node, or push it to a registry if there is more than one node (`POSTGRES_IMAGE`):
 

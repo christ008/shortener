@@ -159,7 +159,10 @@ tasks.withType<Test> {
     systemProperty("project.version", project.version.toString())
     inputs.files(
         "compose.prod.yaml",
-        "compose.prod.observability.yaml",
+        "deploy/stack/overlays/compose.observability.yaml",
+        "deploy/stack/overlays/compose.keycloak.yaml",
+        "deploy/stack/overlays/compose.postgres-ha.yaml",
+        "deploy/edge/keycloak.conf",
         "deploy/stack/.env.example",
         "deploy/keycloak/DpopClient.java",
         "deploy/postgres/bootstrap.sql",

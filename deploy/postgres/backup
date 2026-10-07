@@ -1,5 +1,5 @@
 #!/bin/sh
-# Backs up the stack's Postgres with pgBackRest (compose.prod.postgres-ha.yaml) and proves a restore. Runs on the manager.
+# Backs up the stack's Postgres with pgBackRest (deploy/stack/overlays/compose.postgres-ha.yaml) and proves a restore. Runs on the manager.
 #
 #   deploy/postgres/backup init           create the stanza, check archiving and take the first full backup (once)
 #   deploy/postgres/backup full           full backup

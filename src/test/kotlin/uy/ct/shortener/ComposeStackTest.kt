@@ -23,7 +23,12 @@ class ComposeStackTest {
 
     private val migratorSecret = "db_migrator_password"
 
-    private val files = listOf("compose.prod.yaml", "compose.prod.observability.yaml", "compose.prod.keycloak.yaml", "compose.prod.postgres-ha.yaml").map(::load)
+    private val files = listOf(
+        "compose.prod.yaml",
+        "deploy/stack/overlays/compose.observability.yaml",
+        "deploy/stack/overlays/compose.keycloak.yaml",
+        "deploy/stack/overlays/compose.postgres-ha.yaml",
+    ).map(::load)
 
     private val services: Map<String, Map<String, Any?>> = files
         .flatMap { it.map("services").entries }

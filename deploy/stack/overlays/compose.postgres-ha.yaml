@@ -1,6 +1,6 @@
 # Adds pgBackRest backups and a streaming replica to Postgres (docs/DEPLOY.md#backups-and-a-replica).
 #   POSTGRES_HA=1 deploy/stack/deploy.sh <version>
-#   docker compose -f compose.prod.yaml -f compose.prod.postgres-ha.yaml up -d
+#   docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.postgres-ha.yaml up -d
 # Needs the image built from deploy/postgres (POSTGRES_IMAGE) and the secret db_replicator_password.
 services:
   postgres:
