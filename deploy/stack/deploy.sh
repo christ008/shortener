@@ -11,11 +11,48 @@
 #                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
 #                   POSTGRES_HA=1 (compose.postgres-ha.yaml)
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
+#   VERIFY_SIGNATURE  `always` (default) runs `cosign verify` on the image for VERSION, which must have been signed by the
+#                   release workflow of its repository on ghcr.io, and deploys nothing when it fails. `never` skips it, for
+#                   the rehearsal on one machine, whose image is built locally
 #   WAIT            seconds to wait for the migration job, default 300
 set -eu
 
 version=${1:?usage: deploy/stack/deploy.sh VERSION [STACK]}
 stack=${2:-shortener}
+
+# `docker stack deploy` does not read .env, so load it here. Variables already in the environment win. A name that is not a
+# plain variable name is refused, because the line is expanded by `eval`.
+if [ -f .env ]; then
+  # shellcheck disable=SC2034  # `value` is read by the eval below
+  while IFS='=' read -r key value; do
+    case "$key" in ''|'#'*) continue ;; esac
+    case "$key" in
+      [A-Za-z_]*) ;;
+      *) echo ".env: '$key' is not a variable name" >&2; exit 1 ;;
+    esac
+    case "$key" in
+      *[!A-Za-z0-9_]*) echo ".env: '$key' is not a variable name" >&2; exit 1 ;;
+    esac
+    value=${value#\'}
+    value=${value%\'}
+    eval "[ -n \"\${$key:-}\" ] || export $key=\"\$value\""
+  done < .env
+fi
+
+if [ "${VERIFY_SIGNATURE:-always}" != never ]; then
+  image=${SHORTENER_IMAGE:-ghcr.io/christ008/shortener}
+  case "$image" in
+    ghcr.io/*) ;;
+    *) echo "cannot verify $image: only images of ghcr.io are signed by the release workflow (VERIFY_SIGNATURE=never skips the check)" >&2; exit 1 ;;
+  esac
+  command -v cosign >/dev/null 2>&1 || { echo "cosign is needed to verify the image (VERIFY_SIGNATURE=never skips the check)" >&2; exit 1; }
+  echo "verifying the signature of $image:$version"
+  cosign verify "$image:$version" \
+    --certificate-identity "https://github.com/${image#ghcr.io/}/.github/workflows/release.yml@refs/tags/v$version" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null \
+    || { echo "the signature of $image:$version could not be verified; nothing was deployed" >&2; exit 1; }
+fi
+
 files=${COMPOSE_FILES:-compose.prod.yaml}
 [ -z "${OBSERVABILITY:-}" ] || files="$files deploy/stack/overlays/compose.observability.yaml"
 [ -z "${KEYCLOAK:-}" ] || files="$files deploy/stack/overlays/compose.keycloak.yaml"
@@ -34,16 +71,6 @@ fi
 export NGINX_CONF_HASH PROMETHEUS_CONF_HASH
 
 deploy() {
-  # `docker stack deploy` does not read .env, so load it here. Variables already in the environment win.
-  if [ -f .env ]; then
-    # shellcheck disable=SC2034  # `value` is read by the eval below
-    while IFS='=' read -r key value; do
-      case "$key" in ''|'#'*) continue ;; esac
-      value=${value#\'}
-      value=${value%\'}
-      eval "[ -n \"\${$key:-}\" ] || export $key=\"\$value\""
-    done < .env
-  fi
   # shellcheck disable=SC2086
   docker stack deploy $args --with-registry-auth --resolve-image "${RESOLVE_IMAGE:-always}" --detach=true "$stack"
 }

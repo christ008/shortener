@@ -18,6 +18,8 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
 - Docker 25 or later on each host. Swarm for more than one.
 - The image `ghcr.io/christ008/shortener:<version>`, published by the Release workflow on a `v*` tag. A private package needs
   `docker login ghcr.io` on the manager. `deploy.sh` passes `--with-registry-auth`.
+- `cosign` on the manager. `deploy.sh` verifies the image's signature before it deploys anything, and `VERIFY_SIGNATURE=never`
+  skips that (the one-machine rehearsal does, because its image is built locally).
 - An identity provider whose tokens carry the `owner` claim and bind to the client's key (DPoP). The dev realm
   `deploy/keycloak/shortener-realm.json` shows what is needed. Never import it into a real one.
 - A certificate and key for the host name, as PEM files, and DNS pointing at the node that runs the edge.
@@ -63,7 +65,7 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
 
 ## Update, roll back
 
-- **Update:** `deploy/stack/deploy.sh <version>`. It runs the migration job at the new version, waits for it, then updates the
+- **Update:** `deploy/stack/deploy.sh <version>`. It verifies the signature of that version, runs the migration job at the new version, waits for it, then updates the
   application one task at a time, new before old. A task not healthy within 20 s rolls the update back.
 - **Roll back:** `deploy/stack/deploy.sh <previous version>`. Nothing to undo in the schema.
 - **Edge configuration:** edit `deploy/edge/nginx.conf`, deploy again.
@@ -168,8 +170,11 @@ Notes:
 - **Failed sign-ins** are logged by Keycloak as warnings with client and address. The edge limits the token endpoint to ten
   requests a second per address.
 - **Back it up with the database.**
-- **Serve the edge on ports 80 and 443.** On another published port a call was refused with `invalid_dpop_proof` while the
-  same call on 443 worked. The cause was not investigated.
+- **The edge may be published on another port.** A DPoP proof names the URL with its port, and the application rebuilds that URL
+  from the forwarded headers. The edge sends the port of the `Host` header as `X-Forwarded-Port` (`ComposeStackTest`), because
+  without it Tomcat assumes 443 and a call on another port was refused with `invalid_dpop_proof` while the same call on 443
+  worked. `DpopIntegrationTest` reproduces the refusal at the application and shows the header fixing it. It has not been run
+  end to end on a published port other than 443.
 
 ## Backups and a replica
 

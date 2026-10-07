@@ -5,15 +5,22 @@
 A URL shortener with OAuth2 DPoP-bound tokens, per-client ownership, Postgres, an in-memory redirect cache, Prometheus and
 OpenTelemetry, a GraalVM native image, and a hardened Docker Compose / Swarm stack.
 
-It has not served real traffic. Every statement about load comes from a synthetic workload on one machine.
+> [!IMPORTANT]
+> It has not served real traffic. Every statement about load comes from a synthetic workload on one machine.
+
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="Grafana dashboard of the service at 1,500 requests a second" width="420">
+</p>
 
 Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx · Apache-2.0
 
 ## Behaviour
 
-- Creates a link with a generated code (7 base62 characters) or a custom one. `GET /{code}` answers `302`.
+- Creates a link with a generated code (7 base62 characters) or a custom one. `GET /{code}` answers `302`, not `301`, so a
+  browser does not keep following a link after a takedown.
 - A client lists, reads and disables its own links. An administrator can act on any.
-- Another client's link answers `404`. A disabled link answers `410` and keeps its code.
+- Another client's link answers `404`. A disabled link answers `410` and keeps its code. A code is never handed out twice: in
+  production the application's database role cannot delete a row or change a code.
 - A takedown reaches every instance within the cache TTL (30 s).
 - Every authentication, authorization and rate-limit failure is an RFC 9457 problem detail.
 
@@ -34,7 +41,8 @@ curl -i http://localhost:8080/<shortCode>
 
 That client is a reference implementation. For your own program, see [other clients and libraries](docs/OPERATING.md#other-clients-and-libraries).
 
-`dev-setup` writes git-ignored keys, a dev realm and `.env`. These are throwaway: never use them anywhere real.
+> [!WARNING]
+> `dev-setup` writes git-ignored keys, a dev realm and `.env`. These are throwaway: never use them anywhere real.
 
 `./gradlew tasks --group tooling` lists a task for every script. Details: [docs/OPERATING.md](docs/OPERATING.md).
 
@@ -67,14 +75,23 @@ health, 5% trace sampling, DPoP required) and:
 | `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as `shortener_migrator`. Set only on the migration job. With `SHORTENER_MIGRATE_ONLY=true` the process migrates and exits |
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
 | `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default. `false` also accepts bearer tokens (development and tests only) |
-| `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests a minute per IP (300) and per client (60) |
+| `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests a minute per IP (300) and per client (60). Everyone behind one NAT shares the IP limit |
 | `SERVER_TOMCAT_MAXCONNECTIONS` | connections accepted before refusing (500), about 150 KB of heap each |
-| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts links may point to: `example.com`, `*.example.org` (subdomains only). Under `production` the service does not start without this or `..._ALLOWANY=true` |
+| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts links may point to: `example.com`, `*.example.org` (subdomains only). Under `production` the service does not start without this or `..._ALLOWANY=true`. The stack's `.env` calls them `ALLOWED_TARGET_HOSTS` and `ALLOW_ANY_TARGET` |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES`, `..._ENABLED` | cache entry lifetime (30s), size (100,000), on/off |
 | `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long a read link is still followed while the database is unreachable (5m); `0` turns it off |
 
 Write names with no separator inside a word: `SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT`, not `..._CONNECTION_TIMEOUT`.
 The latter fails at start with `The configuration of the pool is sealed once started`.
+
+## Evidence
+
+- **Tests:** 380, all passing, 255 of them on the service. Line coverage 96.9%, branch coverage 87.5%.
+- **Mutation score:** 92% on the core logic (95 mutants), with the survivors explained.
+  [INTERNALS.md#testing](docs/INTERNALS.md#testing)
+- **Threats:** a STRIDE model, a register of findings with severities and fix dates, and the risks accepted.
+  [THREAT_MODEL.md](docs/THREAT_MODEL.md)
+- **Decisions:** one record per decision, with what it costs. [docs/adr/](docs/adr/README.md)
 
 ## Build, test, package
 
@@ -89,7 +106,8 @@ The image runs as uid 1000, is ready 0.4 to 0.7 s after `docker run`, and has `/
 ## Deploy
 
 `compose.prod.yaml` is the production stack, for Docker Swarm or one host with Compose: an nginx edge with TLS, two
-application tasks, a migration job, Postgres, and optional overlays for Prometheus and Keycloak.
+application tasks, a migration job, Postgres, and optional overlays in `deploy/stack/overlays/` for Prometheus, Keycloak and
+Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's signature before it deploys.
 
 - Runbook: [docs/DEPLOY.md](docs/DEPLOY.md).
 - Architecture and trade-offs: [docs/INTERNALS.md](docs/INTERNALS.md#deployment).
@@ -101,7 +119,8 @@ The load was 99% redirects and 1% creates, with redirects spread over 300 links 
 
 - Native image and JVM both served 5,000 req/s with no failures and a redirect p99 of 1 ms.
 - Ready 0.4 to 0.7 s after `docker run` (native, twelve runs) and 5.4 to 5.6 s (JVM, two runs).
-- Not measured: redirects of links the cache has not seen, and rates above 5,000 req/s with the cache.
+- Not measured: redirects of links the cache has not seen, and rates above 5,000 req/s with the cache. So 5,000 req/s is a
+  figure for the cache, not for the database.
 
 Method and numbers: [docs/INTERNALS.md](docs/INTERNALS.md#performance), including a warning to read before load testing.
 
@@ -123,7 +142,7 @@ Method and numbers: [docs/INTERNALS.md](docs/INTERNALS.md#performance), includin
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | metrics, dashboard, traces, alerts, logs |
 | [INTERNALS.md](docs/INTERNALS.md) | how it works and why |
 | [adr/](docs/adr/README.md) | decision records |
-| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, open findings |
+| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
 | [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | plans for a public instance and a web UI (nothing built) |
 | [openapi.yaml](docs/openapi.yaml) | API contract |
 

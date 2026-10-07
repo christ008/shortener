@@ -18,6 +18,8 @@ are 99% of the traffic.
   entry expires.
 - Concurrent misses for one code share one load.
 - `enabled: false` swaps in `NoRedirectCache`, a null object ([0004](0004-absence-is-a-type.md)).
+- The redirect is `302`, not `301`. A browser keeps a `301` indefinitely and would keep following a link after a takedown,
+  which the 30 s window above would not bound. A `302` costs one more request per visit.
 
 ## Consequences
 

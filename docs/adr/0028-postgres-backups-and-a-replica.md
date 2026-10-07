@@ -1,7 +1,7 @@
 # 0028. Backups with pgBackRest and a replica, and no partitioning yet
 
 - Status: Accepted, 2026-10-06
-- Evidence: `compose.prod.postgres-ha.yaml`, `deploy/postgres/`, `ComposeStackTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) E5, [0013](0013-three-database-roles-and-a-migration-job.md)
+- Evidence: `deploy/stack/overlays/compose.postgres-ha.yaml`, `deploy/postgres/`, `ComposeStackTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) E5, [0013](0013-three-database-roles-and-a-migration-job.md)
 
 ## Problem
 
@@ -11,7 +11,7 @@ creating links until someone rebuilds the database. [0014](0014-offset-paginatio
 
 ## Decision
 
-An optional overlay, `compose.prod.postgres-ha.yaml`, for the two things that are missing, and a record of the one that is not wanted.
+An optional overlay, `deploy/stack/overlays/compose.postgres-ha.yaml`, for the two things that are missing, and a record of the one that is not wanted.
 
 - **Backups with pgBackRest.** The image is the official one plus the package (`deploy/postgres/Dockerfile`). The primary archives
   its WAL, at least every five minutes (`archive_timeout=300`), so a restore loses at most that. Retention is two full backups and

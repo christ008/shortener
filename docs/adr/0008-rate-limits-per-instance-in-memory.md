@@ -24,6 +24,9 @@ client can ask, without a new component to run.
 - Good: no dependency, no network hop, nothing to fail on the hot path.
 - Cost: state is per instance, so the real limit is the limit times the replicas, and a restart forgets it.
 - Cost: per-address limits are weak against many addresses. They are a floor, not a defence against a distributed flood.
+- Cost: the address limit is 300 a minute, 5 a second, for everyone behind one address. A link in a newsletter, or an office
+  or carrier NAT, can answer `429` to readers who did nothing wrong. It is accepted because the limit also throttles token
+  guessing, and it is a setting (`shortener.security.rate-limit.per-ip.capacity`).
 - Not covered: a quota. A client within 60 requests a minute can still create unbounded links over time.
 
 ## Rejected

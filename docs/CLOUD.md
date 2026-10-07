@@ -25,7 +25,7 @@ flowchart LR
     visitor(["Visitor"]) -->|"HTTPS 443"| edge["nginx edge"]
     subgraph vm["One amd64 VM"]
         edge --> app["shortener x2"]
-        edge --> idp["Keycloak (demo realm)"]
+        edge --> idp["Keycloak (production realm)"]
         app --> db[("Postgres")]
         idp --> db
         migrate["migration job"] --> db

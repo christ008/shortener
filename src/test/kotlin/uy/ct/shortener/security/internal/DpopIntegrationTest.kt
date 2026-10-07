@@ -53,9 +53,11 @@ class DpopIntegrationTest {
         method: HttpMethod = HttpMethod.GET,
         authorization: String? = null,
         proof: String? = null,
+        forwarded: Map<String, String> = emptyMap(),
     ): ResponseEntity<String> {
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
+            forwarded.forEach { (name, value) -> set(name, value) }
             authorization?.let { set(HttpHeaders.AUTHORIZATION, it) }
             proof?.let { set("DPoP", it) }
         }
@@ -119,6 +121,24 @@ class DpopIntegrationTest {
         assertRejected(bound { client.proof("GET", url, TestIdp.token()) }, "invalid_dpop_proof")
         assertRejected(bound { client.proof("GET", url, athOverride = "bm90LXRoZS1oYXNo") }, "invalid_dpop_proof")
         assertRejected(bound { client.proof("GET", url) }, "invalid_dpop_proof")
+    }
+
+    @Test
+    fun `behind the edge the proof names the port the client used, and the default port when none is forwarded`() {
+        fun behindEdge(host: String, forwardedPort: String?, signedFor: String): ResponseEntity<String> {
+            val token = client.token()
+            val headers = buildMap {
+                put(HttpHeaders.HOST, host)
+                put("X-Forwarded-Host", host)
+                put("X-Forwarded-Proto", "https")
+                forwardedPort?.let { put("X-Forwarded-Port", it) }
+            }
+            return call(authorization = "DPoP $token", proof = client.proof("GET", signedFor, token), forwarded = headers)
+        }
+
+        assertThat(behindEdge("edge.example:9443", "9443", "https://edge.example:9443/api/short-links").statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(behindEdge("edge.example", "443", "https://edge.example/api/short-links").statusCode).isEqualTo(HttpStatus.OK)
+        assertRejected(behindEdge("edge.example:9443", null, "https://edge.example:9443/api/short-links"), "invalid_dpop_proof")
     }
 
     @Test

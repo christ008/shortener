@@ -4,3 +4,15 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: gradle
+    directories: ['/', '/tools']
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directories: ['/deploy/postgres', '/deploy/keycloak']
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker-compose
+    directories: ['/', '/deploy/stack/overlays']
+    schedule:
+      interval: weekly
