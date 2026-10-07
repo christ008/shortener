@@ -45,7 +45,7 @@ services:
     volumes:
       - './deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
   grafana:
-    image: 'grafana/grafana:12.1.0'
+    image: 'grafana/grafana:13.2.3'
     profiles: ['observability']
     environment:
       - 'GF_AUTH_ANONYMOUS_ENABLED=true'
