@@ -1,7 +1,7 @@
 # Threat model
 
 What can go wrong with this service, what stops it, and what does not, against STRIDE and the OWASP Top 10. Controls
-are described in [INTERNALS.md](INTERNALS.md#security) and the [ADRs](adr/README.md).
+are described in [SECURITY.md](SECURITY.md) and the [ADRs](adr/README.md).
 
 > [!IMPORTANT]
 > **Status: a review of the code and the stack, first made at 0.20.0 by reading them and kept current since (the findings
@@ -24,7 +24,7 @@ are described in [INTERNALS.md](INTERNALS.md#security) and the [ADRs](adr/README
 
 In scope: the application, the production stack (`compose.prod.yaml`, the nginx edge, Postgres), the migration job, the
 release pipeline and the use of the identity provider. The web UI and the public instance are plans ([UI.md](UI.md),
-[CLOUD.md](CLOUD.md)); what changes for them is marked **public**.
+[CLOUD.md](CLOUD.md)); the ratings in [STRIDE](#stride) are for a public instance.
 
 Assumptions:
 
@@ -111,10 +111,13 @@ flowchart LR
 Ratings are for a **public** instance with strangers and open creation. A private instance with a few trusted clients
 rates most of them one level lower. `F-nn` points to the [findings](#findings).
 
+The first column of each table is the kind of threat: **S** spoofing, **T** tampering, **R** repudiation, **I** information
+disclosure, **D** denial of service, **E** elevation of privilege.
+
 ### E1. The edge (nginx)
 
-| | Threat | What stops it | Residual |
-|---|---|---|---|
+| STRIDE | Threat | What stops it | Residual |
+|:-:|---|---|---|
 | S | Forged `X-Forwarded-For` to dodge the address limit | nginx replaces the header with `$remote_addr`. Tomcat trusts forwarded headers only from private addresses | once IPv6 is enabled, clients rotate inside their /64. The edge listens on IPv4 only today ([F-09](#findings)) |
 | S | A forged `Host` | none: `server_name _` accepts any, and the value is forwarded | reflected to the sender, low ([F-08](#findings)) |
 | T | TLS stripping, downgrade | plain HTTP only redirects, HSTS for a year, TLS 1.2 and 1.3, no session tickets | the first request of a client that calls `http://` sends its headers in clear before the redirect. Clients must use `https://` |
@@ -125,8 +128,8 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 
 ### E2. The API: authentication and authorization
 
-| | Threat | What stops it | Residual |
-|---|---|---|---|
+| STRIDE | Threat | What stops it | Residual |
+|:-:|---|---|---|
 | S | Forging or confusing a token | signature against the provider's keys, issuer, audience `shortener-api`, expiry, type `at+jwt`, a token without `owner` is invalid (`SecurityIntegrationTest`) | the provider issues what it is told to |
 | S | Using a stolen token | DPoP: a proof for this method, URL and token, signed by the bound key. `Bearer` refused even for a valid token (`DpopIntegrationTest`). `production` does not start with DPoP off, so an environment variable cannot turn this control off by mistake ([ADR 0035](adr/0035-production-refuses-bearer-tokens.md), `DpopRequiredInProductionTest`) | stealing the key as well |
 | S | Replaying a captured request | the `jti` must be new, proofs expire in 30 s (`DpopIntegrationTest`), and a proof must carry the server's current nonce, so one made ahead or kept stops working within ten minutes at most ([ADR 0032](adr/0032-dpop-nonces.md), `DpopNonceIntegrationTest`) | the cache is per instance, so each of two instances accepts one replay inside the window. Needs a break of TLS first |
@@ -142,8 +145,8 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 
 ### E3. The redirect (public)
 
-| | Threat | What stops it | Residual |
-|---|---|---|---|
+| STRIDE | Threat | What stops it | Residual |
+|:-:|---|---|---|
 | S | Passing off a link as trustworthy | the domain is the service's, so it lends trust to whatever it points to | [ADR 0023](adr/0023-production-must-decide-its-targets.md), [Abuse](#abuse-of-a-working-service) |
 | T | Changing the target of an existing link | no endpoint edits a target, and the application role has no `UPDATE` on it (`DatabaseRolesTest`) | the migrator role and the operator can |
 | T | Header injection through the target | the target is parsed as a `URI`, which rejects line breaks, and only `http` and `https` are accepted | |
@@ -155,8 +158,8 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 
 ### E4. The identity provider and its keys
 
-| | Threat | What stops it | Residual |
-|---|---|---|---|
+| STRIDE | Threat | What stops it | Residual |
+|:-:|---|---|---|
 | S | A fake provider for the key endpoint | issuer and audience are checked | the key URL and issuer come from configuration. With the stack's Keycloak the key URL is `http` on the encrypted network, so a check must be on the issuer ([F-10](#findings)) |
 | T | A client mints its own `owner` | the mapper sets it, and the client's own attributes are not the source | the security of ownership is the mapper's ([ADR 0007](adr/0007-owner-claim-and-ownership-rule.md)) |
 | D | The provider is down | tokens validate locally and last 5 minutes, so existing sessions work. The token endpoint is limited to ten requests a second per address | one Keycloak and one database: no new token until it returns |
@@ -164,20 +167,21 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 
 ### E5. Postgres
 
-| | Threat | What stops it | Residual |
-|---|---|---|---|
+| STRIDE | Threat | What stops it | Residual |
+|:-:|---|---|---|
 | S | Using the database password | secrets are files in memory, one per role, the `data` network has no route out and only stack services attach | the link between the application and the database is not TLS unless the URL says so |
 | T | Injection, or a compromised application rewriting links | bound parameters. The application role can `SELECT`, `INSERT` and set `disabled_at` and `disabled_by`: no `DELETE`, `TRUNCATE`, target change or DDL (`DatabaseRolesTest`) | it can still disable every link and insert new ones |
 | T | A migration that locks the table | `MigrationConventionsTest`, the migrator's `lock_timeout` | |
 | R | Who changed a row | `created_by`, `disabled_by` | no audit table |
 | I | The exporter reading data | `shortener_exporter` has `pg_monitor`: statistics, not data (`DatabaseRolesTest`) | |
-| D | A query or lock that pins a connection | 5 s, 2 s and 10 s limits that apply at login | one node. The optional overlay adds backups to a volume of that node, restorable to within five minutes and proven by `restore-test`, and a replica on another node, promoted by hand ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)). Without it, losing the volume loses every link. The repository is not yet off the node, and nothing alerts on a backup that did not run |
+| D | A query or lock that pins a connection | 5 s, 2 s and 10 s limits that apply at login | one node |
+| D | Losing the database node or its volume | the optional overlay: backups to a volume of that node, restorable to within five minutes and proven by `restore-test`, and a replica on another node, promoted by hand ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)) | without the overlay, losing the volume loses every link. The repository is not yet off the node, and nothing alerts on a backup that did not run |
 | E | Another role creating objects | `CREATE` on the schema is revoked from `PUBLIC`. Only listed roles connect | Postgres starts as root and drops, with five capabilities |
 
 ### E6. Build, release and deploy
 
-| | Threat | What stops it | Residual |
-|---|---|---|---|
+| STRIDE | Threat | What stops it | Residual |
+|:-:|---|---|---|
 | S | A forged release | the tag must equal the version, the image is signed with the workflow's identity, and `deploy.sh` runs `cosign verify` against that identity before it deploys | the check is by tag and the digest is resolved afterwards, and the workflow has not run yet ([F-06](#findings)) |
 | T | A poisoned dependency or image | tests, a scan that fails on a fixable high or critical finding, an SBOM, pinned buildpacks and base image | [F-05](#findings) |
 | R | Which build runs | the digest is resolved at deploy, the SBOM and signature are attached | the workflow has not run yet |
@@ -187,8 +191,8 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 
 ### E7. The management port and telemetry
 
-| | Threat | What stops it | Residual |
-|---|---|---|---|
+| STRIDE | Threat | What stops it | Residual |
+|:-:|---|---|---|
 | I | Reading metrics or health | the port is never proxied, details are hidden in production, metrics are labelled by route template so codes are not values | anything on the `edge` or `data` network can read them without a login (`SecurityIntegrationTest` states they are public) |
 | I | Traces carrying data | 5% sampling, no OTLP log or metric export | the default OTLP endpoint is plain HTTP on localhost |
 | D | Alert fatigue or silence | twelve alerts: the database, stale redirects, failed authentications, denied calls, rate limiting, administrator activity, WAL archiving and the replica | four alerts read `401`, `403`, `429` and administrator activity. Nothing sends the alerts that fire ([F-03](#findings)) |
@@ -199,7 +203,7 @@ These need no vulnerability, only the service doing its job.
 
 | Abuse | Effect | What exists | What is missing |
 |---|---|---|---|
-| **Phishing and malware through short links** | the domain is blocklisted, users are harmed | the allowlist of target hosts ([ADR 0015](adr/0015-target-host-policy.md)), the limits, takedown by `DELETE` | the allowlist must be decided in production ([ADR 0023](adr/0023-production-must-decide-its-targets.md)), and `allow-any` stays a choice. No intake for reports, no check against a list of bad URLs |
+| **Phishing and malware through short links** | the domain is blocklisted, users are harmed | the allowlist of target hosts ([ADR 0015](adr/0015-target-host-policy.md)), the limits, takedown by disabling the link (`PATCH`) | the allowlist must be decided in production ([ADR 0023](adr/0023-production-must-decide-its-targets.md)), and `allow-any` stays a choice. No intake for reports, no check against a list of bad URLs |
 | **Squatting codes** | a client claims `login`, a brand or a typo of one | `claim` is a separate scope, `api`, `actuator`, `error` and `app` are reserved | no reserved list beyond routes, no review |
 | **Link farms** | a client fills storage | 60 creates a minute | no quota ([F-04](#findings)) |
 | **Redirect chains and loops** | a target that is itself a short link of this service | none | not detected. Harmless to the service, bad for visitors |
@@ -210,7 +214,7 @@ These need no vulnerability, only the service doing its job.
 
 Status: **Covered** (a control and, where possible, a test), **Partial** (a control with a stated gap) or **Gap**.
 
-| | Category | Status | How it applies here | Findings |
+| ID | Category | Status | How it applies here | Findings |
 |---|---|---|---|---|
 | A01 | Broken Access Control | Covered | Deny by default. Scopes on operations, ownership over them, `404` for what the caller may not see, no IDOR on codes or filters. No cookies, so no CSRF. CORS is not configured. No SSRF entry point: the service never fetches a target. | the admin scope is powerful, [F-02](#findings) |
 | A02 | Security Misconfiguration | Partial | Hardened containers (`ComposeStackTest`), production profile, management port never proxied, headers (CSP `default-src 'none'`, `no-referrer`, HSTS). The dev realm is `sslRequired: none` and says dev only. | any `Host` accepted [F-08](#findings), issuer scheme [F-10](#findings) |
@@ -227,7 +231,7 @@ Status: **Covered** (a control and, where possible, a test), **Partial** (a cont
 
 Most rows map to the table above.
 
-| | Risk | Status | Note |
+| ID | Risk | Status | Note |
 |---|---|---|---|
 | API1 | Broken Object Level Authorization | Covered | the permission evaluator and `ManageableLinks`, tested for two clients and two people on one client |
 | API2 | Broken Authentication | Covered | see A07 |
@@ -242,23 +246,115 @@ Most rows map to the table above.
 
 ## Findings
 
-Ordered by severity for a public instance. None is a known exploit. *Known* marks limits that were already documented.
+Ordered by severity for a public instance. None is a known exploit. *Known* marks limits that were already documented. The table
+is the summary, and each finding has its own section below with what it is, why it matters and what to do.
 
-| ID | Severity | Finding | Why it matters | Recommendation |
-|---|---|---|---|---|
-| F-01 | ~~High~~ **Fixed** 2026-10-06 | The production profile now refuses to start with no list unless `allow-any` is set on purpose ([ADR 0023](adr/0023-production-must-decide-its-targets.md)) | `allow-any=true` on a public instance is still possible, and is now a visible choice | review `.env` before a public deployment |
-| F-02 | Medium, **mostly fixed** 2026-10-06 | A production Keycloak is now in the stack as an optional overlay: hardened, with its own database and role, a realm of two clients with no users, the edge limited to the shortener realm, and brute-force detection ([ADR 0025](adr/0025-keycloak-in-the-stack.md)). Rehearsed on one machine, not deployed. What remains is in F-13 | the provider decides ownership and admin: its compromise or a wrong mapper still breaks every control | review the mappers against [ADR 0007](adr/0007-owner-claim-and-ownership-rule.md), and keep the key of `admin-client` with one person |
-| F-03 | Medium, **partly fixed** 2026-10-06 | Security events, an audit trail and degradation notices now exist, each a line and a counter, with four alerts ([ADR 0024](adr/0024-logging-and-audit.md)). Still open: the logs are local and nothing ships them, nothing delivers the alerts that fire (*known*), and a listing of one's own links is not recorded | the trail disappears with the container's three log files, and nobody is told when an alert fires | ship the logs (Loki or the provider's) and connect Alertmanager |
-| F-04 | Medium | No quota on links per client. 60 a minute is 86,400 a day for one client | storage and the domain's reputation | a quota per client, or a separate and lower bucket for creates |
-| F-05 | Medium, **partly fixed** 2026-10-06 | Dependabot now watches Gradle (the application and `tools/`), the Dockerfiles and the compose files, besides the actions. Still open: no Gradle dependency verification. Third-party images are pinned by tag, not digest. The actions are pinned by tag. The scan runs only on release and ignores findings with no fix | a vulnerable or swapped dependency reaches production between releases | `gradle/verification-metadata.xml`, scan on pull requests, pin by digest once stable |
-| F-06 | Medium, **mostly fixed** 2026-10-06 | `deploy.sh` runs `cosign verify` for the tag, with the workflow's identity, and deploys nothing when it fails (`DeployScriptTest`). Still open: it has never verified a real signature because the release workflow has not run (*known*), and it checks the tag while `docker stack deploy` resolves the digest a moment later | a signature nobody has produced protects nothing, and a tag moved in that moment would pass | tag a release and verify it from a manager. Deploy by the digest that was verified |
-| F-07 | Medium, multi-node, **partly fixed** 2026-10-06 | Both overlays are now encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). What remains: peers are not authenticated, and an external database needs `sslmode=verify-full` set by the operator | a container on a stack network can still call the application as the edge | mutual TLS is proposed in [ADR 0022](adr/0022-mtls-between-services.md). Build it when there is more than one node or something untrusted can attach |
-| F-08 | Low | The edge accepts any `Host` and forwards it as `Host` and `X-Forwarded-Host`. The `Location` of a `201`, the `shortUrl` of every link and the DPoP check use it, and the HTTP redirect uses `$host` | the effect is reflected to the sender and a DPoP proof must still match, so it is small. It is the pattern that becomes a cache or link poisoning when something is added | a `server_name` for the real host, and a default server that closes the connection |
-| F-09 | Low, latent | The address limit keys on the full address, and so does the connection cap at the edge. The edge listens on IPv4 only (`listen 8443`, no `[::]`), so it does not bite today | the day IPv6 is enabled, one client with a /64 has 2^64 addresses and no limit | key on the /64 for IPv6 before enabling it |
-| F-10 | Low | The issuer and key URL come from the environment and nothing requires `https`. The stack's own Keycloak is reached by `http` over the encrypted network on purpose | a misconfiguration would fetch signing keys from an address nobody checked | a production check that the issuer starts with `https://`, and that a key URL with `http` names a host of the stack |
-| F-11 | Low, **fixed** 2026-10-06 | `deploy/stack/deploy.sh` accepts only names that match `[A-Za-z_][A-Za-z0-9_]*` from `.env` before it expands them in an `eval` (`DeployScriptTest`) | only the operator writes that file, so it was never an attack. It was the shape that becomes one | none |
-| F-12 | Low | A listing's page number is unbounded, an offset costs more with depth, and an administrator's unfiltered count scans the table (*known*, [ADR 0014](adr/0014-offset-pagination-with-totals.md)) | an authenticated client can make the database do more work per request than a redirect does, bounded by 60 a minute | cap the page depth, or move to keyset paging when the table is large |
-| F-13 | Low | The Keycloak image is built by the operator, not by the release workflow: no scan, signature or bill of materials. Keycloak sits on the `edge` network, which has a way out, and its database is not backed up. A bad realm file or a restart loop is only visible in its log | the most trusted component has the least supply-chain evidence | build, scan and sign it in the release workflow ([ADR 0018](adr/0018-signed-scanned-releases.md)), back up its database with the rest, and alert on its health |
+| ID | Severity | Status | Finding |
+|---|---|---|---|
+| F-01 | High | Fixed 2026-10-06 | [Any host as a link target](#f-01-any-host-as-a-link-target) |
+| F-02 | Medium | Mostly fixed 2026-10-06 | [The identity provider decides ownership and admin](#f-02-the-identity-provider-decides-ownership-and-admin) |
+| F-03 | Medium | Partly fixed 2026-10-06 | [Logs are local, and nobody is told when an alert fires](#f-03-logs-are-local-and-nobody-is-told-when-an-alert-fires) |
+| F-04 | Medium | Open | [No quota on links per client](#f-04-no-quota-on-links-per-client) |
+| F-05 | Medium | Partly fixed 2026-10-06 | [Dependencies and images are not fully pinned or verified](#f-05-dependencies-and-images-are-not-fully-pinned-or-verified) |
+| F-06 | Medium | Mostly fixed 2026-10-06 | [The signature is checked by tag, and none has been produced yet](#f-06-the-signature-is-checked-by-tag-and-none-has-been-produced-yet) |
+| F-07 | Medium, multi-node | Partly fixed 2026-10-06 | [Traffic between services is encrypted but peers are not authenticated](#f-07-traffic-between-services-is-encrypted-but-peers-are-not-authenticated) |
+| F-08 | Low | Open | [The edge accepts any `Host`](#f-08-the-edge-accepts-any-host) |
+| F-09 | Low | Open, latent | [The address limit keys on the full address, which breaks with IPv6](#f-09-the-address-limit-keys-on-the-full-address-which-breaks-with-ipv6) |
+| F-10 | Low | Open | [The issuer and key URL need not be `https`](#f-10-the-issuer-and-key-url-need-not-be-https) |
+| F-11 | Low | Fixed 2026-10-06 | [`deploy.sh` expanded names from `.env` in an `eval`](#f-11-deploysh-expanded-names-from-env-in-an-eval) |
+| F-12 | Low | Open | [Page depth is unbounded and the count scans the table](#f-12-page-depth-is-unbounded-and-the-count-scans-the-table) |
+| F-13 | Low | Open | [The Keycloak image has no supply-chain evidence](#f-13-the-keycloak-image-has-no-supply-chain-evidence) |
+
+### F-01. Any host as a link target
+
+- **Rating:** ~~High~~ **Fixed** 2026-10-06
+- **Finding:** The production profile now refuses to start with no list unless `allow-any` is set on purpose ([ADR 0023](adr/0023-production-must-decide-its-targets.md))
+- **Why it matters:** `allow-any=true` on a public instance is still possible, and is now a visible choice
+- **Recommendation:** review `.env` before a public deployment
+
+### F-02. The identity provider decides ownership and admin
+
+- **Rating:** Medium, **mostly fixed** 2026-10-06
+- **Finding:** A production Keycloak is now in the stack as an optional overlay: hardened, with its own database and role, a realm of two clients with no users, the edge limited to the shortener realm, and brute-force detection ([ADR 0025](adr/0025-keycloak-in-the-stack.md)). Rehearsed on one machine, not deployed. What remains is in F-13
+- **Why it matters:** the provider decides ownership and admin: its compromise or a wrong mapper still breaks every control
+- **Recommendation:** review the mappers against [ADR 0007](adr/0007-owner-claim-and-ownership-rule.md), and keep the key of `admin-client` with one person
+
+### F-03. Logs are local, and nobody is told when an alert fires
+
+- **Rating:** Medium, **partly fixed** 2026-10-06
+- **Finding:** Security events, an audit trail and degradation notices now exist, each a line and a counter, with four alerts ([ADR 0024](adr/0024-logging-and-audit.md)). Still open: the logs are local and nothing ships them, nothing delivers the alerts that fire (*known*), and a listing of one's own links is not recorded
+- **Why it matters:** the trail disappears with the container's three log files, and nobody is told when an alert fires
+- **Recommendation:** ship the logs (Loki or the provider's) and connect Alertmanager
+
+### F-04. No quota on links per client
+
+- **Rating:** Medium
+- **Finding:** No quota on links per client. 60 a minute is 86,400 a day for one client
+- **Why it matters:** storage and the domain's reputation
+- **Recommendation:** a quota per client, or a separate and lower bucket for creates
+
+### F-05. Dependencies and images are not fully pinned or verified
+
+- **Rating:** Medium, **partly fixed** 2026-10-06
+- **Finding:** Dependabot now watches Gradle (the application and `tools/`), the Dockerfiles and the compose files, besides the actions. Still open: no Gradle dependency verification. Third-party images are pinned by tag, not digest. The actions are pinned by tag. The scan runs only on release and ignores findings with no fix
+- **Why it matters:** a vulnerable or swapped dependency reaches production between releases
+- **Recommendation:** `gradle/verification-metadata.xml`, scan on pull requests, pin by digest once stable
+
+### F-06. The signature is checked by tag, and none has been produced yet
+
+- **Rating:** Medium, **mostly fixed** 2026-10-06
+- **Finding:** `deploy.sh` runs `cosign verify` for the tag, with the workflow's identity, and deploys nothing when it fails (`DeployScriptTest`). Still open: it has never verified a real signature because the release workflow has not run (*known*), and it checks the tag while `docker stack deploy` resolves the digest a moment later
+- **Why it matters:** a signature nobody has produced protects nothing, and a tag moved in that moment would pass
+- **Recommendation:** tag a release and verify it from a manager. Deploy by the digest that was verified
+
+### F-07. Traffic between services is encrypted but peers are not authenticated
+
+- **Rating:** Medium, multi-node, **partly fixed** 2026-10-06
+- **Finding:** Both overlays are now encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). What remains: peers are not authenticated, and an external database needs `sslmode=verify-full` set by the operator
+- **Why it matters:** a container on a stack network can still call the application as the edge
+- **Recommendation:** mutual TLS is proposed in [ADR 0022](adr/0022-mtls-between-services.md). Build it when there is more than one node or something untrusted can attach
+
+### F-08. The edge accepts any `Host`
+
+- **Rating:** Low
+- **Finding:** The edge accepts any `Host` and forwards it as `Host` and `X-Forwarded-Host`. The `Location` of a `201`, the `shortUrl` of every link and the DPoP check use it, and the HTTP redirect uses `$host`
+- **Why it matters:** the effect is reflected to the sender and a DPoP proof must still match, so it is small. It is the pattern that becomes a cache or link poisoning when something is added
+- **Recommendation:** a `server_name` for the real host, and a default server that closes the connection
+
+### F-09. The address limit keys on the full address, which breaks with IPv6
+
+- **Rating:** Low, latent
+- **Finding:** The address limit keys on the full address, and so does the connection cap at the edge. The edge listens on IPv4 only (`listen 8443`, no `[::]`), so it does not bite today
+- **Why it matters:** the day IPv6 is enabled, one client with a /64 has 2^64 addresses and no limit
+- **Recommendation:** key on the /64 for IPv6 before enabling it
+
+### F-10. The issuer and key URL need not be `https`
+
+- **Rating:** Low
+- **Finding:** The issuer and key URL come from the environment and nothing requires `https`. The stack's own Keycloak is reached by `http` over the encrypted network on purpose
+- **Why it matters:** a misconfiguration would fetch signing keys from an address nobody checked
+- **Recommendation:** a production check that the issuer starts with `https://`, and that a key URL with `http` names a host of the stack
+
+### F-11. `deploy.sh` expanded names from `.env` in an `eval`
+
+- **Rating:** Low, **fixed** 2026-10-06
+- **Finding:** `deploy/stack/deploy.sh` accepts only names that match `[A-Za-z_][A-Za-z0-9_]*` from `.env` before it expands them in an `eval` (`DeployScriptTest`)
+- **Why it matters:** only the operator writes that file, so it was never an attack. It was the shape that becomes one
+- **Recommendation:** none
+
+### F-12. Page depth is unbounded and the count scans the table
+
+- **Rating:** Low
+- **Finding:** A listing's page number is unbounded, an offset costs more with depth, and an administrator's unfiltered count scans the table (*known*, [ADR 0014](adr/0014-offset-pagination-with-totals.md))
+- **Why it matters:** an authenticated client can make the database do more work per request than a redirect does, bounded by 60 a minute
+- **Recommendation:** cap the page depth, or move to keyset paging when the table is large
+
+### F-13. The Keycloak image has no supply-chain evidence
+
+- **Rating:** Low
+- **Finding:** The Keycloak image is built by the operator, not by the release workflow: no scan, signature or bill of materials. Keycloak sits on the `edge` network, which has a way out, and its database is not backed up. A bad realm file or a restart loop is only visible in its log
+- **Why it matters:** the most trusted component has the least supply-chain evidence
+- **Recommendation:** build, scan and sign it in the release workflow ([ADR 0018](adr/0018-signed-scanned-releases.md)), back up its database with the rest, and alert on its health
 
 ## Risks accepted
 
@@ -284,5 +380,5 @@ Update this document when:
 
 - a component, a way in or a kind of data is added (web UI: browser token storage, XSS, CORS; target previews: SSRF);
 - an ADR is accepted or superseded, so each row still names the control that exists;
-- a finding is fixed: move it out of the table and record it in the ADR that fixed it;
-- before the first public instance: the findings marked **public** are the list to clear.
+- a finding is fixed: mark it in the summary, and record the fix in the ADR that made it;
+- before the first public instance: the open [findings](#findings) are the list to clear, highest severity first.

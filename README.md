@@ -51,14 +51,14 @@ See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
 
 ## API
 
-| Request | Needs | Answers |
-|---|---|---|
-| `POST /api/short-links` | `shortlinks:create` | `201` with the link, which has a generated code (`shortUrl` is the URL to share), and its `Location`; `400` |
-| `PUT /api/short-links/{code}` | `shortlinks:create` and `shortlinks:claim` | the same for a code you choose: `201`, or `200` when you already have this link (repeating is safe); `400`; `409` code reserved, taken, or yours for another target |
-| `GET /api/short-links?page&size&sort` | `shortlinks:read` | `200` with `items`, `page`, `size`, `hasNext`, `totalItems`, `totalPages`; sort by `createdAt` or `shortCode` |
-| `GET /api/short-links/{code}` | `shortlinks:read` | `200`, or `404` |
-| `PATCH /api/short-links/{code}` with `{"disabled": true}` | `shortlinks:delete` | `200` with the link, disabled (idempotent), `400`, or `404` |
-| `GET /{code}` | nothing | `302`, `404`, or `410` when disabled |
+| Request | Scope | Success | Errors |
+|---|---|---|---|
+| `POST /api/short-links` | `shortlinks:create` | `201` with the link and its `Location`. The code is generated, and `shortUrl` is the URL to share | `400` |
+| `PUT /api/short-links/{code}` | `shortlinks:create` and `shortlinks:claim` | for a code you choose: `201`, or `200` when you already have this link, so repeating is safe | `400`; `409` when the code is reserved, taken, or yours for another target |
+| `GET /api/short-links?page&size&sort` | `shortlinks:read` | `200` with `items`, `page`, `size`, `hasNext`, `totalItems` and `totalPages`. Sort by `createdAt` or `shortCode` | none of its own |
+| `GET /api/short-links/{code}` | `shortlinks:read` | `200` | `404` |
+| `PATCH /api/short-links/{code}` with `{"disabled": true}` | `shortlinks:delete` | `200` with the link, disabled. Repeating is safe | `400`; `404` |
+| `GET /{code}` | none | `302` | `404`; `410` when disabled |
 
 - `shortlinks:admin` reads and disables any client's links.
 - Errors: `401` with a `DPoP` challenge, `403` with `insufficient_scope`, `429` and `503` with `Retry-After`.
@@ -70,17 +70,25 @@ See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
 Defaults suit local development. Deployed, set `SPRING_PROFILES_ACTIVE=production` (JSON logs, no internals in errors or
 health, 5% trace sampling, DPoP required) and:
 
-| Variable | Meaning |
-|---|---|
-| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres, as `shortener_app` |
-| `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as `shortener_migrator`. Set only on the migration job. With `SHORTENER_MIGRATE_ONLY=true` the process migrates and exits |
-| `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider |
-| `SHORTENER_SECURITY_DPOP_REQUIRED` | `true` by default. `false` also accepts bearer tokens (development and tests only): `production` does not start with it |
-| `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY`, `..._PERCLIENT_CAPACITY` | requests a minute per IP (300) and per client (60). Everyone behind one NAT shares the IP limit |
-| `SERVER_TOMCAT_MAXCONNECTIONS` | connections accepted before refusing (500), about 150 KB of heap each |
-| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts links may point to: `example.com`, `*.example.org` (subdomains only). Under `production` the service does not start without this or `..._ALLOWANY=true`. The stack's `.env` calls them `ALLOWED_TARGET_HOSTS` and `ALLOW_ANY_TARGET` |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL`, `..._MAXENTRIES`, `..._ENABLED` | cache entry lifetime (30s), size (100,000), on/off |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long a read link is still followed while the database is unreachable (5m); `0` turns it off |
+| Variable | Meaning | Default |
+|---|---|---|
+| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres, as `shortener_app` | none |
+| `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as `shortener_migrator`. Set only on the migration job | none |
+| `SHORTENER_MIGRATE_ONLY` | the process migrates and exits | `false` |
+| `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider | none |
+| `SHORTENER_SECURITY_DPOP_REQUIRED` | `false` also accepts bearer tokens (development and tests only). `production` does not start with it | `true` |
+| `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY` | requests a minute per IP. Everyone behind one NAT shares it | `300` |
+| `SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY` | requests a minute per client | `60` |
+| `SERVER_TOMCAT_MAXCONNECTIONS` | connections accepted before refusing, about 150 KB of heap each | `500` |
+| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts links may point to: `example.com`, `*.example.org` (subdomains only) | none |
+| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY` | accept any host | `false` |
+| `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL` | how long a cache entry lives | `30s` |
+| `SHORTENER_SHORTLINK_REDIRECTCACHE_MAXENTRIES` | cache size | `100000` |
+| `SHORTENER_SHORTLINK_REDIRECTCACHE_ENABLED` | turns the cache on or off | `true` |
+| `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long a read link is still followed while the database is unreachable. `0` turns it off | `5m` |
+
+Under `production` the service does not start without `..._ALLOWEDHOSTS` or `..._ALLOWANY=true`. The stack's `.env` calls them
+`ALLOWED_TARGET_HOSTS` and `ALLOW_ANY_TARGET`.
 
 Write names with no separator inside a word: `SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT`, not `..._CONNECTION_TIMEOUT`.
 The latter fails at start with `The configuration of the pool is sealed once started`.
@@ -90,9 +98,9 @@ The latter fails at start with `The configuration of the pool is sealed once sta
 - **Tests:** 380, all passing, 255 of them on the service. Line coverage 96.9%, branch coverage 87.5%.
 - **Mutation score:** 92% on the core logic (95 mutants), with the survivors explained.
   [INTERNALS.md#testing](docs/INTERNALS.md#testing)
-- **Threats:** a STRIDE model, a register of findings with severities and fix dates, and the risks accepted.
-  [THREAT_MODEL.md](docs/THREAT_MODEL.md)
-- **Decisions:** one record per decision, with what it costs. [docs/adr/](docs/adr/README.md)
+- **Security:** the controls, and a STRIDE model with a register of findings, severities, fix dates and the risks accepted.
+  [SECURITY.md](docs/SECURITY.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md)
+- **Decisions:** one record per decision, with what it costs. [DESIGN.md](docs/DESIGN.md#decisions), [docs/adr/](docs/adr/README.md)
 
 ## Build, test, package
 
@@ -141,9 +149,11 @@ Method and numbers: [docs/INTERNALS.md](docs/INTERNALS.md#performance), includin
 | [OPERATING.md](docs/OPERATING.md) | run, call, test and look after it |
 | [DEPLOY.md](docs/DEPLOY.md) | production stack runbook |
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | metrics, dashboard, traces, alerts, logs |
-| [INTERNALS.md](docs/INTERNALS.md) | how it works and why |
-| [adr/](docs/adr/README.md) | decision records |
+| [INTERNALS.md](docs/INTERNALS.md) | how it works: request flows, database, cache, native image, deployment, tests and measurements |
+| [DESIGN.md](docs/DESIGN.md) | why the code has this shape: modules, types, SOLID review, decisions |
+| [SECURITY.md](docs/SECURITY.md) | the controls: filter chain, tokens, DPoP, scopes, rate limits |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
+| [adr/](docs/adr/README.md) | decision records |
 | [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | plans for a public instance and a web UI (nothing built) |
 | [openapi.yaml](docs/openapi.yaml) | API contract |
 

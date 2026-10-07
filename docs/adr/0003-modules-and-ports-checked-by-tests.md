@@ -1,7 +1,7 @@
 # 0003. A public contract with adapters behind it, held by tests
 
 - Status: Accepted, 2026-10-03
-- Evidence: `ShortLinkArchitectureTest`, `ModularityTests`, `INTERNALS.md#structure`
+- Evidence: `ShortLinkArchitectureTest`, `ModularityTests`, `DESIGN.md#structure`
 
 ## Problem
 

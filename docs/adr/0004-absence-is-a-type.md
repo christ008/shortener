@@ -1,7 +1,7 @@
 # 0004. Absence is a type
 
 - Status: Accepted, 2026-10-05
-- Evidence: `88ac479`, `914625f`, `INTERNALS.md#domain-types`
+- Evidence: `88ac479`, `914625f`, `DESIGN.md#domain-types`
 
 ## Problem
 

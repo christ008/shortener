@@ -13,7 +13,7 @@ import java.time.Duration
  *   unless set).
  * - [dpop]: with [Dpop.required] (the default) only tokens bound to the client's key are accepted (RFC 9449): `DPoP` scheme
  *   with a proof, `Bearer` refused. Turn it off for development and tests only. Proofs are remembered 30 seconds, per
- *   instance, at most 1,000 per client key.
+ *   instance, at most 1,000 per DPoP key.
  * - [Dpop.nonce]: with [Nonce.enabled] (the default) a proof must carry a nonce the server handed out in `DPoP-Nonce` (RFC 9449,
  *   section 9). The nonce is an HMAC of the current [Nonce.interval] (five minutes unless set) and is good for that one and the
  *   next. [Nonce.secret] must be the same on every instance, and in `production` it is required; elsewhere a blank one is a random

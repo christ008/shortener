@@ -1,7 +1,8 @@
 # Operating and testing it
 
 Run the service locally, call it, test it, and look after it. Production setup is in [DEPLOY.md](DEPLOY.md), what to watch
-is in [OBSERVABILITY.md](OBSERVABILITY.md), the design is in [INTERNALS.md](INTERNALS.md).
+is in [OBSERVABILITY.md](OBSERVABILITY.md), how it works is in [INTERNALS.md](INTERNALS.md), its design is in
+[DESIGN.md](DESIGN.md) and its security controls are in [SECURITY.md](SECURITY.md).
 
 - [Requirements](#requirements)
 - [Run it](#run-it)
@@ -23,7 +24,7 @@ is in [OBSERVABILITY.md](OBSERVABILITY.md), the design is in [INTERNALS.md](INTE
 
 ## Run it
 
-| | Command | Use it for |
+| Way | Command | Use it for |
 |---|---|---|
 | JVM | `./gradlew bootRun` | day to day, the `dev` profile |
 | Native image | `./gradlew bootBuildImage`, then `docker run` | what production runs |
@@ -121,11 +122,11 @@ was written; they are pointers, not endorsements, so look at how each is maintai
 | Language | Library | Notes |
 |---|---|---|
 | JavaScript, TypeScript (Node, browsers, Deno, Bun) | [dpop](https://github.com/panva/dpop) | makes proofs, with the nonce of the authorization server and of the resource server |
-| | [oauth4webapi](https://github.com/panva/oauth4webapi) | an OAuth and OpenID Connect client that lists DPoP among its features |
+| JavaScript, TypeScript | [oauth4webapi](https://github.com/panva/oauth4webapi) | an OAuth and OpenID Connect client that lists DPoP among its features |
 | Java | [Nimbus OAuth 2.0 SDK](https://connect2id.com/products/nimbus-oauth-openid-connect-sdk/examples/oauth/dpop) | DPoP proofs and sender-constrained tokens |
 | .NET | [Duende](https://duendesoftware.com/blog/20230504-dpop) | DPoP in its client libraries and in the Microsoft OpenID Connect handler |
 | Go | [go-dpop](https://pkg.go.dev/github.com/AxisCommunications/go-dpop) | proof generation and validation |
-| | [conductorone/dpop](https://pkg.go.dev/github.com/conductorone/dpop) | proofs, a `net/http` client and server middleware |
+| Go | [conductorone/dpop](https://pkg.go.dev/github.com/conductorone/dpop) | proofs, a `net/http` client and server middleware |
 | Dart, Flutter | [dpop](https://pub.dev/packages/dpop) | proofs, signing and nonce retries |
 | Python | none checked | |
 

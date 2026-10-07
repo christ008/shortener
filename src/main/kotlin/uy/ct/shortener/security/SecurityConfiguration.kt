@@ -105,6 +105,7 @@ class SecurityConfiguration {
             }
             .authorizeHttpRequests { requests ->
                 requests
+                    // The error dispatch of a failed request must reach the problem-details renderer, not be denied again.
                     .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                     .requestMatchers(HttpMethod.GET, "/{shortCode}").permitAll()
                     .requestMatchers(HttpMethod.HEAD, "/{shortCode}").permitAll()
@@ -112,6 +113,7 @@ class SecurityConfiguration {
                     .requestMatchers("/api/**").authenticated()
                     .anyRequest().denyAll()
             }
+            // The IP limit and the nonce check run before authentication. The client limit runs after it, when the client is known.
             .addFilterBefore(ipLimit, BearerTokenAuthenticationFilter::class.java)
             .addFilterBefore(DpopNonceFilter(nonces), BearerTokenAuthenticationFilter::class.java)
             .addFilterAfter(clientLimit, BearerTokenAuthenticationFilter::class.java)
@@ -154,6 +156,7 @@ class SecurityConfiguration {
         if (properties.accessTokenType.isBlank()) {
             JwtTypeValidator.jwt()
         } else {
+            // RFC 9068 allows the type with or without the `application/` prefix.
             JwtTypeValidator(properties.accessTokenType, "application/${properties.accessTokenType}")
         }
 

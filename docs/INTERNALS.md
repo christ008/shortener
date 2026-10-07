@@ -1,7 +1,9 @@
 # Internals
 
-How the service works and why. The [README](../README.md) covers running it and [openapi.yaml](openapi.yaml) is the API
-contract (a test keeps it in step with the code).
+How the service works: a request from end to end, the database, the cache, the native image, the deployment, and the evidence
+(tests and measurements). The [README](../README.md) covers running it, [DESIGN.md](DESIGN.md) says why the code has this shape,
+[SECURITY.md](SECURITY.md) describes the controls, and [openapi.yaml](openapi.yaml) is the API contract (a test keeps it in step
+with the code).
 
 > [!NOTE]
 > This documents a *designed* system, and the tests are the evidence that the design is the system. A statement that names a
@@ -11,25 +13,25 @@ contract (a test keeps it in step with the code).
 **A reading path for a reviewer**
 
 1. [Request flows](#request-flows): what each endpoint does, and the redirect hot path.
-2. [Security](#security), then [THREAT_MODEL.md](THREAT_MODEL.md): what is defended, the findings register with its fix dates,
-   and the risks accepted.
+2. [SECURITY.md](SECURITY.md), then [THREAT_MODEL.md](THREAT_MODEL.md): what is defended, the findings register with its fix
+   dates, and the risks accepted.
 3. [Testing](#testing): the counts, coverage, and what the mutation survivors showed.
 4. [Performance](#performance), starting with its warning about what the figures are.
-5. [Decisions](#decisions) and the [ADRs](adr/README.md): why this and not the alternative.
+5. [DESIGN.md](DESIGN.md#decisions) and the [ADRs](adr/README.md): why this and not the alternative.
 
-- [Structure](#structure)
 - [Request flows](#request-flows)
-- [Domain types](#domain-types)
 - [Persistence](#persistence)
   - [Roles and migrations](#roles-and-migrations)
   - [Connections](#connections)
 - [Concurrency](#concurrency)
 - [Redirect cache](#redirect-cache)
-- [Security](#security)
 - [Errors](#errors)
 - [Observability](#observability)
 - [Native image](#native-image)
 - [Deployment](#deployment)
+  - [Hardening](#hardening)
+  - [Edge](#edge)
+  - [Rollouts](#rollouts)
 - [Releasing](#releasing)
 - [Testing](#testing)
   - [What is counted](#what-is-counted)
@@ -37,35 +39,7 @@ contract (a test keeps it in step with the code).
   - [Mutation testing (PIT)](#mutation-testing-pit)
   - [Where the evidence is](#where-the-evidence-is)
 - [Performance](#performance)
-- [Design review](#design-review)
-- [Decisions](#decisions)
 - [Limitations](#limitations)
-
-## Structure
-
-Two Spring Modulith modules: `shortlink` and `security`. In `shortlink` the public package is the contract and
-everything else is an adapter behind it.
-
-```mermaid
-flowchart LR
-    web["web<br/>controller and DTOs"] -->|calls| service(["ShortLinkService<br/>interface"])
-    authorization["authorization<br/>method security, permission evaluator, scopes"] -.->|guards| service
-    service ---|implemented by| impl["DefaultShortLinkService"]
-    impl --> repository(["ShortLinkRepository<br/>interface"])
-    impl --> cache(["RedirectCache<br/>interface"])
-    impl --> policy(["TargetUrlPolicy<br/>interface"])
-    repository ---|implemented by| persistence["persistence<br/>JdbcClient"]
-    cache ---|implemented by| caches["CaffeineRedirectCache<br/>NoRedirectCache"]
-    policy ---|implemented by| policies["AnyTarget<br/>AllowedHosts"]
-```
-
-ArchUnit tests enforce what Modulith does not check inside a module:
-
-- The public API depends on no JDBC type and no security type. It does use Spring Data's `Page` and `Pageable`, on purpose
-  (see [Design review](#design-review)).
-- The web adapter talks only to the service interface.
-- Nothing depends on the web or persistence adapters.
-- JDBC types never leave `persistence`.
 
 ## Request flows
 
@@ -154,26 +128,6 @@ flowchart TD
   - A page past the end is empty and carries the real totals, so a client can recover.
 - Sortable by `createdAt` and `shortCode` only, from a whitelist that maps to columns, so a sort parameter never
   reaches SQL as text. Ties break on the short code, so pages never overlap.
-
-## Domain types
-
-Absence and "unknown" are types, not nulls, so callers match on them and the compiler checks every case.
-
-| Type | Replaces | Cases |
-|---|---|---|
-| `LinkStatus` | nullable `disabledAt` and `disabledBy` | `Active`, `Disabled(at, by)` |
-| `Actor` | nullable creator and disabler names | `Client(name)`, `Unknown` for links stored before creators were recorded |
-| `CreatedByFilter` | nullable `createdBy` in listings | `Anyone`, `Only(client)` |
-| `LinkLookup` | nullable `findByShortCode` and `disable` | `Found(link)`, `Missing` |
-| `InsertResult` | nullable `insertIfAbsent` | `Created(link)`, `Taken` |
-| `RedirectCache` | a nullable cache field | `CaffeineRedirectCache`, `NoRedirectCache` (does nothing) |
-| `RateLimitDecision` | nullable wait | `Allowed`, `Limited(retryAfter)` |
-| `RateLimitKey` | nullable key | `Of(value)`, `Unlimited` |
-| `AuthScheme` | nullable scheme | `DPOP`, `BEARER`, `NONE` |
-
-Nulls remain only where a framework owns the signature: JDBC columns, Caffeine's loader, the request DTO, Spring
-Security callbacks. They are converted at that boundary, and the JSON API still sends `null` for an absent
-`createdBy` or `disabledAt` because the contract says so.
 
 ## Persistence
 
@@ -315,140 +269,6 @@ Rejected:
 - Cross-instance invalidation with `LISTEN/NOTIFY`: more machinery and a new failure mode for bounded staleness.
 - Caching 404s or 410s: delays new links or takedowns.
 
-## Security
-
-The threats this section answers, checked against STRIDE and the OWASP Top 10, and what is still open, are in
-[THREAT_MODEL.md](THREAT_MODEL.md).
-
-### Filter chain
-
-Stateless and deny by default, in this order: IP rate limit, authentication, client rate limit, authorization.
-
-```mermaid
-flowchart LR
-    request(["Request"]) --> ip["Limit by IP"]
-    ip -->|over the limit| tooMany1["429"]
-    ip --> authenticate["Authenticate<br/>DPoP, bearer only if not required"]
-    authenticate -->|"bad token or proof"| unauthorized["401"]
-    authenticate --> client["Limit by client"]
-    client -->|over the limit| tooMany2["429"]
-    client --> authorize["Authorize<br/>route rules, then method security"]
-    authorize -->|"missing scope"| forbidden["403"]
-    authorize --> controller(["Controller"])
-```
-
-- `/api/**` needs authentication.
-- `GET` and `HEAD` on `/{code}` and the health and Prometheus endpoints are public.
-- Everything else is denied.
-- Responses carry a restrictive CSP, `Referrer-Policy: no-referrer` and Spring Security's default headers.
-
-### Tokens
-
-- JWTs from Keycloak, validated locally against its JWKS: signature, issuer, audience (`shortener-api`), expiry and the
-  JOSE type `at+jwt` (RFC 9068). No call to the identity provider per request.
-- Issuer-agnostic: any provider that issues these tokens works. Keycloak is the reference.
-- The claim named by `shortener.security.client-id-claim` (`owner` in the shipped config, `azp` by default) is the client id and is stored as the creator of every link.
-- Only the `Authorization` header carries a token. A token in a query string or form body is ignored (tested).
-
-### DPoP (RFC 9449)
-
-Every access token must be bound to the client's key:
-
-1. The client authenticates to the token endpoint with a signed assertion (`private_key_jwt`, ES256) and a DPoP proof.
-   It receives a token whose `cnf.jkt` is the thumbprint of its DPoP key.
-2. Each call sends `Authorization: DPoP <token>` and a `DPoP` proof for that exact request: method (`htm`), URL without
-   query (`htu`), token hash (`ath`), a unique `jti`, the time and the server's nonce (`nonce`).
-3. The nonce is checked first, then Spring Security checks the signature, that the key matches `cnf.jkt`, method, URL, token
-   hash, age and that the `jti` is new.
-4. A proof without the current nonce is answered `401` with `error="use_dpop_nonce"` and the nonce in `DPoP-Nonce`, and the
-   client repeats the request once with a new proof ([ADR 0032](adr/0032-dpop-nonces.md)).
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client
-    participant IdP as Identity provider
-    participant API as Shortener API
-    Client->>Client: generate a DPoP key pair
-    Client->>IdP: token request with a signed assertion and a DPoP proof
-    IdP-->>Client: access token whose cnf.jkt is the key's thumbprint
-    Client->>API: Authorization DPoP token, and a DPoP proof for this exact request
-    API-->>Client: 401 use_dpop_nonce, with DPoP-Nonce (when the proof has no current nonce)
-    Client->>API: the same request, with a new proof that carries the nonce
-    Note over API: checks the nonce, the proof's signature, that its key matches cnf.jkt,<br/>the method, the URL, the token hash, the age, and that the jti is new
-    API-->>Client: the response, with the nonce to use next
-```
-
-Properties:
-
-- The DPoP key is not the client's identity. The client is authenticated by its registered assertion key. The DPoP key
-  is generated by the client, bound to one token and can be rotated freely.
-- A stolen token is useless without the private key, and the `Bearer` scheme is refused even for a valid token.
-- Behind a gateway, `htu` is built from the forwarded host and scheme, so forwarded headers are handled by Tomcat's
-  trust-aware valve.
-- The replay cache is in memory and per instance. A proof is remembered 30 s, at most 1,000 per DPoP key, about 30
-  requests a second per key. A client can use several keys, so this is not a client limit.
-- The nonce is an HMAC of the current five-minute interval, good for that interval and the next, and stateless: any instance with
-  the secret checks one it did not make. The secret is the Docker secret `dpop_nonce_secret`, required in `production`, and
-  `shortener.security.dpop.nonce.enabled=false` turns nonces off. Asking for one is counted as `dpop_nonce_requested`, not as a
-  failed authentication.
-- `shortener.security.dpop.required=false` also accepts plain bearer tokens (development and tests). `production` does not start with it
-  off: its own file says `true`, and an environment variable that says `false` would win over a file, so the value is checked when the
-  chain is built ([ADR 0035](adr/0035-production-refuses-bearer-tokens.md)).
-- `/.well-known/oauth-protected-resource` (RFC 9728) tells clients the authorization server and that DPoP is required.
-
-### Authorization
-
-Scopes decide what a client may do, and their names are configuration. Checks are declared on the service with method
-security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@MayDisable`).
-
-| Scope | Allows |
-|---|---|
-| `shortlinks:create` | create with a generated code |
-| `shortlinks:claim` | also choose the code (needs `create` too) |
-| `shortlinks:read`, `shortlinks:delete` | read and disable the client's own links |
-| `shortlinks:admin` | read and disable any client's links |
-
-- Ownership is a rule on top of scopes: the `createdBy` and `disabledBy` arguments, an `Actor.Client`, must name the caller
-  (`#createdBy.name == authentication.name`), and a listing filter must be limited to the caller
-  (`#filter.isLimitedTo(authentication.name)`).
-- A `PermissionEvaluator` lets a caller manage a link only if it created it, or is an administrator.
-- A denied link read becomes `404` through `@HandleAuthorizationDenied`.
-
-Wiring that is easy to break:
-
-- `ShortLinkScopes` is bound through its constructor, so it is immutable after start, and its defaults are `@DefaultValue`s:
-  Kotlin default arguments would add a no-argument constructor that Spring rejects. A blank scope name stops startup, because
-  it would make an operation unreachable or open to the wrong tokens.
-- Constructor-bound properties cannot be components, so `ShortLinkScopesConfiguration` gives the object the bean name `scopes`
-  that the expressions use (`@scopes.read`). It is the primary bean of its type.
-- `ManageableLinks` is a bean of its own because method security applies only to calls made through a Spring proxy.
-- `ShortLinkPermissionEvaluator` resolves the scopes lazily, because method security needs it while the context is starting.
-  The method-security handler is a static infrastructure bean for the same reason: it must not force other beans to
-  initialise early.
-
-### Rate limiting
-
-- Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): 300 requests a minute per IP before
-  authentication, 60 a minute per client after it.
-- Everyone behind one address shares the IP bucket (5 a second): a newsletter link or a carrier NAT can be answered with `429`
-  by readers who did nothing ([ADR 0008](adr/0008-rate-limits-per-instance-in-memory.md)).
-- State is per instance, so the effective limit is the limit times the replicas. A global limit needs a shared store.
-- Buckets live in a size-bounded Caffeine cache and expire once idle for a full refill period, so a flood of distinct keys
-  cannot exhaust memory.
-- Actuator paths are never limited, so health checks cannot be starved.
-- Each `RateLimitFilter` instance needs a distinct name: `OncePerRequestFilter` remembers a filtered request by filter name,
-  so two instances sharing one would skip each other.
-
-### Identity provider and OAuth 2.1
-
-`deploy/keycloak/shortener-realm.template.json` defines the scopes, the audience mapper and four clients (`demo`, `other`,
-`admin`, `no-scope`): confidential, service-account only, implicit and password grants off. It holds placeholders where
-the keys and the web users' passwords go. `deploy/keycloak/dev-setup` makes the keys with the client's `keygen` and fills them in,
-which writes the realm Keycloak imports. Nothing secret is committed, so each developer has their own keys. Against the OAuth 2.1 draft
-that covers tokens only in the header, no deprecated grants, five-minute tokens, sender-constrained tokens and
-asymmetric client authentication. The draft is not final, so this is alignment, not conformance.
-
 ## Errors
 
 Every error is an RFC 9457 problem detail (`application/problem+json`), rendered by Spring MVC.
@@ -509,7 +329,7 @@ buildpacks.
 The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compressed).
 
 | Part | Size |
-|---|---|
+|---|--:|
 | code area | 76 MB |
 | image heap | 80 MB |
 | run image | about 35 MB |
@@ -525,14 +345,29 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 
 ### What the native image had to be taught
 
-| Failure | Cause | Fix |
-|---|---|---|
-| Rate limiter cannot build its cache | Caffeine generates one cache class and one entry class per feature combination (`SSMSA` is strong keys, strong values, size bound, expire-after-access), picks one by name and instantiates it reflectively. Nothing registers them, and the community metadata covers only the combinations in Caffeine's own tests | `CaffeineRuntimeHints` registers every generated class on the classpath, so the hints follow the Caffeine version |
-| A property or profile set only when the container starts has no effect | a native image fixes its beans when it is built, and that build runs under `production` | no `@ConditionalOnProperty` or `@Profile` for these: `MigrateOnlyRunner` reads `shortener.migrate-only` when it runs, and `TargetUrlPolicyConfiguration` reads the profile when it creates the bean ([ADR 0023](adr/0023-production-must-decide-its-targets.md)) |
-| `management.server.port` ignored | read at AOT time | set it in `application.yaml`, not the environment |
-| Tomcat missing a reflection entry | `server.tomcat.mbeanregistry.enabled=true` | removed |
-| Every DPoP request is `401` with no reason | the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class | `DpopRuntimeHints`, plus a startup check that fails if DPoP is required and the filter is missing |
-| Authorized calls fail with `500` | SpEL reads `authentication.name`, `#createdBy.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
+A native image decides at build time which beans, classes and reflection entries exist. These are the failures that showed in it.
+
+1. **The rate limiter cannot build its cache.**
+   - Cause: Caffeine generates one cache class and one entry class per feature combination (`SSMSA` is strong keys, strong values,
+     size bound, expire-after-access), picks one by name and instantiates it reflectively. Nothing registers them, and the
+     community metadata covers only the combinations in Caffeine's own tests.
+   - Fix: `CaffeineRuntimeHints` registers every generated class on the classpath, so the hints follow the Caffeine version.
+2. **A property or profile set only when the container starts has no effect.**
+   - Cause: the image fixes its beans when it is built, and that build runs under `production`.
+   - Fix: no `@ConditionalOnProperty` or `@Profile` for these. `MigrateOnlyRunner` reads `shortener.migrate-only` when it runs, and
+     `TargetUrlPolicyConfiguration` reads the profile when it creates the bean ([ADR 0023](adr/0023-production-must-decide-its-targets.md)).
+3. **`management.server.port` is ignored.**
+   - Cause: it is read at AOT time.
+   - Fix: set it in `application.yaml`, not in the environment.
+4. **Tomcat is missing a reflection entry.**
+   - Cause: `server.tomcat.mbeanregistry.enabled=true`.
+   - Fix: removed.
+5. **Every DPoP request is `401`, with no reason given.**
+   - Cause: the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class.
+   - Fix: `DpopRuntimeHints`, and a startup check that fails if DPoP is required and the filter is missing.
+6. **Authorized calls fail with `500`.**
+   - Cause: SpEL reads `authentication.name`, `#createdBy.name` and `#filter.isLimitedTo(...)` by reflection.
+   - Fix: `AuthorizationRuntimeHints` registers them.
 
 Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exercises every endpoint with real tokens (26 checks).
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
@@ -678,8 +513,10 @@ Prometheus 3.15.0, Grafana 13.2.3, Tempo 3.1.0), with a JVM image standing in fo
 - the migration job, which failed on every attempt under the `production` profile after Flyway had run, because it never
   decided the link targets (ADR 0023). It now sets `allow-any`, since it checks no link, and completes.
 
-Not verified: the native image since the nonces (it needs about 7 GB of free memory), more than one node (overlay encryption, host-mode edge on several nodes, where Postgres lands), real
-certificates and ACME, pulling from a registry, and any failure of the database node.
+> [!WARNING]
+> Not verified: the native image since the nonces (it needs about 7 GB of free memory), more than one node (overlay encryption,
+> host-mode edge on several nodes, where Postgres lands), real certificates and ACME, pulling from a registry, and any failure of
+> the database node.
 
 ## Releasing
 
@@ -692,8 +529,12 @@ tag the commit `v<version>` and push the tag. The `Release` workflow (`.github/w
 - pushes that image to `ghcr.io/christ008/shortener`, signs it by digest with the workflow's own identity (no key to
   manage), and attaches an SPDX bill of materials. The job summary prints the digest and the `cosign verify` command.
 
+> [!WARNING]
+> The release workflow has not run yet, and no signature exists for `deploy.sh` to verify.
+
 Notes:
-- It has not run yet. Only amd64 is built.
+
+- Only amd64 is built.
 - The package is private after the first release. Make it public in the repository's package settings, or give the
   hosts that pull it a registry login.
 - Dependabot proposes updates weekly to the actions, Gradle (the application and `tools/`), the Dockerfiles and the compose
@@ -703,21 +544,28 @@ Notes:
 
 ## Testing
 
-How the tests are counted, and what coverage and mutation testing say about them. Everything below was measured on 2026-10-06 on
-one machine, with the DPoP nonces ([ADR 0032](adr/0032-dpop-nonces.md)) and the port fix of the edge, **with Docker**: `./gradlew test koverHtmlReport koverXmlReport` and `./gradlew mutationTest`, on a JDK
-25.0.2 (SDKMAN).
+How the tests are counted, and what coverage and mutation testing say about them.
+
+> [!NOTE]
+> Everything below was measured on 2026-10-06 on one machine, with Docker, with the DPoP nonces
+> ([ADR 0032](adr/0032-dpop-nonces.md)) and the port fix of the edge. The commands were `./gradlew test koverHtmlReport koverXmlReport`
+> and `./gradlew mutationTest`, on a JDK 25.0.2 (SDKMAN).
 
 ### What is counted
 
 A bare total mixed two kinds of test, so there are two counts. The rule is what the test looks at: the application's code, or the
 files and scripts of the repository.
 
-| | Tests | Where | Needs Docker |
-|---|---|---|---|
-| The application: domain, service, cache, policy, web, persistence, security, architecture | 255 | `src/test` | 114 of them (24 classes, every one imports `TestcontainersConfiguration`) |
-| Infrastructure of the repository: `ComposeStackTest` 22, `DpopClientTest` 22, `MigrationConventionsTest` 8, `DeployScriptTest` 6, `ToolingTasksTest` 3, `ReleaseVersionTest` 3 | 64 | `src/test` | none |
-| The tools: `RealmsTest` 8, `DevSetupTest` 8, `ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 13, `ClientKeysTest` 5, `DpopCallsTest` 10 ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 61 | `tools/src/test` | none |
+| Kind | Tests | Where | Needs Docker |
+|---|--:|---|---|
+| The application: domain, service, cache, policy, web, persistence, security, architecture | 255 | `src/test` | 114 of them, in 24 classes that all import `TestcontainersConfiguration` |
+| Infrastructure of the repository | 64 | `src/test` | none |
+| The tools ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 61 | `tools/src/test` | none |
 | **Total** | **380** | | |
+
+By class, the infrastructure of the repository is `ComposeStackTest` 22, `DpopClientTest` 22, `MigrationConventionsTest` 8,
+`DeployScriptTest` 6, `ToolingTasksTest` 3 and `ReleaseVersionTest` 3. The tools are `RealmsTest` 8, `DevSetupTest` 8,
+`ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 13, `ClientKeysTest` 5 and `DpopCallsTest` 10.
 
 So 255 tests are about the service and 125 are about its tooling and infrastructure. All 380 ran and passed (`./gradlew test`, which
 runs the tools' tests too). Of the 255, 141 need no database and 114 do.
@@ -731,16 +579,17 @@ runs the tools' tests too). Of the 255, 141 need no database and 114 do.
 - **Result.** Lines 96.9% (632 of 652), branches 87.5% (258 of 295), methods 93.6% (206 of 220), classes 94.4% (84 of 89). By
   package, lines:
 
-  | Package | Covered |
-  |---|---|
-  | `shortlink` (the contract) | 68 of 69, 98.6% |
-  | `shortlink.internal` (service, cache, policy) | 153 of 155, 98.7% |
-  | `shortlink.internal.web` | 52 of 53, 98.1% |
-  | `security.internal` | 183 of 189, 96.8% |
-  | `shortlink.internal.authorization` | 32 of 33, 97.0% |
-  | `shortlink.internal.persistence` | 81 of 85, 95.3% |
-  | `security` | 56 of 60, 93.3% |
-  | `uy.ct.shortener` (the migration runner) | 7 of 8, 87.5% |
+  | Package | Covered | Total | Lines |
+  |---|--:|--:|--:|
+  | `shortlink` (the contract) | 68 | 69 | 98.6% |
+  | `shortlink.internal` (service, cache, policy) | 153 | 155 | 98.7% |
+  | `shortlink.internal.web` | 52 | 53 | 98.1% |
+  | `security.internal` | 183 | 189 | 96.8% |
+  | `shortlink.internal.authorization` | 32 | 33 | 97.0% |
+  | `shortlink.internal.persistence` | 81 | 85 | 95.3% |
+  | `security` | 56 | 60 | 93.3% |
+  | `uy.ct.shortener` (the migration runner) | 7 | 8 | 87.5% |
+  | **All** | **632** | **652** | **96.9%** |
 
 - **How to read it.** Covered is not checked: a line a test runs is a line a test could have asserted nothing about, which is what
   the mutation score below looks at. The branch figure is the lower one, 37 of 295 not taken.
@@ -759,12 +608,21 @@ runs the tools' tests too). Of the 255, 141 need no database and 114 do.
 - **What the survivors showed.** Four were not checked by the tests PIT ran. Two were behaviour that no test checked, and two were
   checked only by tests with a database or tests PIT was not running. Each got a test named for the behaviour, except the last:
 
-  | Surviving mutant | Why it mattered | Test |
-  |---|---|---|
-  | `ShortCode.RESERVED` replaced by an empty set | the two tests of reserved codes take their codes from that set, so with none they pass without checking anything, and nothing said which codes are kept | `the reserved codes are the three that would shadow a route of the application` |
-  | the check of the target in the constructor of `ShortLink` removed | `requireValidTargetUrl` was tested alone, but no test showed that a link cannot be built with a target that is not absolute http or https | `a link cannot be built for a target that is not an absolute http or https URL` |
-  | `Actor.of` negated (no coverage) | how a stored name becomes a client, or an unknown creator, was covered only by the tests with a database | `a stored name is a client, and an absent one is a creator that is not known` |
-  | `CreatedByFilter.Only.client` returning `""` (no coverage) | covered by tests that PIT was not running | no new test: `AuditTrailTest` and `ShortLinkAuthorizationTest`, which need no Docker and read it, were added to the tests PIT runs |
+  1. **`ShortCode.RESERVED` replaced by an empty set.**
+     - Why it mattered: the two tests of reserved codes take their codes from that set, so with none they pass without checking
+       anything, and nothing said which codes are kept.
+     - Test: `the reserved codes are the three that would shadow a route of the application`.
+  2. **The check of the target in the constructor of `ShortLink` removed.**
+     - Why it mattered: `requireValidTargetUrl` was tested alone, but no test showed that a link cannot be built with a target
+       that is not absolute http or https.
+     - Test: `a link cannot be built for a target that is not an absolute http or https URL`.
+  3. **`Actor.of` negated** (no coverage).
+     - Why it mattered: how a stored name becomes a client, or an unknown creator, was covered only by the tests with a database.
+     - Test: `a stored name is a client, and an absent one is a creator that is not known`.
+  4. **`CreatedByFilter.Only.client` returning `""`** (no coverage).
+     - Why it mattered: it was covered by tests that PIT was not running.
+     - Test: none new. `AuditTrailTest` and `ShortLinkAuthorizationTest`, which need no Docker and read it, were added to the tests
+       PIT runs.
 
 - **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same again with the whole suite, the DPoP nonces and the port fix). Eight survive, and none is behaviour of the
   project: six are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
@@ -780,20 +638,31 @@ runs the tools' tests too). Of the 255, 141 need no database and 114 do.
 What each control of the documents rests on, so that a claim can be followed to the test that would fail without it.
 
 | Claim | Evidence | Docker |
-|---|---|---|
-| The application's role cannot delete a link or change a target, so a code is never handed out twice | `DatabaseRolesTest`, `ShortLinkSchemaTest` | yes |
-| Every request needs a token bound to the client's key, a proof for that request (including its port behind the edge) and the server's current nonce | `DpopIntegrationTest`, `DpopNonceIntegrationTest`, `DpopNoncesTest`, `DpopClientTest`, `ComposeStackTest` | yes, except the last three |
-| A takedown is bounded by the cache TTL, and a disabled or unknown link is never cached | `RedirectCacheTest`, `DefaultShortLinkServiceTest` | no |
-| Limits per address and per client answer `429` with `Retry-After` | `RateLimiterTest`, `IpRateLimitIntegrationTest`, `ClientRateLimitIntegrationTest` | the integration tests |
-| A database outage is `503`, and links already read keep redirecting | `StorageUnavailableIntegrationTest`, `JdbcShortLinkRepositoryUnavailableTest` | yes |
+|---|---|:-:|
+| The application's role cannot delete a link or change a target, so a code is never handed out twice | `DatabaseRolesTest`<br>`ShortLinkSchemaTest` | yes |
+| Every request needs a token bound to the client's key, a proof for that request (including its port behind the edge) and the server's current nonce | `DpopIntegrationTest`<br>`DpopNonceIntegrationTest`<br>`DpopNoncesTest`<br>`DpopClientTest`<br>`ComposeStackTest` | partly |
+| A takedown is bounded by the cache TTL, and a disabled or unknown link is never cached | `RedirectCacheTest`<br>`DefaultShortLinkServiceTest` | no |
+| Limits per address and per client answer `429` with `Retry-After` | `RateLimiterTest`<br>`IpRateLimitIntegrationTest`<br>`ClientRateLimitIntegrationTest` | partly |
+| A database outage is `503`, and links already read keep redirecting | `StorageUnavailableIntegrationTest`<br>`JdbcShortLinkRepositoryUnavailableTest` | partly |
 | The stack is hardened, only the edge publishes ports, and the edge forwards the port | `ComposeStackTest` | no |
 | `deploy.sh` verifies the signature, and refuses a bad name in `.env` | `DeployScriptTest` | no |
-| The code and the contract agree, and the module boundaries hold | `OpenApiContractTest`, `ModularityTests`, `ShortLinkArchitectureTest` | the first |
+| The code and the contract agree, and the module boundaries hold | `OpenApiContractTest`<br>`ModularityTests`<br>`ShortLinkArchitectureTest` | partly |
+
+*Partly* means only some of the tests in the row need Docker:
+
+- Tokens and proofs: `DpopIntegrationTest` and `DpopNonceIntegrationTest`.
+- Limits: `IpRateLimitIntegrationTest` and `ClientRateLimitIntegrationTest`.
+- Outage: `StorageUnavailableIntegrationTest`. The repository test uses hand-written fakes of the pool.
+- Contract: `OpenApiContractTest`.
 
 What no test shows: that the stack behaves under a real multi-node Swarm, a real certificate, or a registry pull, and that the
 release workflow produces a signature `deploy.sh` accepts. See [Limitations](#limitations).
 
 ## Performance
+
+> [!IMPORTANT]
+> One laptop, one run per rate, with the database and the load generator on the same machine. Treat the numbers as shape, not
+> capacity.
 
 ### Method
 
@@ -805,12 +674,11 @@ release workflow produces a signature `deploy.sh` accepts. See [Limitations](#li
   [Links the cache has not seen](#links-the-cache-has-not-seen).
 - Each variant warms up 30 s, then runs 1,500, 5,000 and 10,000 requests a second. Server-side percentiles come from
   Prometheus. `perf/run-all.sh` runs the variants.
-- One laptop, one run per rate, database and load generator on the same machine. Treat the numbers as shape, not capacity.
 
 ### Results
 
-| | JVM (Temurin 25) | native |
-|---|---|---|
+| Measure | JVM (Temurin 25) | native |
+|---|--:|--:|
 | ready after `docker run` | 5.4 s | 0.7 s |
 | memory at rest | 250 MiB | 210 MiB |
 | 1,500 req/s, redirect p99 | 1.0 ms | 4.6 ms |
@@ -866,7 +734,7 @@ Two changes closed it:
 - **The connection limit** matters beyond capacity. At 12,000 req/s, about 2.4 times what two cores sustain:
 
   | | no limit (8192) | `max-connections: 500` |
-  |---|---|---|
+  |---|--:|--:|
   | peak memory | 514 MiB (the limit) | 208 MiB |
   | time in GC, longest pause | 14.3%, 2.6 s | 3.9%, 60 ms |
   | `OutOfMemoryError` | 3 | 0 |
@@ -882,89 +750,15 @@ allocation was not measured. Tooling: `perf/profile.sh`, `tools/run Report` (`gc
 
 ### Running load tests safely
 
-The development machine runs an application firewall (Safing Portmaster) that inspects new connections through a kernel
-packet queue. Overload runs overflow it (`nfnetlink_queue: nf_queue: full ... dropping packets`) and every new
-connection fails until reboot. This took the network down three times.
+> [!WARNING]
+> The development machine runs an application firewall (Safing Portmaster) that inspects new connections through a kernel
+> packet queue. Overload runs overflow it (`nfnetlink_queue: nf_queue: full ... dropping packets`) and every new
+> connection fails until reboot. This took the network down three times.
 
 - Keep to sustainable rates.
 - Prefer host networking and loopback to the Docker bridge.
 - Pause the firewall before saturation tests.
 - When connections start timing out, check `journalctl -k | grep nf_queue`.
-
-## Design review
-
-A pass for what the compiler can check, and against SOLID and Tell, Don't Ask. What changed, and what was left alone on
-purpose.
-
-### Checked by the compiler
-
-| Where | Now | Gives |
-|---|---|---|
-| `ShortLinkException` | `sealed`: the failures are exactly the subclasses in the package | no failure the API contract does not describe can be added from outside; a test lists them |
-| `LinkStatus`, `Actor`, `LinkLookup`, `InsertResult`, `CreatedByFilter`, `RateLimitDecision`, `RateLimitKey` | sealed interfaces | a `when` over them needs every case |
-| `ShortLinkResponse`, `CaffeineRedirectCache` | exhaustive `when` where `as?` casts stood | a new case is a compile error, not a silent `null` |
-| `SecurityProblemResponder` challenge | `when` over `AuthScheme`, not over booleans | each scheme's answer is stated, and a new scheme must be handled |
-| `ShortLinkScopes` | immutable, bound through the constructor | the authorization rules cannot change after start |
-
-Left as they are:
-
-- **Kotlin `internal`.** It means module-wide, and this is one module, so it would hide nothing. The boundaries are held
-  by Spring Modulith and the ArchUnit tests instead.
-- **Value classes** for `ShortCode`. Spring MVC, Jackson and native image support for them is thinner than for data
-  classes, and the gain is one allocation.
-- **Unchecked cast in `NotFoundWhenDenied`.** The first argument of a denied call is a framework-supplied `Object`.
-
-### Tell, don't ask
-
-Callers were pulling fields out of an object to decide something that the object knows. Each now asks the object to do
-it, which puts the rule in one place and lets the type change without its callers.
-
-| Before | Now |
-|---|---|
-| the evaluator compared `link.createdBy` with the caller | `link.isCreatedBy(client)` |
-| the service read `link.isDisabled` and threw | `link.requireActive()` |
-| the service checked `shortCode.value in RESERVED_CODES` | `shortCode.requireClaimable()` |
-| the controller chose the listing filter from the caller's authority | `CreatedByFilter.of(requested, caller, isAdministrator)`, with tests |
-| the service parsed the target and would have had to know which hosts are allowed | a `TargetUrlPolicy` says whether a target is accepted |
-
-### SOLID
-
-| Principle | Finding | Decision |
-|---|---|---|
-| Single responsibility | `DefaultShortLinkService` also opens the observations around two repository calls | kept: the `shortlink.load` observation marks a redirect that missed the cache, and a repository decorator would also observe the reads that decide who may see a link |
-| Open/closed | which targets are accepted was going to be an `if` in the service | `TargetUrlPolicy`: `AnyTarget` and `AllowedHosts`. A new rule is a new implementation |
-| Liskov | the two null objects, `NoRedirectCache` and `AnyTarget`, must honor their contracts | each has tests for its contract |
-| Interface segregation | the repository has four operations, each used by the service or `ManageableLinks` | nothing to split |
-| Dependency inversion | the service depends on interfaces for the repository, the cache, the generator and the policy. Its public contract exposes Spring Data's `Page` and `Pageable` | kept, and looked at again in the polish pass. The ArchUnit tests keep JDBC and security types out of the contract and accept Spring Data's paging types. Own paging types would be a copy of them, and the web adapter would have to parse `page`, `size` and `sort` itself, which `Pageable`'s resolver does today with the defaults and the cap of `spring.data.web.pageable.*`. The cost is that the contract is tied to `spring-data-commons`, a library with no persistence in it: a different paging library would change the contract, not only an adapter |
-
-## Decisions
-
-Each has a record with its problem, cost and alternatives in [adr/](adr/README.md). The list below is the summary.
-
-- **Plain JDBC, not JPA.** Two statements dominate and need SQL features JPA hides. Only the persistence adapter knows SQL.
-- **Spring facilities over bespoke code.** Method security with a `PermissionEvaluator`, `Pageable` and `Page`, Spring
-  Security's resource server, DPoP and RFC 9728 metadata, MVC's problem details. Custom code is limited to what Spring
-  lacks: the Bearer refusal, rate limiting and the native hints.
-- **Absence is a type.** Sealed types and a null-object cache instead of nullable returns and fields (see
-  [Domain types](#domain-types)).
-- **Virtual threads, not coroutines.** Each request does one blocking query, so there is nothing to fan out. The native
-  image's problem was never scheduling: it was 150 KB of Tomcat buffers per connection and the collector. Revisit if a
-  request ever calls several things in parallel.
-- **Ownership is the client id.** There are no end users yet, so the token's `azp` is the owner and scopes are the only
-  permission model.
-- **Sender-constrained tokens by default.** A leaked bearer token is the main risk of a token API. DPoP removes it at the
-  cost of a client that can sign. A reference client is provided: `deploy/keycloak/DpopClient.java`, one file that needs only a JDK 17
-  or newer and no build, and that CI compiles for 17 and runs on 17.
-- **In-process redirect cache.** Caffeine, active links only, short TTL, local eviction on disable. See
-  [Redirect cache](#redirect-cache) for what was rejected.
-- **Which hosts a link may point to is a policy.** Empty by default, so a private instance accepts anything; a public
-  one lists the hosts it accepts, so it cannot be used to redirect to arbitrary sites.
-- **Reproducible image.** Everything the build downloads is pinned, by version where one exists and by digest where
-  not.
-- **Offset pagination with totals, not cursors.** Listings take `page` and `size` and answer with totals, so a client can
-  jump to any page and draw a numbered pager. The web UI needs that. Cursor (keyset) paging only moves to the next or
-  previous page. Its advantages (constant cost at any depth, stable pages under inserts) do not matter at this size. See
-  [Request flows](#request-flows).
 
 ## Limitations
 

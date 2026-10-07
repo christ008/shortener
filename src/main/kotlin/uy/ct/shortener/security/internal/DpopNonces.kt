@@ -58,6 +58,7 @@ class HmacDpopNonces(private val secret: ByteArray, private val interval: Durati
         if (bytes.size != NONCE_BYTES) return false
         val number = ByteBuffer.wrap(bytes, 0, Long.SIZE_BYTES).long
         val now = intervalNow()
+        // `MessageDigest.isEqual` compares in constant time, so a wrong nonce does not say how much of it matched.
         return (number == now || number == now - 1) && MessageDigest.isEqual(bytes, bytesOf(number))
     }
 

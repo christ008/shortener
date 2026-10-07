@@ -6,7 +6,7 @@
 # - postgres    the database. For a managed one, drop this service and point SPRING_DATASOURCE_URL and SPRING_FLYWAY_URL at it.
 #
 # Variables: deploy/stack/.env.example. Secrets are files (`secrets:` at the end).
-# Swarm ignores some settings: docs/INTERNALS.md (Hardening). `docker compose` honours all of them.
+# Swarm ignores some settings: docs/INTERNALS.md, "Hardening". `docker compose` honours all of them.
 
 x-logging: &logging
   driver: json-file
@@ -15,7 +15,8 @@ x-logging: &logging
     max-file: '3'
 
 # Defaults for every container: read-only root, no capabilities, no privilege gain.
-# Writable memory uses the long `volumes:` syntax (Swarm drops the short `tmpfs:` key).
+# Writable memory uses the long `volumes:` syntax (Swarm drops the short `tmpfs:` key). There `size` is in bytes (67108864 is 64 MiB)
+# and `mode` is a decimal number, so 1023 is the octal 1777: everyone may write, and the sticky bit lets only a file's owner remove it.
 x-hardened: &hardened
   read_only: true
   cap_drop: [ALL]

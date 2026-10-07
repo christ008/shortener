@@ -46,6 +46,7 @@ class CaffeineRedirectCache(
         .build<ShortCode, ShortLink>()
         .also { CaffeineCacheMetrics.monitor(registry, it, CACHE_NAME) }
 
+    // With `stale-if-error` at zero the size is 0 and nothing is kept. The expiry still has to be positive, so it falls back to the TTL.
     private val lastKnown: Cache<ShortCode, ShortLink> = Caffeine.newBuilder()
         .maximumSize(if (properties.staleIfError.isZero) 0 else properties.maxEntries)
         .expireAfterWrite(properties.staleIfError.takeUnless { it.isZero } ?: properties.ttl)
@@ -74,6 +75,7 @@ class CaffeineRedirectCache(
         return when {
             cached != null -> LinkLookup.Found(cached)
             loadedHere -> loaded
+            // Another caller's load found nothing active. Only active links are stored, so ask again to tell a missing code from a disabled one.
             else -> load(shortCode)
         }
     }
