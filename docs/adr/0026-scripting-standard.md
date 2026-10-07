@@ -43,8 +43,8 @@ In this order, each a change of its own, and none changes behavior:
    against 16 s, run against a live instance), and `tools/Report.java` for the three
    Python scripts.
    Gradle tasks for every script a person runs: done 2026-10-06.
-5. The `bash` scripts of `perf/` (`bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh`) to POSIX `sh`, with what parses
-   output in `Report.java`.
+5. (Done 2026-10-06, and run end to end with short runs, 100 and 300 requests a second.) The `bash` scripts of `perf/` (`bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh`) to POSIX `sh`, with what parses
+   output in `Report` (Java then, Kotlin since [0029](0029-tools-in-kotlin.md)).
 
 ## Consequences
 

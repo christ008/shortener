@@ -8,7 +8,7 @@
 #
 # Settings, all optional:
 #   COMPOSE_FILES   files to deploy, default "compose.prod.yaml"; OBSERVABILITY=1 adds compose.prod.observability.yaml and
-#                   KEYCLOAK=1 adds compose.prod.keycloak.yaml
+#                   KEYCLOAK=1 adds compose.prod.keycloak.yaml, and POSTGRES_HA=1 adds compose.prod.postgres-ha.yaml
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
 #   WAIT            seconds to wait for the migration job, default 300
 set -eu
@@ -18,6 +18,7 @@ stack=${2:-shortener}
 files=${COMPOSE_FILES:-compose.prod.yaml}
 [ -z "${OBSERVABILITY:-}" ] || files="$files compose.prod.observability.yaml"
 [ -z "${KEYCLOAK:-}" ] || files="$files compose.prod.keycloak.yaml"
+[ -z "${POSTGRES_HA:-}" ] || files="$files compose.prod.postgres-ha.yaml"
 args=""
 for f in $files; do args="$args -c $f"; done
 

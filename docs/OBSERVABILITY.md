@@ -22,7 +22,7 @@ Grafana (<http://localhost:3000>, no login), Tempo and the Postgres exporter, an
 | Traces | OTLP over HTTP to Tempo | sampling 0 by default, 100% under `dev`, 5% under `production` |
 | Logs | JSON (ECS) on stdout under `production`, with trace and span ids | |
 | Health | `/actuator/health/liveness`, `/readiness`, management port | readiness excludes the database |
-| Alerts | `deploy/observability/alerts.yml` | nine rules, tested with promtool |
+| Alerts | `deploy/observability/alerts.yml` | twelve rules, tested with promtool |
 
 ## Dashboard
 
@@ -100,6 +100,9 @@ absorbing load, or the database is slow or gone.
 | `ShortenerAuthenticationFailures` | more than one failed authentication a second | 10 m | warning |
 | `ShortenerForbiddenCalls` | valid tokens denied more than once every five seconds | 10 m | warning |
 | `ShortenerRateLimited` | more than one `429` a second | 10 m | warning |
+| `ShortenerWalArchivingFailing` | Postgres failed to archive WAL in the last ten minutes | 5 m | critical |
+| `ShortenerReplicaDisconnected` | the replication slot has no connection | 5 m | warning |
+| `ShortenerReplicaLagging` | the replica is more than 100 MiB behind | 10 m | warning |
 | `ShortenerAdministratorActivity` | more than ten disables or listings of other clients' links in ten minutes | none | warning |
 
 Each rule has a test in `deploy/observability/alerts.test.yml`:

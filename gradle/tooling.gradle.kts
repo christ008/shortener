@@ -73,3 +73,7 @@ tooling("report", "Reads results. -Preport=summary|gc|hprof|profile|json -Ptarge
     listOf("tools/run", "Report", setting("report"), setting("target")) + listOfNotNull(optional("top"))
 }
 
+tooling("postgresBackup", "Backs up and checks the stack's Postgres. -Pcommand=init|full|diff|check|info|restore-test") {
+    listOf("deploy/postgres/backup", setting("command"))
+}
+

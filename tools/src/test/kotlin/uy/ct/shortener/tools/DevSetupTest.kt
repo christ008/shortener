@@ -10,9 +10,8 @@ import java.nio.file.Path
 /**
  * `DevSetup` makes the keys, the realm and the passwords of a development setup, and every developer, CI run and rehearsal of
  * the stack depends on it. It runs here in process, in a copy of the one file it needs, with no one to ask (so with its defaults,
- * as CI does), and what it wrote is read back. The keys are made by the DPoP client in a process of its own, as when it is run
- * by hand. What it asks on a terminal is the same code with another source for the same values, and runs here against a prompt
- * that answers from a list.
+ * as CI does), and what it wrote is read back. What it asks on a terminal is the same code with another source for the same
+ * values, and runs here against a prompt that answers from a list.
  */
 class DevSetupTest {
 

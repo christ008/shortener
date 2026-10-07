@@ -169,7 +169,7 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 | T | A migration that locks the table | `MigrationConventionsTest`, the migrator's `lock_timeout` | |
 | R | Who changed a row | `created_by`, `disabled_by` | no audit table |
 | I | The exporter reading data | `shortener_exporter` has `pg_monitor`: statistics, not data (`DatabaseRolesTest`) | |
-| D | A query or lock that pins a connection | 5 s, 2 s and 10 s limits that apply at login | one node, no replica, **no backup**: losing the volume loses every link |
+| D | A query or lock that pins a connection | 5 s, 2 s and 10 s limits that apply at login | one node. The optional overlay adds backups to a volume of that node, restorable to within five minutes and proven by `restore-test`, and a replica on another node, promoted by hand ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)). Without it, losing the volume loses every link. The repository is not yet off the node, and nothing alerts on a backup that did not run |
 | E | Another role creating objects | `CREATE` on the schema is revoked from `PUBLIC`. Only listed roles connect | Postgres starts as root and drops, with five capabilities |
 
 ### E6. Build, release and deploy
@@ -189,7 +189,7 @@ rates most of them one level lower. `F-nn` points to the [findings](#findings).
 |---|---|---|---|
 | I | Reading metrics or health | the port is never proxied, details are hidden in production, metrics are labelled by route template so codes are not values | anything on the `edge` or `data` network can read them without a login (`SecurityIntegrationTest` states they are public) |
 | I | Traces carrying data | 5% sampling, no OTLP log or metric export | the default OTLP endpoint is plain HTTP on localhost |
-| D | Alert fatigue or silence | nine alerts: the database, stale redirects, failed authentications, denied calls, rate limiting and administrator activity | four alerts read `401`, `403`, `429` and administrator activity. Nothing sends the alerts that fire ([F-03](#findings)) |
+| D | Alert fatigue or silence | twelve alerts: the database, stale redirects, failed authentications, denied calls, rate limiting, administrator activity, WAL archiving and the replica | four alerts read `401`, `403`, `429` and administrator activity. Nothing sends the alerts that fire ([F-03](#findings)) |
 
 ## Abuse of a working service
 
@@ -271,7 +271,7 @@ Decided. Revisit the reason, not the decision, when it stops being true.
 | Management metrics have no login | the port is never proxied and only stack containers reach it |
 | The application role can disable any link | disabling is its job, and nothing in it can delete or re-point one |
 | Swarm ignores `no-new-privileges` | the images have no setuid binaries, and Postgres has no capabilities to escalate with |
-| One database node, no backup | stated in the stack's limits. Not acceptable for an instance that holds anything that matters ([CLOUD.md](CLOUD.md)) |
+| Backups on the node they protect, a replica that is promoted by hand, and nothing alerting on a backup that did not run | the overlay is optional, and a public instance must use it and move the repository off the node ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md), [CLOUD.md](CLOUD.md)) |
 | The old dev keys are in the Git history | they work against no setup made since |
 | Egress is not filtered by destination | Swarm cannot, and the application only needs the identity provider and Postgres |
 

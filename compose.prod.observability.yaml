@@ -43,7 +43,7 @@ services:
     logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
     image: 'quay.io/prometheuscommunity/postgres-exporter:v0.20.1'
     user: '65534:65534'
-    command: ['--collector.stat_statements', '--collector.stat_statements.limit=25']
+    command: ['--collector.stat_statements', '--collector.stat_statements.limit=25', '--collector.stat_archiver', '--collector.stat_replication', '--collector.replication_slots']
     environment:
       # pg_monitor: statistics only, no data.
       DATA_SOURCE_URI: 'postgres:5432/shortener?sslmode=disable'

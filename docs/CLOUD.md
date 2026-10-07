@@ -49,14 +49,15 @@ flowchart LR
 
 ## Missing
 
-Built: the Keycloak overlay, the edge route for `/realms`, and the production realm
-(`./gradlew productionRealm`: `demo-client` and `admin-client`, no users).
+Built: the Keycloak overlay, the edge route for `/realms`, the production realm
+(`./gradlew productionRealm`: `demo-client` and `admin-client`, no users), and backups with a restore test
+([DEPLOY.md](DEPLOY.md#backups-and-a-replica)), with the repository on the VM's disk.
 
 Not built:
 
 1. Certificate issuance and renewal, with an edge reload.
 2. A bootstrap script for a fresh VM: install Docker, make secrets, deploy, install the nightly dump.
-3. Backups and a restore test.
+3. The backup repository off the VM.
 4. The `shortener-ui` client and web users (they wait for the [web UI](UI.md)).
 
 ## Steps
@@ -83,7 +84,7 @@ Before anyone is invited:
 - Say in the README, next to the URL, that availability is not promised.
 - Store nothing you would mind losing: one disk, one machine, no backup yet.
 
-Known limits: rate limits and the DPoP replay cache are per task, and the VM is a single point of failure.
+Known limits: rate limits and the DPoP replay cache are per task, the VM is a single point of failure, and backups stay on its disk until the repository leaves it.
 
 ## Cost and teardown
 

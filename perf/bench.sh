@@ -1,12 +1,17 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Runs one image of the application against the compose Postgres and Keycloak under k6, and records the results in OUT_DIR.
 #   [RUNS="name rate duration create_share|..."] [DOCKER_ARGS="..."] perf/bench.sh VARIANT IMAGE OUT_DIR [COMMAND...]
 # CPUs: the app 0-1 with the production memory limit, Postgres 2-5, k6 6-9. Needs Postgres, Keycloak and Prometheus (profile
-# observability) running: the compose services, or containers of your own with PGPORT and PG_CONTAINER set.
-set -euo pipefail
+# observability) running: the compose services, or containers of your own with PGPORT and PG_CONTAINER set. Needs GNU date (`%N`).
+set -eu
 
-VARIANT=$1; IMAGE=$2; COMMAND=("${@:4}")
-mkdir -p "$3"; OUT=$(cd "$3" && pwd); chmod 777 "$OUT"
+VARIANT=$1
+IMAGE=$2
+OUT_ARGUMENT=$3
+shift 3
+mkdir -p "$OUT_ARGUMENT"
+OUT=$(cd "$OUT_ARGUMENT" && pwd)
+chmod 777 "$OUT"
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 PGPASS=$(sed -n "s/^DEV_POSTGRES_PASSWORD='\{0,1\}\([^']*\)'\{0,1\}$/\1/p" "$ROOT/.env" 2>/dev/null)
@@ -16,16 +21,18 @@ PG_CONTAINER=${PG_CONTAINER:-$(docker compose -f "$ROOT/compose.yaml" ps -q post
 PROM=http://localhost:9090
 say() { printf '\n\033[1m[%s] %s\033[0m\n' "$(date +%T)" "$*"; }
 
-say "== $VARIANT: $IMAGE ${COMMAND[*]:-}"
+say "== $VARIANT: $IMAGE $*"
 docker update --cpuset-cpus 2-5 "$PG_CONTAINER" >/dev/null
 docker rm -f bench-app >/dev/null 2>&1 || true
 
 t0=$(date +%s%N)
+# DOCKER_ARGS is several words on purpose.
+# shellcheck disable=SC2086
 docker run -d --name bench-app --network host --cpuset-cpus 0-1 --cpus 2 --memory 512m \
   -e SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:$PGPORT/mydatabase" \
   -e SPRING_DATASOURCE_USERNAME=myuser -e "SPRING_DATASOURCE_PASSWORD=$PGPASS" \
   -e SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY=1000000000 -e SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY=1000000000 \
-  ${DOCKER_ARGS:-} "$IMAGE" "${COMMAND[@]}" >/dev/null
+  ${DOCKER_ARGS:-} "$IMAGE" "$@" >/dev/null
 until curl -sf -m 2 -o /dev/null localhost:8081/actuator/health/readiness; do
   [ -n "$(docker ps -q -f name=bench-app)" ] || { echo "the application container stopped:"; docker logs bench-app 2>&1 | tail -20; exit 1; }
   sleep 0.05
@@ -41,7 +48,7 @@ k6() { # name rate duration share seeds
   say "load $1: $2 requests/s for $3, a create share of $4"
   docker run --rm -t --network host --cpuset-cpus 6-9 -v "$HERE/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
     -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS=300 -e MAX_VUS=3000 \
-    grafana/k6 run --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" --summary-export "/out/$1.k6.json" /scripts/mixed.js 2>&1 | tee "$OUT/$1.k6.txt" || true
+    grafana/k6 run --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" --summary-export "/out/$1.k6.json" /scripts/mixed.js </dev/null 2>&1 | tee "$OUT/$1.k6.txt" || true
 }
 
 sampler() { while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-app 2>/dev/null)"; done; }
@@ -53,20 +60,21 @@ k6 warmup 2000 30s 0.005
 echo "{\"variant\":\"$VARIANT\",\"image\":\"$IMAGE\",\"ready_ms\":$ready,\"idle_mem\":\"$idle_mem\",\"started\":\"$started\",\"runs\":[" >"$OUT/summary.json"
 first=1
 RUNS=${RUNS:-"r1500 1500 60s 0.01|r5000 5000 60s 0.003|r10000 10000 30s 0.0015"}
-IFS='|' read -ra RUN_LIST <<<"$RUNS"
-for run in "${RUN_LIST[@]}"; do
-  set -- $run
+printf '%s\n' "$RUNS" | tr '|' '\n' >"$OUT/runs.txt"
+exec 3<"$OUT/runs.txt"
+while read -r name rate duration share <&3; do
   start=$(date +%s)
-  k6 "$1" "$2" "$3" "$4"
+  k6 "$name" "$rate" "$duration" "$share"
   end=$(date +%s); sleep 7
   dur=$((end - start + 7))
   server=$("$ROOT/tools/run" Report server "$PROM" "$end" "$dur")
   [ $first = 1 ] || echo "," >>"$OUT/summary.json"; first=0
-  say "server side for $1 (from Prometheus): $server; container now: $(docker stats --no-stream --format '{{.CPUPerc}} cpu, {{.MemUsage}}' bench-app)"
+  say "server side for $name (from Prometheus): $server; container now: $(docker stats --no-stream --format '{{.CPUPerc}} cpu, {{.MemUsage}}' bench-app)"
   cat >>"$OUT/summary.json" <<J
-{"name":"$1","rate":$2,"duration":"$3","create_share":$4,"start":$start,"end":$end,"server":$server}
+{"name":"$name","rate":$rate,"duration":"$duration","create_share":$share,"start":$start,"end":$end,"server":$server}
 J
 done
+exec 3<&-
 echo "]}" >>"$OUT/summary.json"
 
 kill $SAMPLER 2>/dev/null || true

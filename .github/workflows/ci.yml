@@ -72,6 +72,7 @@ jobs:
           docker compose -f compose.prod.yaml -f compose.prod.observability.yaml config --quiet
           echo PUBLIC_URL=https://shortener.example.com >> .env
           docker compose -f compose.prod.yaml -f compose.prod.keycloak.yaml config --quiet
+          docker compose -f compose.prod.yaml -f compose.prod.postgres-ha.yaml config --quiet
           docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml config --quiet
       - name: Check the edge configuration
         run: |
@@ -87,8 +88,10 @@ jobs:
             -v "$PWD/secrets/tls_cert:/run/secrets/tls_cert:ro" \
             -v "$PWD/secrets/tls_key:/run/secrets/tls_key:ro" \
             nginxinc/nginx-unprivileged:1.30.4-alpine nginx -t
-      - name: Build the Keycloak image
-        run: docker build -t shortener-keycloak:ci deploy/keycloak
+      - name: Build the Keycloak and Postgres images
+        run: |
+          docker build -t shortener-keycloak:ci deploy/keycloak
+          docker build -t shortener-postgres:ci deploy/postgres
       - name: Check and test the alert rules
         run: |
           promtool() { docker run --rm -v "$PWD/deploy/observability:/rules:ro" -w /rules --entrypoint promtool prom/prometheus:v3.5.0 "$@"; }
@@ -96,7 +99,4 @@ jobs:
           promtool test rules alerts.test.yml
       - name: Check the shell scripts
         run: |
-          shellcheck --shell=sh deploy/stack/deploy.sh deploy/stack/local/prepare.sh deploy/keycloak/dev-setup deploy/keycloak/entrypoint.sh deploy/postgres/*.sh tools/run
-          # Until they are rewritten (docs/adr/0026-scripting-standard.md), the load and profiling scripts use bash, and are held to
-          # warnings: they were never linted, and their style notes are for the rewrite.
-          shellcheck --shell=bash --severity=warning perf/*.sh
+          shellcheck --shell=sh deploy/stack/deploy.sh deploy/stack/local/prepare.sh deploy/keycloak/dev-setup deploy/keycloak/entrypoint.sh deploy/postgres/*.sh deploy/postgres/backup tools/run perf/*.sh

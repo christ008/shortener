@@ -1,0 +1,56 @@
+#!/bin/sh
+# Backs up the stack's Postgres with pgBackRest (compose.prod.postgres-ha.yaml) and proves a restore. Runs on the manager.
+#
+#   deploy/postgres/backup init           create the stanza, check archiving and take the first full backup (once)
+#   deploy/postgres/backup full           full backup
+#   deploy/postgres/backup diff           differential backup
+#   deploy/postgres/backup check          check that a WAL segment is archived and the repository holds it
+#   deploy/postgres/backup info           backups in the repository and the age of the newest
+#   deploy/postgres/backup restore-test   restore the latest backup into a throwaway container and count the links
+#
+# Settings: PG_CONTAINER (default: the stack's postgres task), STACK (default shortener), and for restore-test PG_IMAGE and
+# PGBACKREST_VOLUME (default: read from the container).
+# Exit status: 0 on success, 1 when a step fails or no container is found, 2 for arguments it does not understand.
+# Schedule, in the manager's crontab:
+#   17 3 * * 0   /srv/shortener/deploy/postgres/backup full
+#   17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
+set -eu
+
+here=$(cd "$(dirname "$0")" && pwd)
+stack=${STACK:-shortener}
+command=${1:-}
+
+container=${PG_CONTAINER:-$(docker ps -q -f "name=^${stack}_postgres\\." | head -1)}
+[ -n "$container" ] || {
+  echo "backup: no running ${stack}_postgres container (set PG_CONTAINER or STACK)" >&2
+  exit 1
+}
+pgbackrest() { docker exec -u postgres "$container" pgbackrest --stanza=shortener "$@"; }
+
+case "$command" in
+  init)
+    pgbackrest stanza-create
+    pgbackrest check
+    pgbackrest --type=full backup
+    ;;
+  full | diff | incr) pgbackrest --type="$command" backup ;;
+  check) pgbackrest check ;;
+  info) pgbackrest info ;;
+  restore-test)
+    image=${PG_IMAGE:-$(docker inspect --format '{{.Config.Image}}' "$container")}
+    repository=${PGBACKREST_VOLUME:-$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/pgbackrest"}}{{.Name}}{{end}}{{end}}' "$container")}
+    [ -n "$repository" ] || {
+      echo "backup: the container has no volume at /var/lib/pgbackrest" >&2
+      exit 1
+    }
+    docker run --rm --user root --entrypoint /usr/local/bin/shortener-restore-test \
+      -v "$repository:/var/lib/pgbackrest:ro" \
+      -v "$here/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro" \
+      -v "$here/diagnostics.conf:/etc/shortener/diagnostics.conf:ro" \
+      "$image"
+    ;;
+  *)
+    echo "usage: deploy/postgres/backup init|full|diff|check|info|restore-test" >&2
+    exit 2
+    ;;
+esac

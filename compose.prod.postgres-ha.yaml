@@ -1,0 +1,82 @@
+# Adds pgBackRest backups and a streaming replica to Postgres (docs/DEPLOY.md#backups-and-a-replica).
+#   POSTGRES_HA=1 deploy/stack/deploy.sh <version>
+#   docker compose -f compose.prod.yaml -f compose.prod.postgres-ha.yaml up -d
+# Needs the image built from deploy/postgres (POSTGRES_IMAGE) and the secret db_replicator_password.
+services:
+  postgres:
+    image: '${POSTGRES_IMAGE:-shortener-postgres}:${POSTGRES_VERSION:-18.6}'
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=shortener archive-push %p
+      - -c
+      - archive_timeout=300
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=5
+      - -c
+      - max_replication_slots=5
+      - -c
+      - max_slot_wal_keep_size=4GB
+    environment:
+      SHORTENER_REPLICATOR_PASSWORD_FILE: /run/secrets/db_replicator_password
+    volumes:
+      - pgbackrest-data:/var/lib/pgbackrest
+    configs:
+      - {source: postgres-pgbackrest, target: /etc/pgbackrest/pgbackrest.conf, mode: 0444}
+      - {source: postgres-replication, target: /docker-entrypoint-initdb.d/35-replication.sh, mode: 0555}
+    secrets: [db_replicator_password]
+
+  postgres-replica:
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    image: '${POSTGRES_IMAGE:-shortener-postgres}:${POSTGRES_VERSION:-18.6}'
+    entrypoint: ['/usr/local/bin/shortener-replica-entrypoint.sh']
+    environment:
+      PRIMARY_HOST: postgres
+      REPLICATOR_PASSWORD_FILE: /run/secrets/db_replicator_password
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql
+      - {type: tmpfs, target: /tmp, tmpfs: {size: 67108864, mode: 1023}}
+      - {type: tmpfs, target: /var/run/postgresql, tmpfs: {size: 1048576, mode: 1023}}
+      - {type: tmpfs, target: /dev/shm, tmpfs: {size: 134217728, mode: 1023}}
+    configs:
+      - {source: postgres-diagnostics, target: /etc/shortener/diagnostics.conf, mode: 0444}
+    secrets: [db_replicator_password]
+    networks: [data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d shortener']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    stop_grace_period: 60s
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: '2', memory: 1G}
+      placement:
+        constraints: ['node.labels.shortener.postgres-replica == true']
+      restart_policy: {condition: any, delay: 5s}
+      update_config: {order: stop-first, failure_action: rollback}
+
+volumes:
+  pgbackrest-data: {}
+  postgres-replica-data: {}
+
+configs:
+  postgres-pgbackrest:
+    file: ./deploy/postgres/pgbackrest.conf
+  postgres-replication:
+    file: ./deploy/postgres/replication.sh
+
+secrets:
+  db_replicator_password:
+    file: '${SECRETS_DIR:-./secrets}/db_replicator_password'

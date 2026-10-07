@@ -13,14 +13,12 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 
 /**
  * `Smoke` is what decides that a release can be published, so what matters is that it passes against an application that
  * answers as the API says, that one wrong answer fails the run and says which, and that an application that is not there fails
  * every check instead of ending the run with a stack trace. The application is a small stand-in that models the API's rules for
- * who may see what. Smoke runs as a process, as `tools/run` starts it, because the DPoP client it calls reads its token endpoint
- * from the environment of the process.
+ * who may see what.
  */
 class SmokeTest {
 
@@ -41,22 +39,15 @@ class SmokeTest {
     @AfterEach
     fun stop() = application.close()
 
-    private fun smoke(base: String = application.url, management: String = application.url): Output {
-        val process = ProcessBuilder(
-            ProcessHandle.current().info().command().orElse("java"), "-cp", System.getProperty("java.class.path"),
-            "uy.ct.shortener.tools.MainKt", "Smoke", base,
-        ).directory(repositoryRoot.toFile()).also {
-            it.environment().apply {
-                put("TOKEN_URL", "${application.url}/realms/shortener/protocol/openid-connect/token")
-                put("KEYS_DIR", directory.resolve("keys").toString())
-                put("MGMT", management)
-            }
-        }.start()
-        val stdout = process.inputStream.readAllBytes().decodeToString()
-        val stderr = process.errorStream.readAllBytes().decodeToString()
-        check(process.waitFor(120, TimeUnit.SECONDS)) { "Smoke did not finish" }
-        return Output(process.exitValue(), stdout, stderr)
-    }
+    private fun smoke(base: String = application.url, management: String = application.url): Output =
+        run(
+            Smoke, base,
+            environment = mapOf(
+                "TOKEN_URL" to "${application.url}/realms/shortener/protocol/openid-connect/token",
+                "KEYS_DIR" to directory.resolve("keys").toString(),
+                "MGMT" to management,
+            ),
+        )
 
     private fun Output.lines(prefix: String) = stdout.lines().filter { it.startsWith(prefix) }
 
@@ -89,7 +80,7 @@ class SmokeTest {
         val result = smoke(base = unreachable, management = unreachable)
 
         assertThat(result.status).isEqualTo(1)
-        assertThat(result.stderr).doesNotContain("Exception in thread")
+        assertThat(result.stderr).isEmpty()
         assertThat(result.lines("FAIL")).hasSize(21)
         assertThat(result.stdout).contains("21 checks failed")
     }
@@ -136,9 +127,11 @@ class SmokeTest {
             val method = exchange.requestMethod
             val body = exchange.requestBody.readAllBytes().decodeToString()
             val authorization = exchange.requestHeaders.getFirst("Authorization")
-            val client = authorization?.takeIf { it.startsWith("DPoP ") }?.removePrefix("DPoP ")
+            val proved = exchange.requestHeaders.getFirst("DPoP") != null
+            val client = authorization?.takeIf { it.startsWith("DPoP ") && proved }?.removePrefix("DPoP ")
 
             when {
+                path == "/realms/shortener/protocol/openid-connect/token" && !proved -> reply(exchange, 400, """{"error":"invalid_dpop_proof"}""")
                 path == "/realms/shortener/protocol/openid-connect/token" ->
                     reply(exchange, 200, """{"access_token":"${Regex("client_id=([^&]+)").find(body)!!.groupValues[1]}","token_type":"DPoP"}""")
                 path == "/.well-known/oauth-protected-resource" || path == "/actuator/health/readiness" -> reply(exchange, 200, "{}")

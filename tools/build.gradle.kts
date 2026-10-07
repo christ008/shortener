@@ -3,7 +3,7 @@
  *
  * - A build of its own, not a module of the application's. Needs a JDK 17 or newer.
  * - `tools/run` builds and starts them. Tests: `./gradlew -p tools test`.
- * - `DpopClient.java` of deploy/keycloak is compiled with them, as it is, for 17.
+ * - They do not use `deploy/keycloak/DpopClient.java`, the reference client: `ClientKeys` and `DpopCalls` do what they need of it.
  * - Versions follow the application's: Kotlin as in ../build.gradle.kts, the rest from the Spring Boot BOM of the same version.
  */
 plugins {
@@ -38,16 +38,6 @@ kotlin {
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
-}
-
-tasks.withType<JavaCompile> {
-    options.release = 17
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
-}
-
-sourceSets.main {
-    java.srcDir("../deploy/keycloak")
-    java.include("DpopClient.java")
 }
 
 application {

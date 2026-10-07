@@ -174,3 +174,52 @@ tests:
         exp_samples:
           - labels: '{}'
             value: 1
+
+  - name: archiving that fails for a while fires, and an archive that only failed before the stanza was made does not
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_archiver_failed_count{instance="db"}'
+        values: '0+2x30'
+      - series: 'pg_stat_archiver_failed_count{instance="fine"}'
+        values: '9+0x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ShortenerWalArchivingFailing", alertstate="firing"}
+        eval_time: 4m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="ShortenerWalArchivingFailing", alertstate="firing", instance="db"})
+        eval_time: 12m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: count(ALERTS{alertname="ShortenerWalArchivingFailing", alertstate="firing", instance="fine"})
+        eval_time: 25m
+        exp_samples: []
+
+  - name: a replica whose slot is inactive fires, and one that streams does not
+    interval: 1m
+    input_series:
+      - series: 'pg_replication_slots_active{instance="db", slot_name="replica1"}'
+        values: '1 1 1 0 0 0 0 0 0 0 0 0 0'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerReplicaDisconnected", alertstate="firing"})
+        eval_time: 6m
+        exp_samples: []
+      - expr: count(ALERTS{alertname="ShortenerReplicaDisconnected", alertstate="firing"})
+        eval_time: 11m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+
+  - name: a replica more than 100 MiB behind for ten minutes fires, and a brief lag does not
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_replication_pg_wal_lsn_diff{instance="lagging", application_name="replica1"}'
+        values: '200000000+0x30'
+      - series: 'pg_stat_replication_pg_wal_lsn_diff{instance="brief", application_name="replica1"}'
+        values: '0 0 0 500000000 500000000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerReplicaLagging", alertstate="firing"})
+        eval_time: 15m
+        exp_samples:
+          - labels: '{}'
+            value: 1

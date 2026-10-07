@@ -175,27 +175,10 @@ public final class DpopClient {
         System.out.println(answer.body());
     }
 
-    // ---- the client as a library ------------------------------------------------------------------------------------
+    // ---- a call to the API -------------------------------------------------------------------------------------------
 
     /** What the API answered to a call: the status, the {@code Location} if any, the {@code WWW-Authenticate} challenges, the body. */
-    public record Answer(int status, String location, List<String> challenges, String body) {}
-
-    /**
-     * Makes a call as {@code clientId}, as the {@code call} command does, in this process. It signs in each time and returns the
-     * answer whatever its status. A {@code Failure} (the identity provider said no, the server is not there) is thrown.
-     */
-    public static Answer call(Path keyFile, String clientId, String method, String url, String body) throws Exception {
-        return Shared.INSTANCE.answer(keyFile, clientId, method, url, body);
-    }
-
-    /** A new access token for {@code clientId}, bound to a new key, as the {@code token} command prints it. */
-    public static String token(Path keyFile, String clientId) throws Exception {
-        return Shared.INSTANCE.fetchToken(keyFile, clientId, newKey()).accessToken();
-    }
-
-    private static final class Shared {
-        static final DpopClient INSTANCE = new DpopClient();
-    }
+    private record Answer(int status, String location, List<String> challenges, String body) {}
 
     private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws Exception {
         KeyPair dpopKey = newKey();
@@ -354,8 +337,6 @@ public final class DpopClient {
         }
         return Optional.empty();
     }
-
-    // ---- the API ----------------------------------------------------------------------------------------------------
 
     /**
      * A request with the token and a proof made for it. A body is sent as JSON, and without one there is no content type.

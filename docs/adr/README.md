@@ -50,6 +50,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0025](0025-keycloak-in-the-stack.md) | Keycloak in the stack, optional, behind the edge | the provider decides ownership and admin, and none existed for production | one more service and an image to build | needed when exposed |
 | [0026](0026-scripting-standard.md) | sh to start programs, Java to compute, nothing else (**the Java tier is superseded by 0029**) | five languages and a helper written twice | a JDK 17 to run a compute script | needed |
 | [0027](0027-tools-on-jdk-25.md) | Tools on JDK 25, the client for strangers on 17 (**the tools are superseded by 0029**) | no shared code, a second per call, boilerplate | two baselines, by directory | needed |
+| [0028](0028-postgres-backups-and-a-replica.md) | Backups with pgBackRest, a replica promoted by hand, no partitioning | losing the one disk that holds every link | an image, a cron entry, a promotion runbook | needed when exposed |
 | [0029](0029-tools-in-kotlin.md) | The tools are Kotlin, in a build of their own | a second language, tests that start a process per case, a tool with no test | a build on the first run, and Gradle for `dev-setup` | earned |
 | [0030](0030-web-ui-as-a-static-spa.md) | A static single-page app that signs requests with a browser key (**proposed**) | people need a browser front end, and the API takes only DPoP-bound tokens | a DPoP implementation in the browser, an unverified Keycloak assumption | not built |
 

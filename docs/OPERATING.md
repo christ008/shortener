@@ -16,7 +16,7 @@ is in [OBSERVABILITY.md](OBSERVABILITY.md), the design is in [INTERNALS.md](INTE
 | For | You need |
 |---|---|
 | Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
-| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | JDK 17 or newer, and the Gradle wrapper (builds them the first time) |
+| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 17 or newer (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
 | The native image | about 7 GB free memory, 3 minutes |
 | The load test | Docker (k6 runs in a container), spare cores |
 | The production stack on one machine | `openssl`, `keytool` |
@@ -188,16 +188,17 @@ minutes, and answers `503` with `Retry-After` for the rest.
 
 ## Scripts
 
-Scripts that start programs are POSIX `sh`. Scripts that compute are Kotlin tools in `tools/`, built by `tools/run` the
-first time and when a source changes (JDK 17 or newer). The one exception is `DpopClient.java`, a single Java file for
-JDK 17 or newer with no build. `perf/bench.sh`, `run-all.sh`, `profile.sh` and `tune-connections.sh` are bash. See [ADR 0026](adr/0026-scripting-standard.md),
-[0029](adr/0029-tools-in-kotlin.md) and [0020](adr/0020-dpop-client-in-java.md).
+Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`. Scripts that compute are Kotlin tools in
+`tools/`, built by `tools/run` the first time and when a source changes (JDK 17 or newer). The one exception is
+`DpopClient.java`, a single Java file for JDK 17 or newer with no build, which the tools do not use. See
+[ADR 0026](adr/0026-scripting-standard.md), [0029](adr/0029-tools-in-kotlin.md) and [0020](adr/0020-dpop-client-in-java.md).
 
 | Script | Is for | Kind |
 |---|---|---|
 | `deploy/stack/deploy.sh` | deploy or update the stack on a manager | sh |
 | `deploy/stack/local/prepare.sh` | throwaway secrets and certificate for a rehearsal | sh |
 | `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | roles and databases at first Postgres start | sql, sh |
+| `deploy/postgres/backup` | back up, check and restore-test the stack's Postgres, from a manager | sh |
 | `deploy/keycloak/entrypoint.sh` | read Keycloak's secrets from files, start it | sh |
 | `deploy/keycloak/dev-setup`, `perf/smoke.sh` | start `DevSetup` and `Smoke` | sh |
 | `tools/run TOOL [ARGS]` | build the tools if needed, start one | sh |
@@ -205,8 +206,9 @@ JDK 17 or newer with no build. `perf/bench.sh`, `run-all.sh`, `profile.sh` and `
 | `Realms` | realm from a template and public keys | Kotlin |
 | `Smoke` | check every endpoint of a running instance | Kotlin |
 | `Report` | read GC logs, heap dumps and bench results; query Prometheus | Kotlin |
+| `ClientKeys`, `DpopCalls` | client keys, and DPoP sign-in and calls, for `DevSetup` and `Smoke` | Kotlin |
 | `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
-| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test, profile | bash |
+| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test, profile | sh |
 | `perf/k6/mixed.js` | the load workload | k6 |
 
 Gradle tasks (`./gradlew tasks --group tooling`):
@@ -219,6 +221,7 @@ Gradle tasks (`./gradlew tasks --group tooling`):
 | `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL -Pmethod -Pbody` |
 | `smoke` | `tools/run Smoke` | `-PbaseUrl=URL -Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
+| `postgresBackup` | `deploy/postgres/backup` | `-Pcommand=init\|full\|diff\|check\|info\|restore-test` |
 | `report` | `tools/run Report` | `-Preport=summary\|gc\|hprof\|profile\|json -Ptarget=PATH -Ptop=N` |
 
 The tasks run with the project's JDK 25 toolchain. `devSetup` takes the defaults because Gradle has no terminal: run the

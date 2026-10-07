@@ -9,6 +9,7 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
 - [Operate](#operate)
 - [Rehearse it on one machine](#rehearse-it-on-one-machine)
 - [Keycloak](#keycloak)
+- [Backups and a replica](#backups-and-a-replica)
 - [Without Swarm](#without-swarm)
 - [Managed database](#managed-database)
 
@@ -86,7 +87,7 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
   ```bash
   docker exec -i $(docker ps -q -f name=shortener_postgres) psql -U postgres -d shortener < perf/pg-diagnostics.sql
   ```
-- **Backups:** none in the stack. Run `pg_dump` from a scheduled job, or use a managed database.
+- **Backups:** none unless you add the [backups and replica overlay](#backups-and-a-replica), or use a managed database.
 - **Disk:** the database is on the node's local volume `shortener_postgres-data`.
 
 ## Rehearse it on one machine
@@ -168,6 +169,50 @@ Notes:
 - **Back it up with the database.**
 - **Serve the edge on ports 80 and 443.** On another published port a call was refused with `invalid_dpop_proof` while the
   same call on 443 worked. The cause was not investigated.
+
+## Backups and a replica
+
+`compose.prod.postgres-ha.yaml` adds pgBackRest backups and a streaming replica ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)).
+
+1. Build the image on the node, or push it to a registry if there is more than one node (`POSTGRES_IMAGE`):
+
+   ```bash
+   docker build -t shortener-postgres:18.6 deploy/postgres
+   ```
+2. Create the secret `db_replicator_password`, mode `0444`.
+3. Label the node that runs the replica:
+
+   ```bash
+   docker node update --label-add shortener.postgres-replica=true <node>
+   ```
+4. Deploy: `POSTGRES_HA=1 deploy/stack/deploy.sh <version>`. On a database that already exists, create the role by hand:
+   `docker exec <postgres container> sh /docker-entrypoint-initdb.d/35-replication.sh`, then
+   `psql -U postgres -c 'SELECT pg_reload_conf()'`.
+5. Make the first backup, once: `deploy/postgres/backup init`. The WAL archiving alert fires until it runs.
+6. Schedule the rest in the manager's crontab. Two full backups are kept:
+
+   ```
+   17 3 * * 0   /srv/shortener/deploy/postgres/backup full
+   17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
+   ```
+7. Test a restore, now and periodically: `deploy/postgres/backup restore-test` restores the latest backup into a throwaway
+   container and prints how many links the copy has and when the newest was created. Compare them with the database.
+
+Limits:
+
+- The repository is a volume on the primary's node. It restores to within five minutes and does not survive losing the node.
+  For S3 or SFTP, set `repo1-type` and its options in `deploy/postgres/pgbackrest.conf`, a Docker config: rotate it under a new name.
+- Nothing alerts when no backup ran. Check `deploy/postgres/backup info`, or have cron mail its failures.
+- The replica is read only, and the application does not read from it.
+
+**Losing the primary:**
+
+1. Check the replica is caught up: `docker exec -u postgres <replica> psql -tAc "select pg_last_wal_replay_lsn(), pg_is_in_recovery()"`.
+2. Stop the primary: `docker service scale shortener_postgres=0`.
+3. Promote the replica: `docker exec -u postgres <replica> psql -tAc "select pg_promote(wait => true)"`.
+4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`, then
+   `deploy/stack/deploy.sh <version>`.
+5. Later, rebuild a replica from the new primary, or restore the old primary's volume from a backup and make it the replica.
 
 ## Without Swarm
 
