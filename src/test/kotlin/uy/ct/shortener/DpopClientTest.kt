@@ -74,6 +74,17 @@ class DpopClientTest {
     @Volatile
     private var clientTokenStatus = 200
 
+    /** A nonce the stand-in API asks for, and the one its token endpoint asks for: null asks for none. */
+    @Volatile
+    private var apiNonce: String? = null
+
+    @Volatile
+    private var tokenNonce: String? = null
+
+    /** The stand-in API asks for a new nonce on every request, whatever the proof carries. */
+    @Volatile
+    private var apiAlwaysAsks = false
+
     // What the stand-in identity provider remembers of a login, as the real one does.
     @Volatile
     private var authorizationRequest: Map<String, String> = emptyMap()
@@ -103,7 +114,10 @@ class DpopClientTest {
             when (form["grant_type"]) {
                 "authorization_code" -> issueForCode(exchange, headers, form)
                 "refresh_token" -> issueForRefresh(exchange, headers, form)
-                else -> if (clientTokenStatus == 200) {
+                else -> if (tokenNonce != null && nonceOf(headers) != tokenNonce) {
+                    exchange.responseHeaders.add("DPoP-Nonce", tokenNonce!!)
+                    reply(exchange, 400, """{"error":"use_dpop_nonce"}""")
+                } else if (clientTokenStatus == 200) {
                     reply(exchange, 200, """{"access_token":"stand-in-token","token_type":"DPoP"}""")
                 } else {
                     reply(exchange, clientTokenStatus, """{"error":"invalid_client"}""")
@@ -137,8 +151,16 @@ class DpopClientTest {
             }
         }
         server.createContext("/api") { exchange ->
-            received += Request(exchange.requestMethod, exchange.requestURI.toString(), headersOf(exchange), String(exchange.requestBody.readAllBytes()))
-            reply(exchange, 201, """{"shortCode":"abc"}""")
+            val headers = headersOf(exchange)
+            received += Request(exchange.requestMethod, exchange.requestURI.toString(), headers, String(exchange.requestBody.readAllBytes()))
+            val nonce = if (apiAlwaysAsks) "n-${issued.incrementAndGet()}" else apiNonce
+            nonce?.let { exchange.responseHeaders.add("DPoP-Nonce", it) }
+            if (nonce != null && (apiAlwaysAsks || nonceOf(headers) != nonce)) {
+                exchange.responseHeaders.add("WWW-Authenticate", """DPoP realm="shortener", error="use_dpop_nonce"""")
+                reply(exchange, 401, """{"status":401}""")
+            } else {
+                reply(exchange, 201, """{"shortCode":"abc"}""")
+            }
         }
         server.start()
     }
@@ -152,6 +174,8 @@ class DpopClientTest {
         exchange.sendResponseHeaders(status, bytes.size.toLong())
         exchange.responseBody.use { it.write(bytes) }
     }
+
+    private fun nonceOf(headers: Map<String, String>): String? = SignedJWT.parse(headers.getValue("dpop")).jwtClaimsSet.getStringClaim("nonce")
 
     private fun thumbprintOf(headers: Map<String, String>) = SignedJWT.parse(headers.getValue("dpop")).header.jwk.computeThumbprint().toString()
 
@@ -250,6 +274,57 @@ class DpopClientTest {
         assertThat(tokenProof.jwtClaimsSet.getClaim("ath")).describedAs("there is no token yet to hash").isNull()
         val apiProof = SignedJWT.parse(received.single().headers.getValue("dpop"))
         assertThat(apiProof.header.jwk.computeThumbprint()).isEqualTo(tokenProof.header.jwk.computeThumbprint())
+    }
+
+    @Test
+    fun `repeats a call once with the nonce the API asks for, in a new proof, without signing in again`() {
+        apiNonce = "api-nonce-1"
+
+        val output = call("POST", "/api/short-links", """{"targetUrl":"https://example.com"}""")
+
+        assertThat(output.exitCode).describedAs(output.stderr).isZero()
+        assertThat(output.stdout.first()).isEqualTo("201")
+        val (asked, repeated) = received
+        assertThat(nonceOf(asked.headers)).isNull()
+        assertThat(nonceOf(repeated.headers)).isEqualTo("api-nonce-1")
+        assertThat(SignedJWT.parse(repeated.headers.getValue("dpop")).jwtClaimsSet.jwtid).isNotEqualTo(SignedJWT.parse(asked.headers.getValue("dpop")).jwtClaimsSet.jwtid)
+        assertThat(repeated.headers["authorization"]).isEqualTo(asked.headers["authorization"])
+        assertThat(repeated.body).isEqualTo(asked.body)
+        assertThat(tokenRequests).hasSize(1)
+    }
+
+    @Test
+    fun `repeats the token request with the nonce the identity provider asks for`() {
+        tokenNonce = "token-nonce-1"
+
+        val output = call("GET", "/api/short-links")
+
+        assertThat(output.exitCode).describedAs(output.stderr).isZero()
+        assertThat(output.stdout.first()).isEqualTo("201")
+        assertThat(tokenRequests).hasSize(2)
+        assertThat(nonceOf(tokenRequests[0].headers)).isNull()
+        assertThat(nonceOf(tokenRequests[1].headers)).isEqualTo("token-nonce-1")
+        assertThat(tokenRequests[1].form["client_assertion"]).describedAs("the assertion is made again too").isNotEqualTo(tokenRequests[0].form["client_assertion"])
+    }
+
+    @Test
+    fun `repeats once and no more, so a server that keeps asking is answered with its last 401`() {
+        apiAlwaysAsks = true
+
+        val output = call("GET", "/api/short-links")
+
+        assertThat(output.exitCode).describedAs(output.stderr).isZero()
+        assertThat(output.stdout.first()).isEqualTo("401")
+        assertThat(received).hasSize(2)
+        assertThat(output.stdout).anyMatch { it.startsWith("WWW-Authenticate: DPoP") && it.contains("use_dpop_nonce") }
+    }
+
+    @Test
+    fun `sends no nonce to a server that asked for none`() {
+        call("GET", "/api/short-links")
+
+        assertThat(nonceOf(received.single().headers)).isNull()
+        assertThat(nonceOf(tokenRequests.single().headers)).isNull()
     }
 
     @Test

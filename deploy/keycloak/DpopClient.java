@@ -27,6 +27,7 @@ import java.security.spec.ECPrivateKeySpec;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,9 +37,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * A DPoP (RFC 9449) client. It authenticates to the identity provider with a signed assertion (private_key_jwt), gets an
- * access token bound to a fresh key, and calls the API with a proof made for each request. It runs on the machine of whoever
- * calls the API and is not part of the service.
+ * A reference implementation of a DPoP (RFC 9449) client, to read, to try the API with, and to port. It authenticates to the
+ * identity provider with a signed assertion (private_key_jwt), gets an access token bound to a fresh key, and calls the API with
+ * a proof made for each request. It answers a server's request for a nonce ({@code use_dpop_nonce}) by repeating the request
+ * once with the nonce from {@code DPoP-Nonce}, and keeps the latest nonce of each server for the requests that follow. It runs on
+ * the machine of whoever calls the API and is not part of the service.
+ *
+ * <p>It is not a library. A program that calls the API should use a maintained DPoP library for its language
+ * (docs/OPERATING.md lists some) and do what this does: one key for each token, a proof for each request, the nonce kept and
+ * repeated.
  *
  * <p>Needs a JDK 17 or newer. One source file, run by the {@code java} launcher.
  *
@@ -86,6 +93,7 @@ public final class DpopClient {
             ? tokenUrl.substring(0, tokenUrl.length() - TOKEN_ENDPOINT_PATH.length())
             : tokenUrl);
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+    private final Map<String, String> nonces = new HashMap<>();
 
     // ---- the command line -------------------------------------------------------------------------------------------
 
@@ -183,7 +191,7 @@ public final class DpopClient {
     private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws Exception {
         KeyPair dpopKey = newKey();
         Token token = fetchToken(keyFile, clientId, dpopKey);
-        HttpResponse<String> response = send(apiRequest(method, url, body, token.accessToken(), dpopKey));
+        HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, token.accessToken(), dpopKey, nonce));
         return new Answer(response.statusCode(), response.headers().firstValue("Location").orElse(null),
                 response.headers().allValues("WWW-Authenticate"), response.body());
     }
@@ -231,7 +239,8 @@ public final class DpopClient {
                     ? "ACCEPTED (the refresh token is not bound to the key)" : "refused"));
         }
 
-        HttpResponse<String> response = send(apiRequest(method, url, body, latestAccess, dpopKey));
+        String accessToUse = latestAccess;
+        HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, accessToUse, dpopKey, nonce));
         System.out.println("5. " + method + " " + url + " -> " + response.statusCode());
         response.headers().allValues("WWW-Authenticate").forEach(header -> System.out.println("   WWW-Authenticate: " + header));
         System.out.println("   " + response.body());
@@ -244,6 +253,15 @@ public final class DpopClient {
     /** Authenticates the client with a signed assertion, and asks for a token bound to {@code dpopKey}. */
     private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws Exception {
         PrivateKey clientKey = readPrivateKey(keyFile);
+        Json answer = Json.parse(postToken(() -> form("grant_type", "client_credentials", "client_id", clientId,
+                "client_assertion_type", CLIENT_ASSERTION_TYPE, "client_assertion", assertion(clientKey, clientId)), dpopKey));
+        String accessToken = answer.string("access_token");
+        if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + answer);
+        return new Token(accessToken, answer.string("token_type"));
+    }
+
+    /** A new assertion for each token request, since an identity provider may refuse one that it has seen: the {@code jti} is new. */
+    private String assertion(PrivateKey clientKey, String clientId) {
         long now = now();
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("iss", clientId);
@@ -252,23 +270,24 @@ public final class DpopClient {
         claims.put("jti", UUID.randomUUID().toString());
         claims.put("iat", now);
         claims.put("exp", now + 60);
-        String assertion = jwt(clientKey, Map.of("alg", "ES256"), claims);
-        Json answer = Json.parse(postToken(form("grant_type", "client_credentials", "client_id", clientId,
-                "client_assertion_type", CLIENT_ASSERTION_TYPE, "client_assertion", assertion), dpopKey));
-        String accessToken = answer.string("access_token");
-        if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + answer);
-        return new Token(accessToken, answer.string("token_type"));
+        return jwt(clientKey, Map.of("alg", "ES256"), claims);
     }
 
-    /** Posts a form to the token endpoint with a proof of {@code dpopKey}, and returns the body of the 200 it must answer. */
     private String postToken(String form, KeyPair dpopKey) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(uri(tokenUrl))
+        return postToken(() -> form, dpopKey);
+    }
+
+    /**
+     * Posts a form to the token endpoint with a proof of {@code dpopKey}, and returns the body of the 200 it must answer. The form
+     * is made again for a request that is repeated with a nonce.
+     */
+    private String postToken(java.util.function.Supplier<String> form, KeyPair dpopKey) throws Exception {
+        HttpResponse<String> response = sendProved(tokenUrl, nonce -> HttpRequest.newBuilder(uri(tokenUrl))
                 .timeout(TIMEOUT)
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .header("DPoP", proof(dpopKey, "POST", tokenUrl, null))
-                .POST(HttpRequest.BodyPublishers.ofString(form))
-                .build();
-        HttpResponse<String> response = send(request);
+                .header("DPoP", proof(dpopKey, "POST", tokenUrl, null, nonce))
+                .POST(HttpRequest.BodyPublishers.ofString(form.get()))
+                .build());
         if (response.statusCode() != 200) {
             throw new Refused(response.statusCode(), response.body());
         }
@@ -339,14 +358,14 @@ public final class DpopClient {
     }
 
     /**
-     * A request with the token and a proof made for it. A body is sent as JSON, and without one there is no content type.
-     * A trace context goes along when TRACEPARENT is set.
+     * A request with the token and a proof made for it, carrying {@code nonce} when there is one. A body is sent as JSON, and
+     * without one there is no content type. A trace context goes along when TRACEPARENT is set.
      */
-    private HttpRequest apiRequest(String method, String url, String body, String accessToken, KeyPair dpopKey) {
+    private HttpRequest apiRequest(String method, String url, String body, String accessToken, KeyPair dpopKey, String nonce) {
         HttpRequest.Builder request = HttpRequest.newBuilder(uri(url))
                 .timeout(TIMEOUT)
                 .header("Authorization", "DPoP " + accessToken)
-                .header("DPoP", proof(dpopKey, method, url, accessToken));
+                .header("DPoP", proof(dpopKey, method, url, accessToken, nonce));
         boolean hasBody = body != null && !body.isEmpty();
         if (hasBody) request.header("Content-Type", "application/json");
         String traceparent = System.getenv("TRACEPARENT");
@@ -356,6 +375,42 @@ public final class DpopClient {
 
     private HttpResponse<String> send(HttpRequest request) throws Exception {
         return send(http, request);
+    }
+
+    /**
+     * Sends the request that {@code build} makes with the nonce the server of {@code url} last handed out (null when it has
+     * handed none), and keeps the nonce of the answer. When the answer asks for a nonce and gives one, the request is made again
+     * once, with a new proof that carries it.
+     */
+    private HttpResponse<String> sendProved(String url, java.util.function.Function<String, HttpRequest> build) throws Exception {
+        String origin = origin(url);
+        HttpResponse<String> response = send(build.apply(nonces.get(origin)));
+        response.headers().firstValue("DPoP-Nonce").ifPresent(nonce -> nonces.put(origin, nonce));
+        if (asksForNonce(response) && response.headers().firstValue("DPoP-Nonce").isPresent()) {
+            response = send(build.apply(nonces.get(origin)));
+            response.headers().firstValue("DPoP-Nonce").ifPresent(nonce -> nonces.put(origin, nonce));
+        }
+        return response;
+    }
+
+    /** A resource server asks with a 401 whose challenge has {@code error="use_dpop_nonce"}, an authorization server with a 400 of that error. */
+    private static boolean asksForNonce(HttpResponse<String> response) {
+        if (response.statusCode() == 401) {
+            return response.headers().allValues("WWW-Authenticate").stream().anyMatch(challenge -> challenge.contains("error=\"use_dpop_nonce\""));
+        }
+        if (response.statusCode() == 400) {
+            try {
+                return "use_dpop_nonce".equals(Json.parse(response.body()).string("error"));
+            } catch (Failure notJson) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static String origin(String url) {
+        URI uri = uri(url);
+        return uri.getScheme() + "://" + uri.getRawAuthority();
     }
 
     private static HttpResponse<String> send(HttpClient client, HttpRequest request) throws Exception {
@@ -370,6 +425,11 @@ public final class DpopClient {
 
     /** The DPoP proof for one request: the method, the URL without its query and fragment, and a hash of the token. */
     static String proof(KeyPair key, String method, String url, String accessToken) {
+        return proof(key, method, url, accessToken, null);
+    }
+
+    /** The same, with the server's nonce in the {@code nonce} claim when there is one. */
+    static String proof(KeyPair key, String method, String url, String accessToken, String nonce) {
         URI uri = uri(url);
         Map<String, Object> header = new LinkedHashMap<>();
         header.put("alg", "ES256");
@@ -381,6 +441,7 @@ public final class DpopClient {
         claims.put("htu", uri.getScheme() + "://" + uri.getRawAuthority() + uri.getRawPath());
         claims.put("iat", now());
         if (accessToken != null) claims.put("ath", B64.encodeToString(sha256(accessToken)));
+        if (nonce != null) claims.put("nonce", nonce);
         return jwt(key.getPrivate(), header, claims);
     }
 

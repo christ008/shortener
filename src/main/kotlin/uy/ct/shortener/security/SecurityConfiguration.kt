@@ -9,6 +9,8 @@ import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OA
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.ImportRuntimeHints
+import org.springframework.core.env.Environment
+import org.springframework.core.env.Profiles
 import org.springframework.http.HttpMethod
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
@@ -19,12 +21,16 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidator
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtTypeValidator
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
+import org.springframework.security.oauth2.server.resource.web.authentication.DPoPAuthenticationConverter
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.AuthenticationFilter
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy
 import org.springframework.web.servlet.HandlerExceptionResolver
 import uy.ct.shortener.security.internal.CaffeineRuntimeHints
 import uy.ct.shortener.security.internal.ClientJwtAuthenticationConverter
+import uy.ct.shortener.security.internal.DpopNonceAuthenticationConverter
+import uy.ct.shortener.security.internal.DpopNonceFilter
+import uy.ct.shortener.security.internal.DpopNonces
 import uy.ct.shortener.security.internal.DpopRuntimeHints
 import uy.ct.shortener.security.internal.RateLimitFilter
 import uy.ct.shortener.security.internal.RateLimitKey
@@ -39,6 +45,8 @@ import uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver
  *
  * - Everything under `/api` needs an access token from the identity provider, validated locally (signature, JOSE type, issuer, audience, expiry).
  * - Tokens must be DPoP-bound (RFC 9449), unless `shortener.security.dpop.required` is off, which also accepts bearer tokens.
+ * - A DPoP proof must carry the server's nonce, handed out in `DPoP-Nonce` and answered with `use_dpop_nonce` when it is missing
+ *   or old, unless `shortener.security.dpop.nonce.enabled` is off. In `production` its secret is required.
  * - The scopes an operation needs are declared on it with method security, enabled here.
  * - `GET` and `HEAD` of a short link and the health probes are public. Every other request is denied.
  * - Requests are rate limited per client IP, then per authenticated client.
@@ -58,6 +66,7 @@ class SecurityConfiguration {
         idp: OAuth2ResourceServerProperties,
         @Qualifier("handlerExceptionResolver") exceptionResolver: HandlerExceptionResolver,
         meters: MeterRegistry,
+        nonces: DpopNonces,
     ): SecurityFilterChain {
         val responder = SecurityProblemResponder(exceptionResolver, properties.dpop.required, SecurityEvents(meters))
         val ipLimit = RateLimitFilter("ip", RateLimiter(properties.rateLimit.perIp), responder) { RateLimitKey.Of(it.remoteAddr) }
@@ -75,7 +84,10 @@ class SecurityConfiguration {
             .oauth2ResourceServer { resourceServer ->
                 resourceServer
                     .jwt { it.jwtAuthenticationConverter(ClientJwtAuthenticationConverter(properties.clientIdClaim)) }
-                    .dPoP { it.authenticationFailureHandler { request, response, failure -> responder.commence(request, response, failure) } }
+                    .dPoP {
+                        it.authenticationConverter(DpopNonceAuthenticationConverter(DPoPAuthenticationConverter(), nonces))
+                        it.authenticationFailureHandler { request, response, failure -> responder.commence(request, response, failure) }
+                    }
                     .protectedResourceMetadata { metadata ->
                         metadata.protectedResourceMetadataCustomizer { builder ->
                             idp.jwt.issuerUri?.let(builder::authorizationServer)
@@ -98,6 +110,7 @@ class SecurityConfiguration {
                     .anyRequest().denyAll()
             }
             .addFilterBefore(ipLimit, BearerTokenAuthenticationFilter::class.java)
+            .addFilterBefore(DpopNonceFilter(nonces), BearerTokenAuthenticationFilter::class.java)
             .addFilterAfter(clientLimit, BearerTokenAuthenticationFilter::class.java)
         LoggerFactory.getLogger(SecurityConfiguration::class.java).info(
             "Security configured: dpop.required={}, rate limit per ip={} and per client={} a minute, access tokens of type '{}'",
@@ -109,6 +122,16 @@ class SecurityConfiguration {
                 "In a native image the DPoP classes must be registered, see DpopRuntimeHints."
         }
         return chain
+    }
+
+    @Bean
+    fun dpopNonces(properties: SecurityProperties, environment: Environment): DpopNonces {
+        val nonce = properties.dpop.nonce
+        check(!(environment.acceptsProfiles(Profiles.of("production")) && properties.dpop.required && nonce.enabled && nonce.secret.isBlank())) {
+            "DPoP nonces are required in production and need a secret shared by every instance: " +
+                "set shortener.security.dpop.nonce.secret (a file of that name in /run/secrets), or turn nonces off on purpose"
+        }
+        return DpopNonces.from(nonce)
     }
 
     @Bean

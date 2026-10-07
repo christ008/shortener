@@ -7,8 +7,14 @@ info:
   description: |
     Every operation under `/api` needs an access token from the identity provider, and tokens are **bound to the
     client's key** (DPoP, RFC 9449): send `Authorization: DPoP <token>` together with a `DPoP` header holding a proof
-    made for that exact request. A plain `Bearer` token is refused, even a valid one. `deploy/keycloak/DpopClient.java`
-    does the whole flow with only a JDK 17 or newer, on your own machine (run `deploy/keycloak/dev-setup` first):
+    made for that exact request. A plain `Bearer` token is refused, even a valid one. The proof must carry the server's
+    **nonce** (`nonce` claim): a request without the current one is answered `401` with `error="use_dpop_nonce"` and the nonce
+    in the `DPoP-Nonce` header, and the client repeats it once with a new proof. Every response to a DPoP request carries the
+    nonce to use next.
+
+    `deploy/keycloak/DpopClient.java` is a reference implementation of the whole flow, not a library, with only a JDK 17 or
+    newer, on your own machine (run `deploy/keycloak/dev-setup` first). For your own program use a DPoP library for its
+    language, see docs/OPERATING.md:
 
     ```
     java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
@@ -273,7 +279,8 @@ components:
       required: true
       description: |
         A proof JWT (`typ` `dpop+jwt`) made for this request: its method (`htm`), URL without the query (`htu`), the
-        hash of the access token (`ath`), a unique `jti` and the time. A proof can be used once, within 30 seconds.
+        hash of the access token (`ath`), a unique `jti`, the time and the server's current nonce (`nonce`). A proof can be
+        used once, within 30 seconds.
       schema:
         type: string
 
@@ -360,13 +367,18 @@ components:
             $ref: '#/components/schemas/Problem'
     Unauthorized:
       description: |
-        No credentials, a bad token or proof, or the `Bearer` scheme. `WWW-Authenticate` names the `DPoP` scheme and the
-        error (`invalid_token`, `invalid_request` or `invalid_dpop_proof`).
+        No credentials, a bad token or proof, the `Bearer` scheme, or a proof without the current nonce. `WWW-Authenticate`
+        names the `DPoP` scheme and the error (`invalid_token`, `invalid_request`, `invalid_dpop_proof` or `use_dpop_nonce`).
+        With `use_dpop_nonce`, `DPoP-Nonce` has the nonce for the proof of the repeated request.
       headers:
         WWW-Authenticate:
           schema:
             type: string
             examples: ['DPoP realm="shortener", error="invalid_dpop_proof", algs="ES256 ..."']
+        DPoP-Nonce:
+          description: The current nonce, on every response to a request under the `DPoP` scheme.
+          schema:
+            type: string
       content:
         application/problem+json:
           schema:

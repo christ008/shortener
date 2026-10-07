@@ -13,3 +13,5 @@ shortener:
   security:
     dpop:
       required: false
+      nonce:
+        enabled: false

@@ -79,6 +79,8 @@ services:
       THC_PATH: /actuator/health/readiness
     secrets:
       - {source: db_app_password, target: spring.datasource.password}
+      # The DPoP nonce secret, the same on every instance, since a nonce made by one is checked by another.
+      - {source: dpop_nonce_secret, target: shortener.security.dpop.nonce.secret}
     networks:
       edge: {}
       data: {}
@@ -117,6 +119,8 @@ services:
       SPRING_FLYWAY_USER: shortener_migrator
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: '${ISSUER_URI:?set ISSUER_URI}'
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: '${JWKS_URI:?set JWKS_URI}'
+      # Serves no requests, so it has no use for nonces or their secret.
+      SHORTENER_SECURITY_DPOP_NONCE_ENABLED: 'false'
     secrets:
       - {source: db_app_password, target: spring.datasource.password}
       - {source: db_migrator_password, target: spring.flyway.password}
@@ -213,3 +217,5 @@ secrets:
     file: '${SECRETS_DIR:-./secrets}/db_migrator_password'
   db_exporter_password:
     file: '${SECRETS_DIR:-./secrets}/db_exporter_password'
+  dpop_nonce_secret:
+    file: '${SECRETS_DIR:-./secrets}/dpop_nonce_secret'

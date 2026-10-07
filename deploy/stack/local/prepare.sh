@@ -7,7 +7,7 @@ dir=${SECRETS_DIR:-secrets}
 [ ! -e "$dir" ] || { echo "$dir already exists; remove it first" >&2; exit 1; }
 mkdir -p "$dir"
 
-for name in db_postgres_password db_app_password db_migrator_password db_exporter_password; do
+for name in db_postgres_password db_app_password db_migrator_password db_exporter_password dpop_nonce_secret; do
   openssl rand -hex 24 | tr -d '\n' > "$dir/$name"
 done
 

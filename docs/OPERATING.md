@@ -77,8 +77,10 @@ After a new setup run `docker compose down -v`: Postgres and Keycloak keep the p
 
 ### DPoP client
 
-`curl` cannot call the API: tokens are bound to a key. Use `deploy/keycloak/DpopClient.java`, which needs only a JDK 17 or
-newer, runs on the caller's machine (it must reach the token endpoint and the API) and is not deployed:
+`curl` cannot call the API: tokens are bound to a key and every request needs a proof. `deploy/keycloak/DpopClient.java` is a
+**reference implementation** of a client, to try the API with, to read and to port: it needs only a JDK 17 or newer, runs on the
+caller's machine (it must reach the token endpoint and the API) and is not deployed. It is not a library, and a program that calls
+the API should use one of the [libraries below](#other-clients-and-libraries):
 
 ```bash
 java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
@@ -101,6 +103,37 @@ java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.j
 
 Exit status: `0` when it did what was asked (an error status from the API is the answer, so it counts), `1` when it
 could not (one line on stderr), `2` for bad arguments.
+
+It follows the nonce protocol of [ADR 0032](adr/0032-dpop-nonces.md): the first request of a call is answered `401` with
+`error="use_dpop_nonce"` and a `DPoP-Nonce` header, and it repeats the request once with a new proof that carries the nonce. An
+identity provider that asks the same (`400` with that error) is answered the same way, with a new client assertion.
+
+#### Other clients and libraries
+
+A program of your own should use a maintained DPoP library for its language. These were found and checked for DPoP support when this
+was written; they are pointers, not endorsements, so look at how each is maintained and whether it handles nonces:
+
+| Language | Library | Notes |
+|---|---|---|
+| JavaScript, TypeScript (Node, browsers, Deno, Bun) | [dpop](https://github.com/panva/dpop) | makes proofs, with the nonce of the authorization server and of the resource server |
+| | [oauth4webapi](https://github.com/panva/oauth4webapi) | an OAuth and OpenID Connect client that lists DPoP among its features |
+| Java | [Nimbus OAuth 2.0 SDK](https://connect2id.com/products/nimbus-oauth-openid-connect-sdk/examples/oauth/dpop) | DPoP proofs and sender-constrained tokens |
+| .NET | [Duende](https://duendesoftware.com/blog/20230504-dpop) | DPoP in its client libraries and in the Microsoft OpenID Connect handler |
+| Go | [go-dpop](https://pkg.go.dev/github.com/AxisCommunications/go-dpop) | proof generation and validation |
+| | [conductorone/dpop](https://pkg.go.dev/github.com/conductorone/dpop) | proofs, a `net/http` client and server middleware |
+| Dart, Flutter | [dpop](https://pub.dev/packages/dpop) | proofs, signing and nonce retries |
+| Python | none checked | |
+
+Whatever you use, it must:
+
+1. Make a key for each token and ask the token endpoint for a token bound to it.
+2. Send `Authorization: DPoP <token>` and, with each request, a `DPoP` proof for it: method (`htm`), URL without the query
+   (`htu`), hash of the token (`ath`), a new `jti` and the time.
+3. Keep the latest `DPoP-Nonce` of each server, put it in the `nonce` claim, and repeat a request once, with a new proof, when
+   it is answered `401` with `error="use_dpop_nonce"`.
+
+The specification is [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449.html). `DpopClient.java` does all three in one file, and so
+does `DpopCalls` in `tools/src/main/kotlin`, which `Smoke` uses.
 
 | Dev client | Scopes | Is for |
 |---|---|---|
