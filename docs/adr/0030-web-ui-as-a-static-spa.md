@@ -1,7 +1,7 @@
 # 0030. The web UI is a static single-page app that signs requests with a browser key
 
 - Status: **Proposed**, 2026-10-06. Nothing is built. The reasons are those [UI.md](../UI.md) gave for its choices until they were moved here
-- Evidence: [UI.md](../UI.md), [0006](0006-require-dpop-bound-tokens.md), [0007](0007-owner-claim-and-ownership-rule.md), `perf/k6/mixed.js`
+- Evidence: [UI.md](../UI.md), [0006](0006-require-dpop-bound-tokens.md), [0007](0007-owner-claim-and-ownership-rule.md), [0031](0031-human-administrators-need-a-second-factor.md), `perf/k6/mixed.js`
 
 ## Problem
 
@@ -29,6 +29,7 @@ not all belong to the UI's client ([0007](0007-owner-claim-and-ownership-rule.md
 
 - A DPoP implementation in the browser to keep correct, with nonce retry and refresh. `perf/k6/mixed.js` is a working reference.
 - Keycloak issuing DPoP-bound tokens to a public client through the browser flow is assumed, not verified.
+- An administrator who is a person needs a second factor before the UI offers any admin view ([0031](0031-human-administrators-need-a-second-factor.md)).
 - TanStack Start was a release candidate when this was written.
 
 ## Decide when

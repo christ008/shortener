@@ -138,7 +138,7 @@ the `shortener` realm and its static files only. The master realm and the consol
    ./gradlew productionRealm -Pdemo=demo-client.public.json -Padmin=admin-client.public.json
    ```
 
-   Keep line 1 of `admin.keys` private: it can take down any link. Line 1 of `demo.keys` is published so visitors can try the
+   Keep line 1 of `admin.keys` private, on your machine and encrypted at rest, and never on the VM: it can take down any link. Line 1 of `demo.keys` is published so visitors can try the
    instance as `demo-client`.
 3. **Two more secrets** (`0444`): `db_keycloak_password` (role `keycloak`, created with its database at first Postgres
    start) and `keycloak_admin_password` (bootstrap administrator of the master realm).
