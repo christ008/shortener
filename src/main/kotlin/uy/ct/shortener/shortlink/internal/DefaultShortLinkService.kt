@@ -6,9 +6,11 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import uy.ct.shortener.shortlink.Actor
+import uy.ct.shortener.shortlink.ClaimResult
 import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.InsertResult
 import uy.ct.shortener.shortlink.InvalidTargetUrlException
+import uy.ct.shortener.shortlink.LinkLookup
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeExhaustionException
 import uy.ct.shortener.shortlink.ShortCodeGenerator
@@ -29,7 +31,7 @@ import java.net.URI
  *
  * - Access rules are the `May...` annotations, enforced by method security. Links are reached through [ManageableLinks].
  * - Generated codes are retried a bounded number of times, each attempt one atomic insert-if-absent.
- * - Custom codes may not be [ShortCode.RESERVED].
+ * - Custom codes may not be [ShortCode.RESERVED]. Claiming one the caller already has, for the same target, answers that link.
  * - Which hosts a link may point to is the [TargetUrlPolicy]'s decision.
  * - A disabled link keeps its code.
  * - Creates, disables and listings across clients go to the [AuditTrail].
@@ -59,13 +61,22 @@ class DefaultShortLinkService(
     }
 
     @MayClaim
-    override fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ShortLink {
+    override fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ClaimResult {
         val uri = parseTargetUrl(targetUrl)
         return when (val result = insert(shortCode.requireClaimable(), uri, createdBy)) {
-            is InsertResult.Created -> result.link.also { audit.created(it, custom = true) }
-            InsertResult.Taken -> throw ShortCodeUnavailableException(shortCode)
+            is InsertResult.Created -> ClaimResult.Created(result.link.also { audit.created(it, custom = true) })
+            InsertResult.Taken -> ClaimResult.Existing(ownLinkFor(shortCode, uri, createdBy))
         }
     }
+
+    /**
+     * The link the caller already made under [shortCode] for [uri], which is what claiming it again means. A link is never
+     * changed or removed, so if it is the caller's and has this target now, it always had.
+     */
+    private fun ownLinkFor(shortCode: ShortCode, uri: URI, createdBy: Actor.Client): ShortLink =
+        (repository.findByShortCode(shortCode) as? LinkLookup.Found)?.link
+            ?.takeIf { it.createdBy == createdBy && it.targetUrl == uri }
+            ?: throw ShortCodeUnavailableException(shortCode)
 
     override fun resolve(shortCode: ShortCode): ShortLink =
         redirectCache
@@ -83,11 +94,12 @@ class DefaultShortLinkService(
     }
 
     @MayDisable
-    override fun disable(shortCode: ShortCode, disabledBy: Actor.Client) {
+    override fun disable(shortCode: ShortCode, disabledBy: Actor.Client): ShortLink {
         val link = manageableLinks.get(shortCode)
-        repository.disable(shortCode, disabledBy.name)
+        val disabled = repository.disable(shortCode, disabledBy.name).orThrow(shortCode)
         redirectCache.evict(shortCode)
         audit.disabled(link, disabledBy)
+        return disabled
     }
 
     private fun insert(shortCode: ShortCode, uri: URI, createdBy: Actor.Client): InsertResult =

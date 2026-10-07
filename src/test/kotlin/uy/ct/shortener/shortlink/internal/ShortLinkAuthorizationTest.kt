@@ -106,7 +106,7 @@ class ShortLinkAuthorizationTest {
         assertFailsWith<AccessDeniedException> { actingAs("alice", *manage) { service.claim(code, "https://example.com", Actor.Client("alice")) } }
         assertFailsWith<AccessDeniedException> { actingAs("alice", "shortlinks:claim") { service.claim(code, "https://example.com", Actor.Client("alice")) } }
 
-        assertThat(actingAs("alice", *everything) { service.claim(code, "https://example.com", Actor.Client("alice")) }.shortCode).isEqualTo(code)
+        assertThat(actingAs("alice", *everything) { service.claim(code, "https://example.com", Actor.Client("alice")) }.link.shortCode).isEqualTo(code)
     }
 
     @Test

@@ -74,7 +74,7 @@ Done first; each item is testable without a front end.
    configuration. Add a test with a user token.
 3. **Gateway:** `/app/*` to the UI, `/api/*` and single-segment short codes to the API, `/realms/*` to Keycloak. The short-code
    route must not match `/app`.
-4. **Reserved code:** add `app` to the reserved short codes.
+4. **Reserved code:** `app` is among the reserved short codes (done).
 
 ## Structure
 
@@ -119,7 +119,9 @@ Browser                                   Keycloak                     nginx -> 
 - **Links** (`/app/links`): table of short code, target, created, status. Numbered pager from `page`, `size`, `totalItems`,
   `totalPages` (first, previous, numbers, next, last, jump to page). A page past the end shows the last one. Sort by created
   or code. Owner filter for administrators. Empty and loading states.
-- **Create:** modal with target URL and, when the user has `claim`, an optional custom code. Same validation as the API.
+- **Create:** modal with target URL and, when the user has `claim`, an optional custom code: with one it is a `PUT` to
+  `/api/short-links/<code>`, without one a `POST`. Same validation as the API. A `200` from the `PUT` means the link was already
+  there, which is not an error.
   Shows the new short URL with a copy button and a QR code.
 - **Disable:** confirmation, then the row shows the disabled state.
 - **Errors:** each problem detail becomes a readable message. `409` on a custom code marks that field, `429` shows the

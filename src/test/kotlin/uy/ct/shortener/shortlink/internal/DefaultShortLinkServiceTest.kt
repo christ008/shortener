@@ -7,6 +7,7 @@ import io.micrometer.observation.tck.TestObservationRegistryAssert
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import uy.ct.shortener.shortlink.Actor
+import uy.ct.shortener.shortlink.ClaimResult
 import uy.ct.shortener.shortlink.InvalidTargetUrlException
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeExhaustionException
@@ -92,7 +93,8 @@ class DefaultShortLinkServiceTest {
     fun `claims a custom code without generating one`() {
         val (service, generator) = serviceWith("aaaaaaa")
 
-        val link = service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
+        val claimed = service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
+        val link = (claimed as ClaimResult.Created).link
 
         assertThat(link.shortCode).isEqualTo(ShortCode("my-promo"))
         assertThat(generator.calls).isZero()
@@ -113,7 +115,7 @@ class DefaultShortLinkServiceTest {
     fun `refuses custom codes that would shadow application routes`() {
         val (service, _) = serviceWith("aaaaaaa")
 
-        listOf("api", "actuator", "error").forEach {
+        listOf("api", "actuator", "error", "app").forEach {
             assertFailsWith<ShortCodeUnavailableException>("expected '$it' to be reserved") {
                 service.claim(ShortCode(it), "https://example.com", owner)
             }
@@ -148,10 +150,59 @@ class DefaultShortLinkServiceTest {
     }
 
     @Test
+    fun `disabling answers the link as disabled, and disabling again answers it as the first time left it`() {
+        val (service, _) = serviceWith("aaaaaaa")
+        service.shorten("https://example.com/target", owner)
+
+        val first = service.disable(ShortCode("aaaaaaa"), owner)
+        val second = service.disable(ShortCode("aaaaaaa"), Actor.Client("someone-else"))
+
+        assertThat(first.isDisabled).isTrue
+        assertThat(first.disabledBy).isEqualTo(owner)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
     fun `fails to resolve an unknown short code`() {
         val (service, _) = serviceWith("aaaaaaa")
 
         assertFailsWith<ShortLinkNotFoundException> { service.resolve(ShortCode("zzzzzzz")) }
+    }
+
+    @Test
+    fun `claiming a code again, for the same target, creates nothing and answers the link that is there`() {
+        val (service, generator) = serviceWith("aaaaaaa")
+        val first = service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
+
+        val again = service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
+
+        assertThat(first).isInstanceOf(ClaimResult.Created::class.java)
+        assertThat(again).isEqualTo(ClaimResult.Existing(first.link))
+        assertThat(repository.saved).containsExactly(first.link)
+        assertThat(generator.calls).isZero()
+    }
+
+    @Test
+    fun `a code is not claimed again for another target, or by another client, even for the same target`() {
+        val (service, _) = serviceWith("aaaaaaa")
+        service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
+
+        assertFailsWith<ShortCodeUnavailableException> { service.claim(ShortCode("my-promo"), "https://example.com/other", owner) }
+        assertFailsWith<ShortCodeUnavailableException> { service.claim(ShortCode("my-promo"), "https://example.com/promo", Actor.Client("someone-else")) }
+
+        assertThat(repository.saved).hasSize(1)
+    }
+
+    @Test
+    fun `claiming a code again after the link was disabled answers it as it is now, disabled`() {
+        val (service, _) = serviceWith("aaaaaaa")
+        service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
+        val disabled = service.disable(ShortCode("my-promo"), owner)
+
+        val again = service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
+
+        assertThat(again).isEqualTo(ClaimResult.Existing(disabled))
+        assertThat(again.link.isDisabled).isTrue
     }
 
     @Test
@@ -274,7 +325,7 @@ class DefaultShortLinkServiceTest {
         val (service, _) = serviceWith("aaaaaaa", policy = AllowedHosts(listOf("example.com", "*.example.org")))
 
         assertThat(service.shorten("https://example.com/a", owner).shortCode).isEqualTo(ShortCode("aaaaaaa"))
-        assertThat(service.claim(ShortCode("sub-link"), "https://docs.example.org/b", owner).shortCode).isEqualTo(ShortCode("sub-link"))
+        assertThat(service.claim(ShortCode("sub-link"), "https://docs.example.org/b", owner).link.shortCode).isEqualTo(ShortCode("sub-link"))
     }
 
     @Test
@@ -287,6 +338,17 @@ class DefaultShortLinkServiceTest {
             }
         }
         assertThat(repository.saved).isEmpty()
+    }
+
+    @Test
+    fun `a claim that finds the caller's own link is not audited as a creation`() {
+        val audit = RecordingAuditTrail()
+        val (service, _) = serviceWith("aaaaaaa", audit = audit)
+
+        service.claim(ShortCode("custom1"), "https://example.com/b", owner)
+        service.claim(ShortCode("custom1"), "https://example.com/b", owner)
+
+        assertThat(audit.calls).containsExactly("created custom1 custom=true")
     }
 
     private class RecordingAuditTrail : AuditTrail {

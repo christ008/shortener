@@ -49,8 +49,10 @@ class UserOwnershipIntegrationTest {
         return restTemplate.exchange(path, method, HttpEntity(body, headers), String::class.java)
     }
 
+    private fun disable(user: String) = call(user, HttpMethod.PATCH, "/api/short-links/$code", """{"disabled":true}""")
+
     private fun aliceCreatesALink() =
-        call(alice, HttpMethod.POST, "/api/short-links", """{"targetUrl":"https://example.com/alices","customCode":"$code"}""")
+        call(alice, HttpMethod.PUT, "/api/short-links/$code", """{"targetUrl":"https://example.com/alices"}""")
 
     @Test
     fun `a person owns what they create under their user id, not under the client of the web app`() {
@@ -65,7 +67,7 @@ class UserOwnershipIntegrationTest {
         aliceCreatesALink()
 
         assertThat(call(bob, HttpMethod.GET, "/api/short-links/$code").statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat(call(bob, HttpMethod.DELETE, "/api/short-links/$code").statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(disable(bob).statusCode).isEqualTo(HttpStatus.NOT_FOUND)
         assertThat(call(bob, HttpMethod.GET, "/api/short-links").body).doesNotContain(code)
     }
 
@@ -74,6 +76,6 @@ class UserOwnershipIntegrationTest {
         aliceCreatesALink()
 
         assertThat(call(alice, HttpMethod.GET, "/api/short-links").body).contains(code)
-        assertThat(call(alice, HttpMethod.DELETE, "/api/short-links/$code").statusCode).isEqualTo(HttpStatus.NO_CONTENT)
+        assertThat(disable(alice).statusCode).isEqualTo(HttpStatus.OK)
     }
 }

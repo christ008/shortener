@@ -23,13 +23,14 @@ interface ShortLinkService {
     fun shorten(targetUrl: String, createdBy: Actor.Client): ShortLink
 
     /**
-     * Creates a link for [targetUrl] under the chosen [shortCode], owned by [createdBy].
+     * Creates a link for [targetUrl] under the chosen [shortCode], owned by [createdBy], idempotently: when [createdBy] already
+     * has this link, under this code and for this target, nothing is created and the answer is [ClaimResult.Existing].
      *
      * @throws InvalidTargetUrlException if [targetUrl] isn't an absolute http(s) URL
-     * @throws ShortCodeUnavailableException if [shortCode] is taken or reserved
+     * @throws ShortCodeUnavailableException if [shortCode] is reserved, or taken by anyone else or for another target
      * @throws StorageUnavailableException if storage cannot be reached right now
      */
-    fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ShortLink
+    fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ClaimResult
 
     /**
      * Returns the link a redirect follows. Public: no caller is involved.
@@ -64,11 +65,11 @@ interface ShortLinkService {
     fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink>
 
     /**
-     * Disables the link under [shortCode] on behalf of [disabledBy], idempotently. A client may disable
-     * its own links, and an administrator any link.
+     * Disables the link under [shortCode] on behalf of [disabledBy], idempotently, and returns it as it is now: disabled,
+     * by whoever did it first and at that time. A client may disable its own links, and an administrator any link.
      *
      * @throws ShortLinkNotFoundException if none exists, or it belongs to another client
      * @throws StorageUnavailableException if storage cannot be reached right now
      */
-    fun disable(shortCode: ShortCode, disabledBy: Actor.Client)
+    fun disable(shortCode: ShortCode, disabledBy: Actor.Client): ShortLink
 }

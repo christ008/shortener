@@ -58,19 +58,19 @@ class SmokeTest {
         assertThat(result.status).describedAs(result.stdout + result.stderr).isEqualTo(0)
         assertThat(result.stdout).contains("all checks passed")
         assertThat(result.lines("FAIL")).isEmpty()
-        assertThat(result.lines("ok    ")).hasSize(21).contains("ok    create with a generated code", "ok    owner disables", "ok    disabled link answers gone")
+        assertThat(result.lines("ok    ")).hasSize(26).contains("ok    create with a generated code", "ok    owner disables", "ok    disabling again is harmless", "ok    a link cannot be deleted", "ok    disabled link answers gone")
     }
 
     @Test
     fun `a wrong answer fails the run and says which check and what it got, and the other checks still run`() {
-        application.acceptsATakenCustomCode = true
+        application.acceptsAClaimForAnotherTarget = true
 
         val result = smoke()
 
         assertThat(result.status).isEqualTo(1)
-        assertThat(result.lines("FAIL")).containsExactly("FAIL  custom code taken (expected 409, got 201)")
+        assertThat(result.lines("FAIL")).containsExactly("FAIL  claiming it for another target is refused (expected 409, got 201)")
         assertThat(result.stdout).contains("1 checks failed").doesNotContain("all checks passed")
-        assertThat(result.lines("ok    ")).hasSize(20)
+        assertThat(result.lines("ok    ")).hasSize(25)
     }
 
     @Test
@@ -81,8 +81,8 @@ class SmokeTest {
 
         assertThat(result.status).isEqualTo(1)
         assertThat(result.stderr).isEmpty()
-        assertThat(result.lines("FAIL")).hasSize(21)
-        assertThat(result.stdout).contains("21 checks failed")
+        assertThat(result.lines("FAIL")).hasSize(26)
+        assertThat(result.stdout).contains("26 checks failed")
     }
 
     @Test
@@ -98,9 +98,9 @@ class SmokeTest {
      * its creator and looks missing to others, an administrator sees any, a disabled link is gone, and the public paths answer.
      */
     private class StandInApplication : AutoCloseable {
-        var acceptsATakenCustomCode = false
+        var acceptsAClaimForAnotherTarget = false
 
-        private class Link(val owner: String, var disabled: Boolean = false)
+        private class Link(val owner: String, val target: String = "", var disabled: Boolean = false)
 
         private val links = mutableMapOf<String, Link>()
         private val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
@@ -157,21 +157,33 @@ class SmokeTest {
             val mayManage = link != null && (link.owner == client || client == "admin-client")
             when {
                 method == "POST" && client == "no-scope-client" -> reply(exchange, 403)
+                method == "PUT" && client != "demo-client" -> reply(exchange, 403)
+                method == "PUT" -> claim(exchange, code, body, client)
                 method == "POST" -> create(exchange, body, client)
                 method == "GET" && code.isEmpty() -> reply(exchange, if (query?.contains("sort=targetUrl") == true) 400 else 200, "{}")
                 method == "GET" -> if (mayManage) reply(exchange, 200, "{}") else reply(exchange, 404)
-                method == "DELETE" -> if (link != null && link.owner == client) { link.disabled = true; reply(exchange, 204) } else reply(exchange, 404)
+                method == "PATCH" -> if (link != null && link.owner == client && body.contains("\"disabled\":true")) { link.disabled = true; reply(exchange, 200, """{"shortCode":"$code"}""") } else reply(exchange, 404)
                 else -> reply(exchange, 405)
             }
         }
 
         private fun create(exchange: HttpExchange, body: String, client: String) {
-            if (!body.contains("\"targetUrl\":\"https://")) return reply(exchange, 400)
-            val custom = Regex("\"customCode\":\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-            if (custom != null && custom in links && !acceptsATakenCustomCode) return reply(exchange, 409)
-            val code = custom ?: "gen${links.size}xyz"
+            if (!body.contains("\"targetUrl\":\"https://") || body.contains("customCode")) return reply(exchange, 400)
+            val code = "gen${links.size}xyz"
             links[code] = Link(client)
             reply(exchange, 201, """{"shortCode":"$code"}""")
+        }
+
+        /** A claim makes the link, repeats it harmlessly for the same target, and refuses any other. */
+        private fun claim(exchange: HttpExchange, code: String, body: String, client: String) {
+            val target = Regex("\"targetUrl\":\"(https://[^\"]+)\"").find(body)?.groupValues?.get(1) ?: return reply(exchange, 400)
+            val existing = links[code]
+            when {
+                existing == null -> { links[code] = Link(client, target); reply(exchange, 201, """{"shortCode":"$code"}""") }
+                existing.owner == client && existing.target == target -> reply(exchange, 200, """{"shortCode":"$code"}""")
+                acceptsAClaimForAnotherTarget -> reply(exchange, 201, """{"shortCode":"$code"}""")
+                else -> reply(exchange, 409)
+            }
         }
     }
 }

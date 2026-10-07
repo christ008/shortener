@@ -72,13 +72,16 @@ ArchUnit tests enforce what Modulith does not check inside a module:
 **Create** (`POST /api/short-links`)
 
 1. Rate limit by IP, authenticate (DPoP or bearer), rate limit by client.
-2. The controller validates the body and calls `shorten` or `claim`.
+2. The controller validates the body and calls `shorten` (`POST`) or `claim` (`PUT`, the code from the path).
 3. Method security checks the scope (`create`, plus `claim` for a custom code) and that the owner argument is the caller.
 4. The service validates the URL again as a domain rule, then allocates a code:
    - Generated: drawn with `SecureRandom`, inserted with `INSERT ... ON CONFLICT DO NOTHING`, retried up to 5 times,
      then `ShortCodeExhaustionException`.
-   - Custom: one attempt, a conflict is `409`. `api`, `actuator` and `error` are reserved so they cannot shadow routes.
-5. `201` with the link and a `Location` header built from the forwarded host and scheme.
+   - Custom: one attempt. `api`, `actuator`, `error` and `app` are reserved so they cannot shadow routes. When the code is taken
+     the service reads it: the caller's own link for the same target is the answer (`200`, nothing created, no audit event), anything
+     else is `409`. A link's target never changes, so a link that matches now always did.
+5. `201` (`200` for a repeated claim) with the link and, for `201`, a `Location` header, `/api/short-links/{code}`, built from the forwarded host and scheme. The link
+   carries its `shortUrl`, `/{code}` on the same host, which is the URL to share.
 
 ```mermaid
 sequenceDiagram
@@ -129,11 +132,12 @@ flowchart TD
     stale -->|no| unavailable["503 with Retry-After"]
 ```
 
-**Disable** (`DELETE /api/short-links/{code}`)
+**Disable** (`PATCH /api/short-links/{code}` with `{"disabled": true}`)
 
 - Loads the link through `ManageableLinks`, whose `@PostAuthorize` lets only the owner or an administrator see it.
 - Anyone else gets `404`, so a link's existence is not revealed.
-- The update is `COALESCE`-based, so disabling twice keeps the first actor and time.
+- The update is `COALESCE`-based, so disabling twice keeps the first actor and time. The answer is the row the update returns, `200`.
+- Only `{"disabled": true}` is accepted. Enabling again is refused until a rule says who may undo a takedown.
 
 **List** (`GET /api/short-links`)
 
@@ -528,7 +532,7 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 | Every DPoP request is `401` with no reason | the DPoP filter is added only if `ClassUtils.isPresent(...)` finds a class | `DpopRuntimeHints`, plus a startup check that fails if DPoP is required and the filter is missing |
 | Authorized calls fail with `500` | SpEL reads `authentication.name`, `#createdBy.name` and `#filter.isLimitedTo(...)` by reflection | `AuthorizationRuntimeHints` registers them |
 
-Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exercises every endpoint with real tokens (21 checks).
+Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exercises every endpoint with real tokens (26 checks).
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
 
 ## Deployment

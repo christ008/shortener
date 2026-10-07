@@ -55,6 +55,8 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0030](0030-web-ui-as-a-static-spa.md) | A static single-page app that signs requests with a browser key (**proposed**) | people need a browser front end, and the API takes only DPoP-bound tokens | a DPoP implementation in the browser, an unverified Keycloak assumption | not built |
 | [0031](0031-human-administrators-need-a-second-factor.md) | A human administrator needs a second factor, and the API checks it (**proposed**) | a password that takes down any link, once users can be administrators | a converter change, a Keycloak flow to verify, a first factor to enrol | needed before users are admins |
 | [0032](0032-dpop-nonces.md) | The server hands out DPoP nonces and a proof must carry the current one | a proof the client made ahead or kept | a retry for clients that cannot, a shared secret, a round trip when the nonce changes | needed |
+| [0033](0033-link-is-a-resource-and-disabling-is-a-patch.md) | `Location` is the resource and `shortUrl` the URL to share; disabling is a `PATCH`, not a `DELETE` | a client sent to the target site by its own `Location`, a removal verb that removes nothing | an incompatible change, a `shortUrl` that follows the host | earned |
+| [0034](0034-claim-a-chosen-code-with-put.md) | A chosen code is claimed with `PUT`, and claiming again answers the link that is there | a lost answer that turns a retry into a `409`, and a permission that depended on the body | two ways to create, a `PUT` that never replaces | earned |
 
 0001 is the [format](0001-record-architecture-decisions.md).
 
