@@ -10,7 +10,7 @@ services:
     security_opt: ['no-new-privileges:true']
     init: true
     logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
-    image: 'prom/prometheus:v3.5.0'
+    image: 'prom/prometheus:v3.15.0'
     user: '65534:65534'
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
