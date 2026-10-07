@@ -1,9 +1,11 @@
 # Design
 
-The shape of the code and why it has that shape: the modules, the types, a review against SOLID, and the decisions in one list.
+The shape of the code and why it has that shape: the invariants it keeps, the modules, the types, a review against SOLID, and the
+decisions in one list.
 How a request is served is in [INTERNALS.md](INTERNALS.md#request-flows), and the controls that guard it are in
 [SECURITY.md](SECURITY.md). Each decision has a record with its cost and alternatives in the [ADRs](adr/README.md).
 
+- [Invariants](#invariants)
 - [Structure](#structure)
 - [Domain types](#domain-types)
 - [Design review](#design-review)
@@ -13,6 +15,39 @@ How a request is served is in [INTERNALS.md](INTERNALS.md#request-flows), and th
     - [Why the service keeps its observations](#why-the-service-keeps-its-observations)
     - [Why the contract exposes Spring Data's paging types](#why-the-contract-exposes-spring-datas-paging-types)
 - [Decisions](#decisions)
+
+## Invariants
+
+Twelve statements the design must keep true, and what holds each one. A test is a result; a decision or a file is a design. Where an
+invariant has a limit, the limit is part of it.
+
+### Short codes
+
+| # | Invariant | Held by |
+|---|---|---|
+| 1 | A code is never reused | the code is the primary key and a claim is one atomic `INSERT ... ON CONFLICT DO NOTHING`; the application's role can neither delete a row nor change a code, and a disabled link keeps its code. `DatabaseRolesTest`, `ShortCodeRaceIntegrationTest`, `DefaultShortLinkServiceTest`. [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md) |
+| 2 | A disabled link answers `410` | a disabled link is a `410` at `GET /{code}`, and its code stays taken. `ShortLinkWebTest`, `DefaultShortLinkServiceTest`. [ADR 0033](adr/0033-link-is-a-resource-and-disabling-is-a-patch.md) |
+| 3 | A redirect never needs a database write | the redirect path only reads, through the cache. `DefaultShortLinkServiceTest` counts the writes of a miss, a hit and an expiry: none |
+| 4 | Staleness is bounded | a link disabled on another instance is followed for at most the cache TTL, 30 s. **While the database is unreachable the bound is `stale-if-error`, 5 minutes**, and `shortlink_redirect_cache_stale_total` counts each such redirect. `DefaultShortLinkServiceTest`, `StorageUnavailableIntegrationTest`. [ADR 0011](adr/0011-in-process-redirect-cache.md) |
+| 5 | The application's credentials cannot change the schema | `shortener_app` holds `SELECT`, `INSERT` and `UPDATE (disabled_at, disabled_by)`, and the tables belong to `shortener_migrator`. `DatabaseRolesTest`. **In the stack only:** `bootRun` connects as the development superuser |
+
+### Security
+
+| # | Invariant | Held by |
+|---|---|---|
+| 1 | Production decides where links may point | without `allowed-hosts` or `allow-any=true` the application does not start. `TargetUrlPolicyDecisionTest`. [ADR 0015](adr/0015-target-host-policy.md), [0023](adr/0023-production-must-decide-its-targets.md) |
+| 2 | DPoP is required | the default is on, and **`production` does not start with it off**, whatever an environment variable says. `DpopRequiredInProductionTest`, `ProfilesTest`, `ComposeStackTest`. [ADR 0006](adr/0006-require-dpop-bound-tokens.md), [0035](adr/0035-production-refuses-bearer-tokens.md) |
+| 3 | The server enforces who owns a link | method security on the service, not the controller; another client's link is a `404`. `ShortLinkAuthorizationTest`, `UserOwnershipIntegrationTest`. [ADR 0007](adr/0007-owner-claim-and-ownership-rule.md) |
+| 4 | Development cryptographic material is generated on the machine that uses it | `dev-setup` writes the keys, realm and passwords, and Git ignores them. `RepositoryHoldsNoSecretsTest` |
+| 5 | Production secrets are never repository configuration | secrets are files read through `configtree`, never variables, and no tracked file holds a private key. `ComposeStackTest`, `RepositoryHoldsNoSecretsTest`. [ADR 0019](adr/0019-no-secrets-in-git.md). **Limit:** the committed k6 summaries under `perf/results/` still carry a throwaway proof key and an expired development token |
+
+### Operations
+
+| # | Invariant | Held by |
+|---|---|---|
+| 1 | An invalid production security configuration stops the start | in `production` the application refuses: no decision on target hosts, DPoP off, no shared nonce secret, or a DPoP filter missing from the chain. `TargetUrlPolicyDecisionTest`, `DpopNoncesConfigurationTest`, `DpopRequiredInProductionTest`. **Not covered:** the identity provider's addresses. The image keeps `localhost` defaults because a native image needs them when it is built (`ProfilesTest`), and the stack requires `ISSUER_URI` and `JWKS_URI` itself |
+| 2 | Migrations run apart from the application | the migration job holds the only credentials that can alter the schema, migrates and exits. The application's role could not migrate if it tried. `ComposeStackTest`, `MigrateOnlyRunnerTest`. [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md) |
+| 3 | Readiness and liveness are different questions | readiness leaves the database out, so an outage does not take the instances out of rotation, and liveness stays up. The container health check asks readiness. `StorageUnavailableIntegrationTest`, `ComposeStackTest`. [ADR 0012](adr/0012-readiness-excludes-the-database.md) |
 
 ## Structure
 

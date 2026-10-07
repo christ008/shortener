@@ -1,7 +1,7 @@
 # Internals
 
 How the service works: a request from end to end, the database, the cache, the native image, the deployment, and the evidence
-(tests and measurements). The [README](../README.md) covers running it, [DESIGN.md](DESIGN.md) says why the code has this shape,
+(tests and measurements). [OPERATING.md](OPERATING.md) covers running it, [DESIGN.md](DESIGN.md) says why the code has this shape,
 [SECURITY.md](SECURITY.md) describes the controls, and [openapi.yaml](openapi.yaml) is the API contract (a test keeps it in step
 with the code).
 
@@ -12,12 +12,13 @@ with the code).
 
 **A reading path for a reviewer**
 
-1. [Request flows](#request-flows): what each endpoint does, and the redirect hot path.
-2. [SECURITY.md](SECURITY.md), then [THREAT_MODEL.md](THREAT_MODEL.md): what is defended, the findings register with its fix
+1. [Invariants](DESIGN.md#invariants): what must stay true, and what holds each one.
+2. [Request flows](#request-flows): what each endpoint does, and the redirect hot path.
+3. [SECURITY.md](SECURITY.md), then [THREAT_MODEL.md](THREAT_MODEL.md): what is defended, the findings register with its fix
    dates, and the risks accepted.
-3. [Testing](#testing): the counts, coverage, and what the mutation survivors showed.
-4. [Performance](#performance), starting with its warning about what the figures are.
-5. [DESIGN.md](DESIGN.md#decisions) and the [ADRs](adr/README.md): why this and not the alternative.
+4. [Testing](#testing): the counts, coverage, and what the mutation survivors showed.
+5. [Performance](#performance), starting with its warning about what the figures are.
+6. [DESIGN.md](DESIGN.md#decisions) and the [ADRs](adr/README.md): why this and not the alternative.
 
 - [Request flows](#request-flows)
 - [Persistence](#persistence)
@@ -374,7 +375,7 @@ Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exer
 
 ## Deployment
 
-One file, `compose.prod.yaml`, runs as `docker stack deploy` on Swarm and as `docker compose` on one host. The runbook is
+One file, `deploy/stack/compose.prod.yaml`, runs as `docker stack deploy` on Swarm and as `docker compose` on one host. The runbook is
 [DEPLOY.md](DEPLOY.md). Kubernetes was dropped: four cluster operators, none of which ever ran on a real cluster, for a
 service this size.
 

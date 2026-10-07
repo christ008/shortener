@@ -3,7 +3,8 @@
 How the service decides who may call it, what they may do and how often, and why it does it this way. The threats these controls
 answer, checked against STRIDE and the OWASP Top 10, the register of findings and the risks accepted are in
 [THREAT_MODEL.md](THREAT_MODEL.md). How the service works is in [INTERNALS.md](INTERNALS.md), and why it is shaped this way is in
-[DESIGN.md](DESIGN.md).
+[DESIGN.md](DESIGN.md). The five security invariants these controls uphold, and the tests that hold them, are in
+[DESIGN.md](DESIGN.md#invariants).
 
 > [!NOTE]
 > This covers the controls inside the application: the filter chain, tokens, DPoP, scopes and rate limits. The controls
