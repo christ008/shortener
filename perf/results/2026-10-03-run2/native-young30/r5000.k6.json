@@ -473,14 +473,6 @@
             "SX22lab",
             "fainqdH",
             "ACDbTEr"
-        ],
-        "dpopJwk": {
-            "d": "OCDwblyI11vVlt6xzyZ6lFF-AsKRh-0nguQqKiWXPEs",
-            "kty": "EC",
-            "x": "y7utZZ1KchUZrKnQkteP-705MGN-McfKB9UzoexTW2M",
-            "y": "HKR2ZbXRBqMFU4mhIVvO6AoexQ62COy79IZNYNTADck",
-            "crv": "P-256"
-        },
-        "token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiYXQrand0Iiwia2lkIiA6ICJWYUZfaDdIYjd6aUNUYlZTU1FJQ1RFcDB6WG1YVU9uSGFhM3ZyaU9pUERJIn0.eyJleHAiOjE3OTEwNzc4MjgsImlhdCI6MTc5MTA3NzUyOCwianRpIjoidHJydGNjOjgwMTg5YTA4LTI5MjUtZGJmMC0wMDZmLTNhMGYxMDVlODJiNiIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODE4MC9yZWFsbXMvc2hvcnRlbmVyIiwiYXVkIjoic2hvcnRlbmVyLWFwaSIsInN1YiI6IjQ2NDZkNzYwLWQzODMtNDNkNy1hZDk1LTc4NWU3YzQ4YmU3YiIsInR5cCI6IkRQb1AiLCJhenAiOiJkZW1vLWNsaWVudCIsImNuZiI6eyJqa3QiOiJYRlRTWW4wcXBZZGM4QnI4U1ktMlREWkNXcEJEbm40VF8wcFNscnhCVy1VIiwia2Mtamt0LXR5cGUiOiJEUG9QIn0sInNjb3BlIjoic2hvcnRsaW5rczpkZWxldGUgc2hvcnRsaW5rczpyZWFkIHNob3J0bGlua3M6Y3JlYXRlIHNob3J0bGlua3M6Y2xhaW0ifQ.GzjHf97SiEjyxqkthCweeYWS-W0uUCw4ktIR4qMIqKjgUSqseUN7q66thV6RaZCeML4x_kz8FzmlgMN6wSePy3NkiHnqjmCmIeZYWd3hrb5ni_bo4tF7XTHMSQBaZbHBPRtYRX9Vf4HciwbnA6e8TPUtcPTwMekhBf1K5Db11AJb7Z1OcXWNudQywlgXA7Ib5WcFryyH7Ny0Q7WfXBdkn198oQqE8LcPNPfOwJyBHv6jN9rxIBFdqi52KQSPpe6DntgyYmUqQ3SFI9LLgl3-ibZYKovN5jZ4-kOzSPsOWP_oteaUJDQ5x0alzoVgTk5Kv-MHC6Qb5jpOATjGM-E7Sg"
+        ]
     }
 }
