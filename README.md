@@ -2,11 +2,24 @@
 
 [![CI](https://github.com/christ008/shortener/actions/workflows/ci.yml/badge.svg)](https://github.com/christ008/shortener/actions/workflows/ci.yml)
 
-A URL shortener with OAuth2 DPoP-bound tokens, per-client ownership, Postgres, an in-memory redirect cache, Prometheus and
-OpenTelemetry, a GraalVM native image, and a hardened Docker Compose / Swarm stack.
+**TL;DR** A URL shortener designed to face the public internet: secure by default, and modern from the language to the
+deployment.
+
+- **Secure by default.** An OAuth2 resource server whose tokens are bound to the client's key (DPoP, RFC 9449), so a stolen
+  token is useless. Every client sees only its own links. Production refuses to start without a decision on which target
+  hosts links may point to, with DPoP off, or without a nonce secret shared by its instances.
+- **A link cannot be hijacked.** A code is never handed out twice: in the stack, the application's database role cannot delete a row or
+  change a code. A disabled link answers `410` and keeps its code.
+- **Fast, and light.** A redirect needs no database write, and an in-memory cache serves it. As a GraalVM native image it is
+  ready in under a second, on virtual threads.
+- **Made to be operated.** A hardened Docker Compose / Swarm stack with an nginx edge and TLS, migrations in a job of their
+  own, signed and scanned releases, Prometheus, OpenTelemetry and a Grafana dashboard.
+- **Argued, not asserted.** A STRIDE threat model, one record per decision with what it costs, and tests that hold the
+  invariants below.
 
 > [!IMPORTANT]
-> It has not served real traffic. Every statement about load comes from a synthetic workload on one machine.
+> Designed for the public, not yet run for it: the service has not served real traffic, and every statement about load comes
+> from a synthetic workload on one machine. What a public instance still needs is in [docs/CLOUD.md](docs/CLOUD.md).
 
 <p align="center">
   <img src="docs/images/dashboard.png" alt="Grafana dashboard of the service at 1,500 requests a second" width="420">
@@ -23,7 +36,19 @@ Spring Boot 4.2 · Kotlin 2.4 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
 - A takedown reaches every instance within the cache TTL (30 s).
 - Every authentication, authorization and rate-limit failure is an RFC 9457 problem detail.
 
-## Run it locally
+## Invariants
+
+What must stay true, and the test or decision that holds each one: [docs/DESIGN.md#invariants](docs/DESIGN.md#invariants).
+
+- **Short codes.** A code is never reused. A disabled link answers `410`. A redirect never needs a database write. Staleness is
+  bounded by the cache TTL (by `stale-if-error` while the database is down). The application's database credentials cannot
+  change the schema.
+- **Security.** Production must decide where links may point. DPoP is required. Link ownership is enforced on the server.
+  Development keys are generated on the machine that uses them. Production secrets are never repository configuration.
+- **Operations.** An invalid production security configuration stops the start. Migrations run apart from the application.
+  Readiness and liveness are different questions.
+
+## Run it
 
 Needs Docker and JDK 25. The reference DPoP client needs JDK 17 or newer.
 
@@ -32,21 +57,12 @@ deploy/keycloak/dev-setup     # once: generates keys and passwords (builds its t
 ./gradlew bootRun             # starts Postgres and Keycloak from compose.yaml, then the app on :8080
 ```
 
-```bash
-java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
-  POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
-curl -i http://localhost:8080/<shortCode>
-```
-
-That client is a reference implementation. For your own program, see [other clients and libraries](docs/OPERATING.md#other-clients-and-libraries).
-
 > [!WARNING]
 > `dev-setup` writes git-ignored keys, a dev realm and `.env`. These are throwaway: never use them anywhere real.
 
-`./gradlew tasks --group tooling` lists a task for every script. Details: [docs/OPERATING.md](docs/OPERATING.md).
-
-Observability: `docker compose --profile observability up -d`, then <http://localhost:3000/d/shortener/shortener>.
-See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+Then call it, rehearse the production stack on your machine, and go to production with a checklist:
+[docs/OPERATING.md](docs/OPERATING.md). Metrics, dashboard and traces: `docker compose --profile observability up -d`, then
+<http://localhost:3000/d/shortener/shortener> ([OBSERVABILITY.md](docs/OBSERVABILITY.md)).
 
 ## API
 
@@ -66,31 +82,9 @@ See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
 
 ## Configuration
 
-Defaults suit local development. Deployed, set `SPRING_PROFILES_ACTIVE=production` (JSON logs, no internals in errors or
-health, 5% trace sampling, DPoP required) and:
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Postgres, as `shortener_app` | none |
-| `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as `shortener_migrator`. Set only on the migration job | none |
-| `SHORTENER_MIGRATE_ONLY` | the process migrates and exits | `false` |
-| `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider | none |
-| `SHORTENER_SECURITY_DPOP_REQUIRED` | `false` also accepts bearer tokens (development and tests only). `production` does not start with it | `true` |
-| `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY` | requests a minute per IP. Everyone behind one NAT shares it | `300` |
-| `SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY` | requests a minute per client | `60` |
-| `SERVER_TOMCAT_MAXCONNECTIONS` | connections accepted before refusing, about 150 KB of heap each | `500` |
-| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` | comma-separated hosts links may point to: `example.com`, `*.example.org` (subdomains only) | none |
-| `SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY` | accept any host | `false` |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_TTL` | how long a cache entry lives | `30s` |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_MAXENTRIES` | cache size | `100000` |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_ENABLED` | turns the cache on or off | `true` |
-| `SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR` | how long a read link is still followed while the database is unreachable. `0` turns it off | `5m` |
-
-Under `production` the service does not start without `..._ALLOWEDHOSTS` or `..._ALLOWANY=true`. The stack's `.env` calls them
-`ALLOWED_TARGET_HOSTS` and `ALLOW_ANY_TARGET`.
-
-Write names with no separator inside a word: `SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT`, not `..._CONNECTION_TIMEOUT`.
-The latter fails at start with `The configuration of the pool is sealed once started`.
+Defaults suit development. A deployment sets `.env` and a few secret files, and the `production` profile (JSON logs, no internals
+in errors or health, 5% trace sampling, DPoP required) is set by the stack. Every variable, where it goes and what reads it:
+[docs/OPERATING.md#configuration](docs/OPERATING.md#configuration).
 
 ## Evidence
 
@@ -99,6 +93,9 @@ The latter fails at start with `The configuration of the pool is sealed once sta
   [INTERNALS.md#testing](docs/INTERNALS.md#testing)
 - **Security:** the controls, and a STRIDE model with a register of findings, severities, fix dates and the risks accepted.
   [SECURITY.md](docs/SECURITY.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md)
+- **Performance:** one laptop, a synthetic load of 99% redirects, 5,000 req/s with a redirect p99 of 1 ms, for links the cache holds.
+  The figure is for the cache, not the database. Method and a warning to read before load testing:
+  [INTERNALS.md#performance](docs/INTERNALS.md#performance).
 - **Decisions:** one record per decision, with what it costs. [DESIGN.md](docs/DESIGN.md#decisions), [docs/adr/](docs/adr/README.md)
 
 ## Build, test, package
@@ -109,47 +106,19 @@ The latter fails at start with `The configuration of the pool is sealed once sta
 perf/smoke.sh                   # every endpoint, with real tokens, against a running instance
 ```
 
-The image runs as uid 1000, is ready 0.4 to 0.7 s after `docker run`, and has `/workspace/health-check` for container health checks.
-
 ## Deploy
 
-`compose.prod.yaml` is the production stack, for Docker Swarm or one host with Compose: an nginx edge with TLS, two
+`deploy/stack/compose.prod.yaml` is the production stack, for Docker Swarm or one host with Compose: an nginx edge with TLS, two
 application tasks, a migration job, Postgres, and optional overlays in `deploy/stack/overlays/` for Prometheus, Keycloak and
 Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's signature before it deploys.
 
-- Runbook: [docs/DEPLOY.md](docs/DEPLOY.md).
-- Architecture and trade-offs: [docs/INTERNALS.md](docs/INTERNALS.md#deployment).
-
-## Performance
-
-Measured on one laptop, one run per rate. The app ran with 2 cores and 512 MB, with Postgres and k6 on other cores.
-The load was 99% redirects and 1% creates, with redirects spread over 300 links that all fit in the cache.
-
-- Native image and JVM both served 5,000 req/s with no failures and a redirect p99 of 1 ms.
-- Ready 0.4 to 0.7 s after `docker run` (native, twelve runs) and 5.4 to 5.6 s (JVM, two runs).
-- Not measured: redirects of links the cache has not seen, and rates above 5,000 req/s with the cache. So 5,000 req/s is a
-  figure for the cache, not for the database.
-
-Method and numbers: [docs/INTERNALS.md](docs/INTERNALS.md#performance), including a warning to read before load testing.
-
-## Layout
-
-| Path | Contents |
-|---|---|
-| `src/main/kotlin/uy/ct/shortener/shortlink` | public contract (types, service and repository interfaces, exceptions) and `internal/` adapters |
-| `src/main/kotlin/uy/ct/shortener/security` | resource server, DPoP, rate limiting, problem details |
-| `compose*.yaml`, `deploy/` | dev and production stacks, edge, Postgres setup, Keycloak realm and image, alert rules, Grafana, Tempo |
-| `tools/` | Kotlin tools behind the scripts: `dev-setup`, realms, smoke test, report reader |
-| `perf/` | k6 workload, benchmark and profiling scripts, results |
-| `.github/workflows/` | CI on every push, release on `v*` tags, manual native image build |
-
 | Document | Contents |
 |---|---|
-| [OPERATING.md](docs/OPERATING.md) | run, call, test and look after it |
-| [DEPLOY.md](docs/DEPLOY.md) | production stack runbook |
+| [OPERATING.md](docs/OPERATING.md) | develop, rehearse production, a go-live checklist, every configuration key |
+| [DEPLOY.md](docs/DEPLOY.md) | production stack runbook: first deploy, updates, Keycloak, backups |
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | metrics, dashboard, traces, alerts, logs |
 | [INTERNALS.md](docs/INTERNALS.md) | how it works: request flows, database, cache, native image, deployment, tests and measurements |
-| [DESIGN.md](docs/DESIGN.md) | why the code has this shape: modules, types, SOLID review, decisions |
+| [DESIGN.md](docs/DESIGN.md) | invariants, and why the code has this shape: modules, types, SOLID review, decisions |
 | [SECURITY.md](docs/SECURITY.md) | the controls: filter chain, tokens, DPoP, scopes, rate limits |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
 | [adr/](docs/adr/README.md) | decision records |

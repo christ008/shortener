@@ -1,13 +1,14 @@
 # Deploying
 
-Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host with Compose. Design and trade-offs:
+Runbook for the production stack, `deploy/stack/compose.prod.yaml`, on Swarm or on one host with Compose. The steps in order,
+with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production) and every variable and secret is described in
+[its configuration reference](OPERATING.md#configuration). This page has the detail behind them. Design and trade-offs:
 [INTERNALS.md](INTERNALS.md#deployment).
 
 - [Requirements](#requirements)
 - [First deploy](#first-deploy)
 - [Update, roll back](#update-roll-back)
 - [Operate](#operate)
-- [Rehearse it on one machine](#rehearse-it-on-one-machine)
 - [Keycloak](#keycloak)
 - [Backups and a replica](#backups-and-a-replica)
 - [Without Swarm](#without-swarm)
@@ -19,17 +20,20 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
 - The image `ghcr.io/christ008/shortener:<version>`, published by the Release workflow on a `v*` tag. A private package needs
   `docker login ghcr.io` on the manager. `deploy.sh` passes `--with-registry-auth`.
 - `cosign` on the manager. `deploy.sh` verifies the image's signature before it deploys anything, and `VERIFY_SIGNATURE=never`
-  skips that (the one-machine rehearsal does, because its image is built locally).
+  skips that (the [one-machine rehearsal](OPERATING.md#rehearse-production-on-one-machine) does, because its image is built locally).
 - An identity provider whose tokens carry the `owner` claim and bind to the client's key (DPoP). The dev realm
   `deploy/keycloak/shortener-realm.json` shows what is needed. Never import it into a real one.
 - A certificate and key for the host name, as PEM files, and DNS pointing at the node that runs the edge.
 
 ## First deploy
 
-1. **Settings.** Copy `deploy/stack/.env.example` to `.env` and fill in the image version, the issuer and key endpoint of the
-   identity provider, and either `ALLOWED_TARGET_HOSTS` or `ALLOW_ANY_TARGET=true`. The application does not start without one.
-2. **Secrets.** Create `secrets/` (git-ignored) with these files, each `chmod 0444` (Swarm mounts a secret with the file's
-   mode, and the containers run as other users):
+1. **Settings.** Copy `deploy/stack/.env.example` to `.env` at the repository root and fill in the image version, the issuer and
+   key endpoint of the identity provider, and either `ALLOWED_TARGET_HOSTS` or `ALLOW_ANY_TARGET=true`. The application does not
+   start without one. What each variable does, and the optional ones, are in
+   [OPERATING.md](OPERATING.md#env-the-stacks-variables).
+2. **Secrets.** Create `secrets/` at the repository root (git-ignored) with these files, each `chmod 0444` (Swarm mounts a secret
+   with the file's mode, and the containers run as other users). Who reads each is in
+   [OPERATING.md](OPERATING.md#secret-files):
 
    | File | Content |
    |---|---|
@@ -69,7 +73,7 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
   application one task at a time, new before old. A task not healthy within 20 s rolls the update back.
 - **Roll back:** `deploy/stack/deploy.sh <previous version>`. Nothing to undo in the schema.
 - **Edge configuration:** edit `deploy/edge/nginx.conf`, deploy again.
-- **Rotate a secret:** create the file under a new name in `compose.prod.yaml`, deploy. A database password needs
+- **Rotate a secret:** create the file under a new name in `deploy/stack/compose.prod.yaml`, deploy. A database password needs
   `ALTER ROLE` first. Rotating `dpop_nonce_secret` makes clients ask for a nonce again once, while the instances disagree.
 
 ## Operate
@@ -92,31 +96,6 @@ Runbook for the production stack, `compose.prod.yaml`, on Swarm or on one host w
   ```
 - **Backups:** none unless you add the [backups and replica overlay](#backups-and-a-replica), or use a managed database.
 - **Disk:** the database is on the node's local volume `shortener_postgres-data`.
-
-## Rehearse it on one machine
-
-Everything, with a dev-realm Keycloak and a self-signed certificate:
-
-```bash
-./gradlew bootBuildImage                       # or use a published image
-deploy/stack/local/prepare.sh                  # throwaway secrets and a localhost certificate; runs dev-setup --yes if needed
-docker swarm init --advertise-addr 127.0.0.1 --listen-addr 127.0.0.1:2377
-docker node update --label-add shortener.postgres=true "$(docker node ls -q)"
-COMPOSE_FILES="compose.prod.yaml deploy/stack/local/compose.local.yaml" RESOLVE_IMAGE=never deploy/stack/deploy.sh 0.21.0
-```
-
-`--listen-addr` keeps the manager off the network. Smoke test, trusting the certificate:
-
-```bash
-keytool -importcert -noprompt -alias local -file secrets/tls_cert -keystore ts.p12 -storetype PKCS12 -storepass changeit
-JAVA_TOOL_OPTIONS="-Djavax.net.ssl.trustStore=$PWD/ts.p12 -Djavax.net.ssl.trustStorePassword=changeit" \
-  MGMT=http://localhost:8081 perf/smoke.sh https://localhost
-```
-
-Remove it: `docker stack rm shortener`, then `docker swarm leave --force`.
-
-The rehearsal publishes the management port in host mode, so a second application task cannot start on the same node. Drop
-that `ports` entry from `compose.local.yaml` to run two.
 
 ## Keycloak
 
@@ -225,12 +204,13 @@ Limits:
 `docker compose` runs the same file on one host. There is no rolling update: `up -d` replaces containers. Migrate first:
 
 ```bash
-docker compose -f compose.prod.yaml up -d postgres
-docker compose -f compose.prod.yaml run --rm migrate
-docker compose -f compose.prod.yaml up -d
+compose="docker compose --env-file .env -f deploy/stack/compose.prod.yaml"
+$compose up -d postgres
+$compose run --rm migrate
+$compose up -d
 ```
 
-It needs the variables of `.env` and the same secret files.
+It needs the variables of `.env` (`--env-file`, because Compose looks for `.env` next to the compose file) and the same secret files.
 
 ## Managed database
 

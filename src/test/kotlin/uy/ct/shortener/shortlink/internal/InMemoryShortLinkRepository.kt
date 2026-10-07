@@ -19,13 +19,17 @@ import java.time.Instant
  *
  * - Insert-if-absent, newest-first paging by offset and idempotent disabling.
  * - Each stored link gets a later creation time than the last, so ordering is deterministic.
- * - [seed] pre-populates a taken code. [lookups] counts how often a link was read by its code.
+ * - [seed] pre-populates a taken code. [lookups] counts how often a link was read by its code, [writes] how often one was
+ *   stored or disabled.
  */
 class InMemoryShortLinkRepository : ShortLinkRepository {
 
     val saved = mutableListOf<ShortLink>()
 
     var lookups = 0
+        private set
+
+    var writes = 0
         private set
 
     private var now = Instant.parse("2026-01-01T00:00:00Z")
@@ -42,6 +46,7 @@ class InMemoryShortLinkRepository : ShortLinkRepository {
     override fun insertIfAbsent(shortCode: ShortCode, targetUrl: URI, createdBy: String): InsertResult {
         if (saved.any { it.shortCode == shortCode }) return InsertResult.Taken
         now = now.plusSeconds(1)
+        writes++
         return InsertResult.Created(ShortLink(shortCode, targetUrl, Actor.Client(createdBy), now).also { saved += it })
     }
 
@@ -59,6 +64,7 @@ class InMemoryShortLinkRepository : ShortLinkRepository {
         val link = saved[index]
         if (link.isDisabled) return LinkLookup.Found(link)
         now = now.plusSeconds(1)
+        writes++
         return LinkLookup.Found(link.copy(status = LinkStatus.Disabled(now, Actor.Client(disabledBy))).also { saved[index] = it })
     }
 }

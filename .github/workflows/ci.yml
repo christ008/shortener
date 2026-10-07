@@ -68,12 +68,12 @@ jobs:
           deploy/keycloak/dev-setup --yes
           docker compose --profile observability config --quiet
           cat deploy/stack/.env.example >> .env
-          docker compose -f compose.prod.yaml config --quiet
-          docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.observability.yaml config --quiet
+          docker compose --env-file .env -f deploy/stack/compose.prod.yaml config --quiet
+          docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.observability.yaml config --quiet
           echo PUBLIC_URL=https://shortener.example.com >> .env
-          docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.keycloak.yaml config --quiet
-          docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.postgres-ha.yaml config --quiet
-          docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml config --quiet
+          docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.keycloak.yaml config --quiet
+          docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.postgres-ha.yaml config --quiet
+          docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/local/compose.local.yaml config --quiet
       - name: Check the edge configuration
         run: |
           deploy/stack/local/prepare.sh

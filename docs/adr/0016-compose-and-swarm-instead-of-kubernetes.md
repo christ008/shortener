@@ -11,7 +11,7 @@ platform had become larger than the problem, and what was never run was only val
 
 ## Decision
 
-- One file, `compose.prod.yaml`, runs as `docker stack deploy` on Swarm and as `docker compose` on one host.
+- One file, `deploy/stack/compose.prod.yaml`, runs as `docker stack deploy` on Swarm and as `docker compose` on one host.
 - Services: an nginx edge (the only one that publishes ports, in host mode so it sees client addresses), two application
   tasks, the one-shot migration job ([0013](0013-three-database-roles-and-a-migration-job.md)) and Postgres, which a
   managed database can replace.

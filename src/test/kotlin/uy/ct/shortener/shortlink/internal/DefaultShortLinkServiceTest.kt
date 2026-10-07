@@ -275,6 +275,21 @@ class DefaultShortLinkServiceTest {
     }
 
     @Test
+    fun `a redirect only reads, and writes nothing on a miss, on a hit or after an entry expires`() {
+        val (service, _) = serviceWith("aaaaaaa")
+        service.shorten("https://example.com/target", owner)
+        val before = repository.writes
+
+        service.resolve(ShortCode("aaaaaaa"))
+        service.resolve(ShortCode("aaaaaaa"))
+        ticker.advance(ttl.plusSeconds(1))
+        service.resolve(ShortCode("aaaaaaa"))
+
+        assertThat(repository.lookups).isGreaterThan(1)
+        assertThat(repository.writes).isEqualTo(before)
+    }
+
+    @Test
     fun `reading a link by its owner is never served from the cache`() {
         val (service, _) = serviceWith("aaaaaaa")
         service.shorten("https://example.com/target", owner)

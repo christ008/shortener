@@ -1,7 +1,7 @@
 # 0021. Encrypt the stack's internal traffic
 
 - Status: Accepted, 2026-10-06
-- Evidence: `compose.prod.yaml`, `ComposeStackTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) F-07
+- Evidence: `deploy/stack/compose.prod.yaml`, `ComposeStackTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) F-07
 
 ## Problem
 

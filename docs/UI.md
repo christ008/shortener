@@ -148,7 +148,7 @@ Browser                                   Keycloak                     nginx -> 
 ## Delivery
 
 - Multi-stage `Dockerfile` (Node build, unprivileged nginx). Shell fallback `/app/_shell.html`. `/app/assets/*` cached long.
-- `compose.prod.yaml`: a `ui` service with the API's hardening, and a `/app` location in the edge.
+- `deploy/stack/compose.prod.yaml`: a `ui` service with the API's hardening, and a `/app` location in the edge.
 - `compose.yaml`: a `ui` service; the Vite dev server proxies `/api` and `/realms`.
 - CI: install, type-check, lint, unit tests and build on every push; end-to-end in its own job.
 

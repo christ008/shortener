@@ -2,7 +2,7 @@
 # on every interface for perf/smoke.sh. Not for production.
 #
 #   deploy/stack/local/prepare.sh     (runs deploy/keycloak/dev-setup too, if needed)
-#   docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml up -d
+#   docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/local/compose.local.yaml up -d
 #   JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=... perf/smoke.sh https://localhost
 services:
   shortener:
@@ -22,5 +22,5 @@ services:
     ports:
       - {target: 8080, published: 8180, protocol: tcp, mode: host}
     volumes:
-      - ./deploy/keycloak/shortener-realm.json:/opt/keycloak/data/import/shortener-realm.json:ro
+      - ../keycloak/shortener-realm.json:/opt/keycloak/data/import/shortener-realm.json:ro
     networks: [edge]

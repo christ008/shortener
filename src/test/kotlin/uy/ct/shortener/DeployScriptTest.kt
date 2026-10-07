@@ -31,7 +31,6 @@ class DeployScriptTest {
     fun `a scratch repository with the files the script hashes`() {
         bin = Files.createDirectory(work.resolve("bin"))
         Files.createSymbolicLink(work.resolve("deploy"), Path.of("deploy").toAbsolutePath())
-        Files.writeString(work.resolve("compose.prod.yaml"), "services: {}\n")
         stub("docker", "echo \"docker \$*\" >>\"$work/calls.log\"")
     }
 
