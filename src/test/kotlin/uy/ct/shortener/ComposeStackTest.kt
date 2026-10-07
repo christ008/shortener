@@ -211,6 +211,7 @@ class ComposeStackTest {
             val environment = environmentOf(services.getValue(name))
             assertThat(environment["SPRING_PROFILES_ACTIVE"]).describedAs("$name profile").isEqualTo("production")
             assertThat(environment["SPRING_CONFIG_IMPORT"]).describedAs("$name config import").isEqualTo("configtree:/run/secrets/")
+            assertThat(environment["SHORTENER_SECURITY_DPOP_REQUIRED"]).describedAs("$name must not turn DPoP off, which production refuses").isIn(null, "true")
             assertThat(environment.keys).describedAs("$name must not carry passwords in the environment").noneMatch { it.endsWith("PASSWORD") }
         }
     }

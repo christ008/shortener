@@ -1,6 +1,8 @@
 #!/bin/sh
 # Runs one image of the application against the compose Postgres and Keycloak under k6, and records the results in OUT_DIR.
 #   [RUNS="name rate duration create_share|..."] [DOCKER_ARGS="..."] perf/bench.sh VARIANT IMAGE OUT_DIR [COMMAND...]
+# DATASET_FILE=FILE [DATASET_HOT=H] [DATASET_HOT_SHARE=0.8] reads the codes of the file that perf/load-dataset.sh loaded, not seeds made through
+# the API: it keeps the table instead of truncating it. Every read goes to a code at random, or the share of them to the first H.
 # CPUs: the app 0-1 with the production memory limit, Postgres 2-5, k6 6-9. Needs Postgres, Keycloak and Prometheus (profile
 # observability) running: the compose services, or containers of your own with PGPORT and PG_CONTAINER set. Needs GNU date (`%N`).
 set -eu
@@ -42,12 +44,23 @@ sleep 5
 idle_mem=$(docker stats --no-stream --format '{{.MemUsage}}' bench-app | cut -d/ -f1 | xargs)
 started=$(docker logs bench-app 2>&1 | grep -oE "Started .* in [0-9.]+ seconds" | head -1)
 say "up: ready after ${ready} ms from docker run, ${started}, memory at rest ${idle_mem}"
-docker exec "$PG_CONTAINER" psql -q -U myuser -d mydatabase -c 'TRUNCATE short_link' >/dev/null 2>&1 || true
+DATASET_FILE=${DATASET_FILE:-}
+if [ -n "$DATASET_FILE" ]; then
+  [ -r "$DATASET_FILE" ] || { echo "cannot read $DATASET_FILE" >&2; exit 1; }
+  DATASET_FILE=$(cd "$(dirname "$DATASET_FILE")" && pwd)/$(basename "$DATASET_FILE")
+  say "dataset $DATASET_FILE: short_link is kept, with $(docker exec "$PG_CONTAINER" psql -At -U myuser -d mydatabase -c 'SELECT count(*) FROM short_link') rows"
+else
+  docker exec "$PG_CONTAINER" psql -q -U myuser -d mydatabase -c 'TRUNCATE short_link' >/dev/null 2>&1 || true
+fi
 
-k6() { # name rate duration share seeds
+SEEDS=300
+[ -z "$DATASET_FILE" ] || SEEDS=0
+
+k6() { # name rate duration share
   say "load $1: $2 requests/s for $3, a create share of $4"
   docker run --rm -t --network host --cpuset-cpus 6-9 -v "$HERE/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
-    -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS=300 -e MAX_VUS=3000 \
+    -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS="$SEEDS" -e MAX_VUS=3000 \
+    ${DATASET_FILE:+-v "$DATASET_FILE:/dataset.txt:ro" -e DATASET_FILE=/dataset.txt} -e DATASET_HOT="${DATASET_HOT:-0}" -e DATASET_HOT_SHARE="${DATASET_HOT_SHARE:-0.8}" \
     grafana/k6 run --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" --summary-export "/out/$1.k6.json" /scripts/mixed.js </dev/null 2>&1 | tee "$OUT/$1.k6.txt" || true
 }
 

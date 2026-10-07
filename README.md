@@ -76,7 +76,7 @@ health, 5% trace sampling, DPoP required) and:
 | `SPRING_FLYWAY_URL`, `_USER`, `_PASSWORD` | Postgres, as `shortener_migrator`. Set only on the migration job | none |
 | `SHORTENER_MIGRATE_ONLY` | the process migrates and exits | `false` |
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI`, `_JWKSETURI`, `_AUDIENCES` | the identity provider | none |
-| `SHORTENER_SECURITY_DPOP_REQUIRED` | `false` also accepts bearer tokens (development and tests only) | `true` |
+| `SHORTENER_SECURITY_DPOP_REQUIRED` | `false` also accepts bearer tokens (development and tests only). `production` does not start with it | `true` |
 | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY` | requests a minute per IP. Everyone behind one NAT shares it | `300` |
 | `SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY` | requests a minute per client | `60` |
 | `SERVER_TOMCAT_MAXCONNECTIONS` | connections accepted before refusing, about 150 KB of heap each | `500` |

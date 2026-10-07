@@ -131,7 +131,7 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 | STRIDE | Threat | What stops it | Residual |
 |:-:|---|---|---|
 | S | Forging or confusing a token | signature against the provider's keys, issuer, audience `shortener-api`, expiry, type `at+jwt`, a token without `owner` is invalid (`SecurityIntegrationTest`) | the provider issues what it is told to |
-| S | Using a stolen token | DPoP: a proof for this method, URL and token, signed by the bound key. `Bearer` refused even for a valid token (`DpopIntegrationTest`) | stealing the key as well |
+| S | Using a stolen token | DPoP: a proof for this method, URL and token, signed by the bound key. `Bearer` refused even for a valid token (`DpopIntegrationTest`). `production` does not start with DPoP off, so an environment variable cannot turn this control off by mistake ([ADR 0035](adr/0035-production-refuses-bearer-tokens.md), `DpopRequiredInProductionTest`) | stealing the key as well |
 | S | Replaying a captured request | the `jti` must be new, proofs expire in 30 s (`DpopIntegrationTest`), and a proof must carry the server's current nonce, so one made ahead or kept stops working within ten minutes at most ([ADR 0032](adr/0032-dpop-nonces.md), `DpopNonceIntegrationTest`) | the cache is per instance, so each of two instances accepts one replay inside the window. Needs a break of TLS first |
 | S | Token in a query string or body | only the `Authorization` header is read (`SecurityIntegrationTest`) | |
 | T | Altering a request in flight | TLS. The proof covers method, URL and token, **not the body** | a party past TLS can change the body of a signed request |

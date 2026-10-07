@@ -5,7 +5,7 @@ import java.nio.file.Path
 import kotlin.system.exitProcess
 
 /** The tools there are, by the name `tools/run` is given. */
-private val TOOLS: List<Tool> = listOf(Realms, DevSetup, Smoke, Report)
+private val TOOLS: List<Tool> = listOf(Realms, DevSetup, Smoke, Report, Dataset)
 
 /**
  * Starts the tool named by the first argument, with the remaining arguments, in the current directory (the root of the repository).

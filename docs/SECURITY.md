@@ -26,7 +26,7 @@ Stateless and deny by default, in this order: IP rate limit, authentication, cli
 flowchart LR
     request(["Request"]) --> ip["Limit by IP"]
     ip -->|over the limit| tooMany1["429"]
-    ip --> authenticate["Authenticate<br/>DPoP or bearer"]
+    ip --> authenticate["Authenticate<br/>DPoP, bearer only if not required"]
     authenticate -->|"bad token or proof"| unauthorized["401"]
     authenticate --> client["Limit by client"]
     client -->|over the limit| tooMany2["429"]
@@ -90,7 +90,9 @@ Properties:
   the secret checks one it did not make. The secret is the Docker secret `dpop_nonce_secret`, required in `production`, and
   `shortener.security.dpop.nonce.enabled=false` turns nonces off. Asking for one is counted as `dpop_nonce_requested`, not as a
   failed authentication.
-- `shortener.security.dpop.required=false` also accepts plain bearer tokens (development and tests).
+- `shortener.security.dpop.required=false` also accepts plain bearer tokens (development and tests). `production` does not start with it
+  off: its own file says `true`, and an environment variable that says `false` would win over a file, so the value is checked when the
+  chain is built ([ADR 0035](adr/0035-production-refuses-bearer-tokens.md)).
 - `/.well-known/oauth-protected-resource` (RFC 9728) tells clients the authorization server and that DPoP is required.
 
 ## Authorization

@@ -44,7 +44,8 @@ import uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver
  * The security filter chain: an OAuth2 resource server, stateless, deny by default.
  *
  * - Everything under `/api` needs an access token from the identity provider, validated locally (signature, JOSE type, issuer, audience, expiry).
- * - Tokens must be DPoP-bound (RFC 9449), unless `shortener.security.dpop.required` is off, which also accepts bearer tokens.
+ * - Tokens must be DPoP-bound (RFC 9449), unless `shortener.security.dpop.required` is off, which also accepts bearer tokens and
+ *   which `production` refuses to start with.
  * - A DPoP proof must carry the server's nonce, handed out in `DPoP-Nonce` and answered with `use_dpop_nonce` when it is missing
  *   or old, unless `shortener.security.dpop.nonce.enabled` is off. In `production` its secret is required.
  * - The scopes an operation needs are declared on it with method security, enabled here.
@@ -67,7 +68,9 @@ class SecurityConfiguration {
         @Qualifier("handlerExceptionResolver") exceptionResolver: HandlerExceptionResolver,
         meters: MeterRegistry,
         nonces: DpopNonces,
+        environment: Environment,
     ): SecurityFilterChain {
+        requireDpopInProduction(properties, environment)
         val responder = SecurityProblemResponder(exceptionResolver, properties.dpop.required, SecurityEvents(meters))
         val ipLimit = RateLimitFilter("ip", RateLimiter(properties.rateLimit.perIp), responder) { RateLimitKey.Of(it.remoteAddr) }
         val clientLimit = RateLimitFilter("client", RateLimiter(properties.rateLimit.perClient), responder) { authenticatedClient() }
@@ -124,6 +127,18 @@ class SecurityConfiguration {
                 "In a native image the DPoP classes must be registered, see DpopRuntimeHints."
         }
         return chain
+    }
+
+    /**
+     * Under `production` the application does not start with `shortener.security.dpop.required` off, which would accept plain
+     * bearer tokens that anyone who sees one can replay. The profile's own file says `true`, and an environment variable that
+     * says `false` wins over it, so the value is checked where it is used, when the bean is created and not when the image is built.
+     */
+    fun requireDpopInProduction(properties: SecurityProperties, environment: Environment) {
+        check(properties.dpop.required || !environment.acceptsProfiles(Profiles.of("production"))) {
+            "shortener.security.dpop.required is off, which accepts plain bearer tokens, and the production profile does not allow it. " +
+                "Unset SHORTENER_SECURITY_DPOP_REQUIRED, or run another profile for development."
+        }
     }
 
     @Bean

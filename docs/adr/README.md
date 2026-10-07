@@ -58,6 +58,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0032](0032-dpop-nonces.md) | The server hands out DPoP nonces and a proof must carry the current one | a proof the client made ahead or kept | a retry for clients that cannot, a shared secret, a round trip when the nonce changes | needed |
 | [0033](0033-link-is-a-resource-and-disabling-is-a-patch.md) | `Location` is the resource and `shortUrl` the URL to share; disabling is a `PATCH`, not a `DELETE` | a client sent to the target site by its own `Location`, a removal verb that removes nothing | an incompatible change, a `shortUrl` that follows the host | earned |
 | [0034](0034-claim-a-chosen-code-with-put.md) | A chosen code is claimed with `PUT`, and claiming again answers the link that is there | a lost answer that turns a retry into a `409`, and a permission that depended on the body | two ways to create, a `PUT` that never replaces | earned |
+| [0035](0035-production-refuses-bearer-tokens.md) | Production does not start if it would accept bearer tokens | an environment variable that turns off the control that makes a stolen token useless | the flag cannot be used in production | needed when exposed |
 
 0001 is the [format](0001-record-architecture-decisions.md).
 

@@ -49,3 +49,4 @@ perf/results/**/*.k6.txt
 /deploy/keycloak/dev-keys/*.jwk.json
 /deploy/keycloak/shortener-realm.json
 /deploy/keycloak/shortener-realm.production.json
+perf/data/

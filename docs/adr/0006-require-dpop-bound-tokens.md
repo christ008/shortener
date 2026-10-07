@@ -3,6 +3,7 @@
 - Status: Accepted, 2026-10-03
 - Evidence: `3918d1f`, `DpopIntegrationTest`, `DpopRuntimeHints`, `SenderConstrainedBearerTokenResolver`
 - Refined by [0032](0032-dpop-nonces.md): proofs also carry a nonce the server hands out
+- Refined by [0035](0035-production-refuses-bearer-tokens.md): `production` does not start with the flag off
 
 ## Problem
 
