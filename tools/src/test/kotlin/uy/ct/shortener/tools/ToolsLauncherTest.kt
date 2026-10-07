@@ -84,7 +84,7 @@ class ToolsLauncherTest {
 
     @Test
     fun `the first run builds the tools, then starts the tool from the root of the repository with the arguments it was given`() {
-        val result = start(jdk("21"), "Smoke", "https://localhost", "second")
+        val result = start(jdk("25"), "Smoke", "https://localhost", "second")
 
         assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
         assertThat(builds()).containsExactly("--console=plain -q -p tools installDist")
@@ -93,7 +93,7 @@ class ToolsLauncherTest {
 
     @Test
     fun `a run after it does not ask Gradle again while no source has changed`() {
-        val java = jdk("21")
+        val java = jdk("25")
         start(java, "Smoke")
         start(java, "Report", "gc", "log")
         val third = start(java, "Realms")
@@ -104,7 +104,7 @@ class ToolsLauncherTest {
 
     @Test
     fun `a source that is newer than the last build is built again, whichever of them it is`() {
-        val java = jdk("21")
+        val java = jdk("25")
         start(java, "Smoke")
 
         listOf("tools/src/main/Main.kt", "tools/build.gradle.kts", "tools/settings.gradle.kts").forEachIndexed { index, source ->
@@ -122,7 +122,7 @@ class ToolsLauncherTest {
     @Test
     fun `a build that fails is said, does not start the tool, and is tried again by the next run`() {
         Files.writeString(root.resolve("fail-build"), "")
-        val java = jdk("21")
+        val java = jdk("25")
 
         val failed = start(java, "Smoke")
 
@@ -137,17 +137,17 @@ class ToolsLauncherTest {
     }
 
     @Test
-    fun `a JDK older than 17 is refused in words, naming the tool and the version found`() {
-        val result = start(jdk("11"), "Smoke")
+    fun `a JDK older than 25 is refused in words, naming the tool and the version found`() {
+        val result = start(jdk("21"), "Smoke")
 
         assertThat(result.status).isEqualTo(1)
-        assertThat(result.stderr).contains("Smoke: needs a JDK 17 or newer, and found 11")
+        assertThat(result.stderr).contains("Smoke: needs a JDK 25 or newer, and found 21")
         assertThat(builds()).isEmpty()
     }
 
     @Test
-    fun `a JDK 17 is enough`() {
-        assertThat(start(jdk("17"), "Smoke").status).isEqualTo(0)
+    fun `a JDK 25 is enough`() {
+        assertThat(start(jdk("25"), "Smoke").status).isEqualTo(0)
     }
 
     @Test
@@ -169,7 +169,7 @@ class ToolsLauncherTest {
 
     @Test
     fun `building needs a JDK, and a JRE is refused in words before Gradle is asked`() {
-        val jre = jdk("21", asJre = true)
+        val jre = jdk("25", asJre = true)
 
         val result = start(jre, "Smoke")
 
@@ -180,19 +180,19 @@ class ToolsLauncherTest {
 
     @Test
     fun `the home of a java on the PATH is the one that is checked`() {
-        val result = start(null, "Smoke", onPath = jdk("21", asJre = true))
+        val result = start(null, "Smoke", onPath = jdk("25", asJre = true))
 
         assertThat(result.status).isEqualTo(1)
-        assertThat(result.stderr).contains("building the tools needs a JDK, and ${root.resolve("jre-21")} is not one")
+        assertThat(result.stderr).contains("building the tools needs a JDK, and ${root.resolve("jre-25")} is not one")
         assertThat(builds()).isEmpty()
-        assertThat(start(null, "Smoke", onPath = jdk("21")).status).isEqualTo(0)
+        assertThat(start(null, "Smoke", onPath = jdk("25")).status).isEqualTo(0)
     }
 
     @Test
     fun `a JRE can start the tools that are already built`() {
-        start(jdk("21"), "Smoke")
+        start(jdk("25"), "Smoke")
 
-        val result = start(jdk("21", asJre = true), "Smoke")
+        val result = start(jdk("25", asJre = true), "Smoke")
 
         assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
         assertThat(builds()).hasSize(1)
@@ -203,12 +203,12 @@ class ToolsLauncherTest {
         val result = start(root.resolve("nowhere"), "Smoke")
 
         assertThat(result.status).isEqualTo(1)
-        assertThat(result.stderr).contains("needs a JDK 17 or newer, and found none")
+        assertThat(result.stderr).contains("needs a JDK 25 or newer, and found none")
     }
 
     @Test
     fun `no tool at all is a usage error`() {
-        assertThat(start(jdk("21")).status).isNotEqualTo(0)
+        assertThat(start(jdk("25")).status).isNotEqualTo(0)
     }
 
     @Test

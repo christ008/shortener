@@ -16,7 +16,7 @@ is in [OBSERVABILITY.md](OBSERVABILITY.md), the design is in [INTERNALS.md](INTE
 | For | You need |
 |---|---|
 | Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
-| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 17 or newer (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
+| `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 25 (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
 | The native image | about 7 GB free memory, 3 minutes |
 | The load test | Docker (k6 runs in a container), spare cores |
 | The production stack on one machine | `openssl`, `keytool` |
@@ -251,7 +251,7 @@ minutes, and answers `503` with `Retry-After` for the rest.
 ## Scripts
 
 Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`. Scripts that compute are Kotlin tools in
-`tools/`, built by `tools/run` the first time and when a source changes (JDK 17 or newer). The one exception is
+`tools/`, built by `tools/run` the first time and when a source changes (JDK 25). The one exception is
 `DpopClient.java`, a single Java file for JDK 17 or newer with no build, which the tools do not use. See
 [ADR 0026](adr/0026-scripting-standard.md), [0029](adr/0029-tools-in-kotlin.md) and [0020](adr/0020-dpop-client-in-java.md).
 
@@ -287,5 +287,5 @@ Gradle tasks (`./gradlew tasks --group tooling`):
 | `report` | `tools/run Report` | `-Preport=summary\|gc\|hprof\|profile\|json -Ptarget=PATH -Ptop=N` |
 
 The tasks run with the project's JDK 25 toolchain. `devSetup` takes the defaults because Gradle has no terminal: run the
-script to be asked. `tools/run` works by hand with any JDK 17 or newer. Tests: `./gradlew test` (with the application's) or
+script to be asked. `tools/run` works by hand with any JDK 25. Tests: `./gradlew test` (with the application's) or
 `./gradlew -p tools test`.
