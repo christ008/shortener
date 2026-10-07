@@ -2,12 +2,17 @@ package uy.ct.shortener
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.boot.context.properties.bind.Binder
+import org.springframework.core.env.StandardEnvironment
+import org.springframework.core.env.SystemEnvironmentPropertySource
 import org.yaml.snakeyaml.Yaml
+import uy.ct.shortener.security.internal.SecurityProperties
+import uy.ct.shortener.shortlink.internal.RedirectCacheProperties
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Holds the production stack, `compose.prod.yaml` and its observability overlay, to the standard it is documented at.
+ * Holds the production stack, `deploy/stack/compose.prod.yaml` and its observability overlay, to the standard it is documented at.
  * It reads the files, so a change that loosens one of these fails here and not in production.
  *
  * - Every service is read-only, has no capabilities, cannot gain privileges, has a memory limit and rotated logs.
@@ -18,13 +23,15 @@ import java.nio.file.Path
  * - The database network has no route out, and the images are pinned to a version.
  * - Keycloak, when the stack has one, is held to the same rules, is not published, and is the only service that holds its
  *   passwords besides the database that creates its role.
+ * - The variables the files read and the ones `deploy/stack/.env.example` lists are the same, and the defaults the stack gives
+ *   the application's tunables are the application's own.
  */
 class ComposeStackTest {
 
     private val migratorSecret = "db_migrator_password"
 
     private val files = listOf(
-        "compose.prod.yaml",
+        "deploy/stack/compose.prod.yaml",
         "deploy/stack/overlays/compose.observability.yaml",
         "deploy/stack/overlays/compose.keycloak.yaml",
         "deploy/stack/overlays/compose.postgres-ha.yaml",
@@ -302,5 +309,44 @@ class ComposeStackTest {
         assertThat(secretsOf(services.getValue("postgres-replica"))).containsExactly("db_replicator_password")
         assertThat(secretsOf(services.getValue("postgres"))).contains("db_replicator_password")
         assertThat(environmentOf(services.getValue("postgres-replica")).keys).noneMatch { it.endsWith("PASSWORD") }
+    }
+
+    private val composePaths = listOf(
+        "deploy/stack/compose.prod.yaml",
+        "deploy/stack/overlays/compose.observability.yaml",
+        "deploy/stack/overlays/compose.keycloak.yaml",
+        "deploy/stack/overlays/compose.postgres-ha.yaml",
+    )
+
+    @Test
+    fun `every variable the files read is in dot env example, and every one listed there is read`() {
+        val example = Files.readString(Path.of("deploy/stack/.env.example"))
+        val listed = Regex("""(?m)^#?\s*([A-Z][A-Z0-9_]*)=""").findAll(example).map { it.groupValues[1] }.toSet()
+        val read = composePaths
+            .flatMap { Regex("""\$\{([A-Z][A-Z0-9_]*)""").findAll(Files.readString(Path.of(it))).map { match -> match.groupValues[1] }.toList() }
+            .filterNot { it.endsWith("_HASH") }
+            .toSet()
+
+        assertThat(read - listed).describedAs("read by the files and missing from .env.example").isEmpty()
+        assertThat(listed - read).describedAs("listed in .env.example and read by no file").isEmpty()
+    }
+
+    @Test
+    fun `the defaults the stack gives the application's tunables are the application's own`() {
+        val placeholder = Regex("""\$\{[A-Z0-9_]+:-([^}]*)}""")
+        val defaults = environmentOf(services.getValue("shortener"))
+            .mapNotNull { (name, value) -> placeholder.matchEntire(value)?.let { name to it.groupValues[1] } }
+            .toMap()
+        val binder = Binder.get(StandardEnvironment().apply { propertySources.addFirst(SystemEnvironmentPropertySource(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, defaults)) })
+
+        assertThat(defaults.keys).contains(
+            "SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY", "SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY", "SERVER_TOMCAT_MAXCONNECTIONS",
+            "SHORTENER_SHORTLINK_REDIRECTCACHE_ENABLED", "SHORTENER_SHORTLINK_REDIRECTCACHE_TTL",
+            "SHORTENER_SHORTLINK_REDIRECTCACHE_MAXENTRIES", "SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR",
+        )
+        assertThat(binder.bindOrCreate("shortener.security", SecurityProperties::class.java).rateLimit).isEqualTo(SecurityProperties().rateLimit)
+        assertThat(binder.bindOrCreate("shortener.shortlink.redirect-cache", RedirectCacheProperties::class.java)).isEqualTo(RedirectCacheProperties())
+        val tomcat = load("src/main/resources/application.yaml").map("server").map("tomcat")
+        assertThat(defaults["SERVER_TOMCAT_MAXCONNECTIONS"]).isEqualTo(tomcat["max-connections"].toString())
     }
 }

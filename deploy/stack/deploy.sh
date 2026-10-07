@@ -7,7 +7,7 @@
 # On an update the migration job runs first, then the application is updated. A first deploy starts everything at once.
 #
 # Settings, all optional:
-#   COMPOSE_FILES   files to deploy, default "compose.prod.yaml". The overlays in deploy/stack/overlays/ are added with
+#   COMPOSE_FILES   files to deploy, default "deploy/stack/compose.prod.yaml". The overlays in deploy/stack/overlays/ are added with
 #                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
 #                   POSTGRES_HA=1 (compose.postgres-ha.yaml)
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
@@ -53,7 +53,7 @@ if [ "${VERIFY_SIGNATURE:-always}" != never ]; then
     || { echo "the signature of $image:$version could not be verified; nothing was deployed" >&2; exit 1; }
 fi
 
-files=${COMPOSE_FILES:-compose.prod.yaml}
+files=${COMPOSE_FILES:-deploy/stack/compose.prod.yaml}
 [ -z "${OBSERVABILITY:-}" ] || files="$files deploy/stack/overlays/compose.observability.yaml"
 [ -z "${KEYCLOAK:-}" ] || files="$files deploy/stack/overlays/compose.keycloak.yaml"
 [ -z "${POSTGRES_HA:-}" ] || files="$files deploy/stack/overlays/compose.postgres-ha.yaml"

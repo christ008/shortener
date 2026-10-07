@@ -31,4 +31,4 @@ for line in "SHORTENER_IMAGE=shortener" "VERIFY_SIGNATURE=never" "SHORTENER_VERS
   grep -q "^${line%%=*}=" .env 2>/dev/null || echo "$line" >>.env
 done
 echo "updated .env"
-echo "wrote $dir; start with: docker compose -f compose.prod.yaml -f deploy/stack/local/compose.local.yaml up -d"
+echo "wrote $dir; start with: docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/local/compose.local.yaml up -d"

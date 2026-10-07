@@ -158,7 +158,7 @@ tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("project.version", project.version.toString())
     inputs.files(
-        "compose.prod.yaml",
+        "deploy/stack/compose.prod.yaml",
         "deploy/stack/overlays/compose.observability.yaml",
         "deploy/stack/overlays/compose.keycloak.yaml",
         "deploy/stack/overlays/compose.postgres-ha.yaml",

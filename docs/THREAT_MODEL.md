@@ -22,7 +22,7 @@ are described in [SECURITY.md](SECURITY.md) and the [ADRs](adr/README.md).
 
 ## Scope and assumptions
 
-In scope: the application, the production stack (`compose.prod.yaml`, the nginx edge, Postgres), the migration job, the
+In scope: the application, the production stack (`deploy/stack/compose.prod.yaml`, the nginx edge, Postgres), the migration job, the
 release pipeline and the use of the identity provider. The web UI and the public instance are plans ([UI.md](UI.md),
 [CLOUD.md](CLOUD.md)); the ratings in [STRIDE](#stride) are for a public instance.
 

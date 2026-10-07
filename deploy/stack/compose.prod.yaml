@@ -5,7 +5,11 @@
 # - migrate     one-shot migrations, as the role that owns the tables. Only it holds that role's password.
 # - postgres    the database. For a managed one, drop this service and point SPRING_DATASOURCE_URL and SPRING_FLYWAY_URL at it.
 #
-# Variables: deploy/stack/.env.example. Secrets are files (`secrets:` at the end).
+# Run from the repository root. Paths below are relative to this file, and `docker compose` reads .env from this directory, so
+# give it the one at the root: `docker compose --env-file .env -f deploy/stack/compose.prod.yaml ...` (deploy/stack/deploy.sh does
+# the equivalent for Swarm).
+#
+# Variables: deploy/stack/.env.example, described in docs/OPERATING.md#configuration. Secrets are files (`secrets:` at the end).
 # Swarm ignores some settings: docs/INTERNALS.md, "Hardening". `docker compose` honours all of them.
 
 x-logging: &logging
@@ -75,6 +79,14 @@ services:
       SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS: '${ALLOWED_TARGET_HOSTS:-}'
       # The application does not start with neither.
       SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY: '${ALLOW_ANY_TARGET:-false}'
+      # Tunables. The defaults are the application's own (ComposeStackTest holds them equal).
+      SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY: '${RATE_LIMIT_PER_IP:-300}'
+      SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY: '${RATE_LIMIT_PER_CLIENT:-60}'
+      SERVER_TOMCAT_MAXCONNECTIONS: '${MAX_CONNECTIONS:-500}'
+      SHORTENER_SHORTLINK_REDIRECTCACHE_ENABLED: '${REDIRECT_CACHE_ENABLED:-true}'
+      SHORTENER_SHORTLINK_REDIRECTCACHE_TTL: '${REDIRECT_CACHE_TTL:-30s}'
+      SHORTENER_SHORTLINK_REDIRECTCACHE_MAXENTRIES: '${REDIRECT_CACHE_MAX_ENTRIES:-100000}'
+      SHORTENER_SHORTLINK_REDIRECTCACHE_STALEIFERROR: '${REDIRECT_CACHE_STALE_IF_ERROR:-5m}'
       # Health check: Tiny Health Checker against the readiness probe.
       THC_PORT: '8081'
       THC_PATH: /actuator/health/readiness
@@ -195,30 +207,30 @@ configs:
   # The name carries a hash of the file (set by deploy/stack/deploy.sh).
   nginx:
     name: 'shortener-nginx-${NGINX_CONF_HASH:-local}'
-    file: ./deploy/edge/nginx.conf
+    file: ../edge/nginx.conf
   postgres-bootstrap:
-    file: ./deploy/postgres/bootstrap.sql
+    file: ../postgres/bootstrap.sql
   postgres-include-diagnostics:
-    file: ./deploy/postgres/include-diagnostics.sh
+    file: ../postgres/include-diagnostics.sh
   postgres-set-role-passwords:
-    file: ./deploy/postgres/set-role-passwords.sh
+    file: ../postgres/set-role-passwords.sh
   postgres-diagnostics:
-    file: ./deploy/postgres/diagnostics.conf
+    file: ../postgres/diagnostics.conf
 
 # Files under ${SECRETS_DIR} (default ./secrets, ignored by Git). deploy/stack/local/prepare.sh makes throwaway ones.
 # Mode 0444: Swarm mounts them in memory at /run/secrets with the file's mode. Immutable: rotate under a new name.
 secrets:
   tls_cert:
-    file: '${SECRETS_DIR:-./secrets}/tls_cert'
+    file: '${SECRETS_DIR:-../../secrets}/tls_cert'
   tls_key:
-    file: '${SECRETS_DIR:-./secrets}/tls_key'
+    file: '${SECRETS_DIR:-../../secrets}/tls_key'
   db_postgres_password:
-    file: '${SECRETS_DIR:-./secrets}/db_postgres_password'
+    file: '${SECRETS_DIR:-../../secrets}/db_postgres_password'
   db_app_password:
-    file: '${SECRETS_DIR:-./secrets}/db_app_password'
+    file: '${SECRETS_DIR:-../../secrets}/db_app_password'
   db_migrator_password:
-    file: '${SECRETS_DIR:-./secrets}/db_migrator_password'
+    file: '${SECRETS_DIR:-../../secrets}/db_migrator_password'
   db_exporter_password:
-    file: '${SECRETS_DIR:-./secrets}/db_exporter_password'
+    file: '${SECRETS_DIR:-../../secrets}/db_exporter_password'
   dpop_nonce_secret:
-    file: '${SECRETS_DIR:-./secrets}/dpop_nonce_secret'
+    file: '${SECRETS_DIR:-../../secrets}/dpop_nonce_secret'

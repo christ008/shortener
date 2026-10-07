@@ -1,6 +1,6 @@
 # Keycloak in production mode behind the edge, for a stack with no identity provider. Add it with a second file:
 #   KEYCLOAK=1 deploy/stack/deploy.sh <version>
-#   docker compose -f compose.prod.yaml -f deploy/stack/overlays/compose.keycloak.yaml up -d
+#   docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.keycloak.yaml up -d
 #
 # - Image: built from deploy/keycloak/Dockerfile: `docker build -t shortener-keycloak:26.8.0 deploy/keycloak`. On more than one
 #   node, push it to a registry (KEYCLOAK_IMAGE).
@@ -70,15 +70,15 @@ configs:
   # Names carry a hash of the file (set by deploy/stack/deploy.sh).
   keycloak-realm:
     name: 'shortener-keycloak-realm-${KEYCLOAK_REALM_HASH:-local}'
-    file: ./deploy/keycloak/shortener-realm.production.json
+    file: ../keycloak/shortener-realm.production.json
   edge-keycloak:
     name: 'shortener-edge-keycloak-${EDGE_KEYCLOAK_CONF_HASH:-local}'
-    file: ./deploy/edge/keycloak.conf
+    file: ../edge/keycloak.conf
   postgres-keycloak-database:
-    file: ./deploy/postgres/keycloak-database.sh
+    file: ../postgres/keycloak-database.sh
 
 secrets:
   db_keycloak_password:
-    file: '${SECRETS_DIR:-./secrets}/db_keycloak_password'
+    file: '${SECRETS_DIR:-../../secrets}/db_keycloak_password'
   keycloak_admin_password:
-    file: '${SECRETS_DIR:-./secrets}/keycloak_admin_password'
+    file: '${SECRETS_DIR:-../../secrets}/keycloak_admin_password'

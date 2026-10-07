@@ -18,7 +18,7 @@ it, and sees that another client cannot see it.
 
 ## Shape
 
-One amd64 VM (Ubuntu, 2 vCPU, 4 GB) running `compose.prod.yaml` on a single-node Swarm:
+One amd64 VM (Ubuntu, 2 vCPU, 4 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm:
 
 ```mermaid
 flowchart LR
