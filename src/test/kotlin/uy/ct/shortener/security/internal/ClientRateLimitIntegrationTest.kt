@@ -3,16 +3,15 @@ package uy.ct.shortener.security.internal
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.http.ResponseEntity
+import org.springframework.test.web.servlet.client.RestTestClient
+import uy.ct.shortener.RestTestClientSupport.request
 import uy.ct.shortener.TestIdp
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.WithTestIdp
@@ -29,35 +28,29 @@ import uy.ct.shortener.WithTestIdp
         "shortener.security.rate-limit.per-ip.capacity=1000",
     ],
 )
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class ClientRateLimitIntegrationTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
 
-    private fun create(client: String): ResponseEntity<String> {
+    private fun create(client: String): RestTestClient.ResponseSpec {
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
             setBearerAuth(TestIdp.token(client = client))
         }
-        return restTemplate.exchange(
-            "/api/short-links",
-            HttpMethod.POST,
-            HttpEntity("""{"targetUrl":"https://example.com/limited"}""", headers),
-            String::class.java,
-        )
+        return rest.request(HttpMethod.POST, "/api/short-links", headers, """{"targetUrl":"https://example.com/limited"}""")
     }
 
     @Test
     fun `limits link creation per client`() {
-        repeat(3) { assertThat(create("noisy-client").statusCode).isEqualTo(HttpStatus.CREATED) }
+        repeat(3) { create("noisy-client").expectStatus().isCreated() }
 
-        val limited = create("noisy-client")
-
-        assertThat(limited.statusCode).isEqualTo(HttpStatus.TOO_MANY_REQUESTS)
-        assertThat(limited.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
-        assertThat(limited.headers.getFirst(HttpHeaders.RETRY_AFTER)!!.toLong()).isBetween(1, 60)
-        assertThat(create("quiet-client").statusCode).isEqualTo(HttpStatus.CREATED)
+        create("noisy-client")
+            .expectStatus().isEqualTo(HttpStatus.TOO_MANY_REQUESTS)
+            .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectHeader().value(HttpHeaders.RETRY_AFTER) { assertThat(it.toLong()).isBetween(1, 60) }
+        create("quiet-client").expectStatus().isCreated()
     }
 }

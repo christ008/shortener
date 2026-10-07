@@ -1,27 +1,28 @@
 package uy.ct.shortener.shortlink.internal.web
 
-import uy.ct.shortener.shortlink.internal.found
-import uy.ct.shortener.shortlink.Actor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.http.client.HttpRedirects
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
-import org.springframework.http.ResponseEntity
+import org.springframework.test.web.servlet.client.RestTestClient
+import uy.ct.shortener.RestTestClientSupport
+import uy.ct.shortener.RestTestClientSupport.expectStatus
+import uy.ct.shortener.RestTestClientSupport.request
 import uy.ct.shortener.TestIdp
-import uy.ct.shortener.WithTestIdp
 import uy.ct.shortener.TestcontainersConfiguration
+import uy.ct.shortener.WithTestIdp
+import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkRepository
+import uy.ct.shortener.shortlink.internal.found
 
 /**
  * End-to-end tests of the HTTP API against a running server and real Postgres. Redirect
@@ -29,130 +30,110 @@ import uy.ct.shortener.shortlink.ShortLinkRepository
  */
 @WithTestIdp
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class ShortLinkControllerTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
+
+    @LocalServerPort
+    var port: Int = 0
+
+    private val noRedirects by lazy { RestTestClientSupport.withoutRedirects(port) }
 
     @Autowired
     lateinit var repository: ShortLinkRepository
 
-    private fun <T : Any> create(body: CreateShortLinkRequest, type: Class<T>): ResponseEntity<T> {
-        val headers = HttpHeaders().apply { setBearerAuth(TestIdp.token()) }
-        return restTemplate.exchange("/api/short-links", HttpMethod.POST, HttpEntity(body, headers), type)
-    }
+    private fun bearer() = HttpHeaders().apply { setBearerAuth(TestIdp.token()) }
 
-    private fun <T : Any> claim(code: String, target: String, type: Class<T>): ResponseEntity<T> {
-        val headers = HttpHeaders().apply { setBearerAuth(TestIdp.token()) }
-        return restTemplate.exchange("/api/short-links/$code", HttpMethod.PUT, HttpEntity(ClaimShortLinkRequest(target), headers), type)
-    }
+    private fun create(body: CreateShortLinkRequest) = rest.request(HttpMethod.POST, "/api/short-links", bearer(), body)
+
+    private fun claim(code: String, target: String) = rest.request(HttpMethod.PUT, "/api/short-links/$code", bearer(), ClaimShortLinkRequest(target))
 
     @Test
     fun `creates a short link and redirects through it`() {
-        val created = create(CreateShortLinkRequest("https://example.com/some/long/path"), ShortLinkResponse::class.java)
+        val created = create(CreateShortLinkRequest("https://example.com/some/long/path")).expectStatus().isCreated().returnResult(ShortLinkResponse::class.java)
 
-        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
-        val shortCode = created.body!!.shortCode
+        val shortCode = created.responseBody!!.shortCode
         assertThat(shortCode).hasSize(ShortCode.GENERATED_LENGTH)
-        assertThat(created.headers.location.toString()).endsWith("/api/short-links/$shortCode")
-        assertThat(created.body!!.shortUrl).endsWith("/$shortCode").doesNotContain("/api/")
+        assertThat(created.responseHeaders.location.toString()).endsWith("/api/short-links/$shortCode")
+        assertThat(created.responseBody!!.shortUrl).endsWith("/$shortCode").doesNotContain("/api/")
         assertThat(repository.findByShortCode(ShortCode(shortCode)).found().createdBy).isEqualTo(Actor.Client(TestIdp.CLIENT))
 
-        val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/$shortCode", Void::class.java)
-
-        assertThat(redirect.statusCode).isEqualTo(HttpStatus.FOUND)
-        assertThat(redirect.headers.location.toString()).isEqualTo("https://example.com/some/long/path")
+        noRedirects.get().uri("/$shortCode").exchange()
+            .expectStatus().isFound()
+            .expectHeader().location("https://example.com/some/long/path")
     }
 
     @Test
     fun `the Location of a created link is the link, and following it reads what was created`() {
-        val created = create(CreateShortLinkRequest("https://example.com/located"), ShortLinkResponse::class.java)
-        val headers = HttpHeaders().apply { setBearerAuth(TestIdp.token()) }
+        val created = create(CreateShortLinkRequest("https://example.com/located")).expectStatus().isCreated().returnResult(ShortLinkResponse::class.java)
 
-        val read = restTemplate.exchange(created.headers.location!!, HttpMethod.GET, HttpEntity<Void>(headers), ShortLinkResponse::class.java)
-
-        assertThat(read.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(read.body).isEqualTo(created.body)
+        rest.get().uri(created.responseHeaders.location!!).headers { it.addAll(bearer()) }.exchange()
+            .expectStatus().isOk()
+            .expectBody(ShortLinkResponse::class.java).isEqualTo(created.responseBody!!)
     }
 
     @Test
     fun `answers a body without a target url, or with a null one, with a 400 rather than a 500`() {
-        val headers = HttpHeaders().apply {
-            setBearerAuth(TestIdp.token())
-            contentType = MediaType.APPLICATION_JSON
-        }
+        val headers = bearer().apply { contentType = MediaType.APPLICATION_JSON }
 
         listOf("{}", """{"targetUrl":null}""", """{"customCode":"my-promo"}""").forEach { body ->
-            val response = restTemplate.exchange("/api/short-links", HttpMethod.POST, HttpEntity(body, headers), ProblemDetail::class.java)
-
-            assertThat(response.statusCode).describedAs(body).isEqualTo(HttpStatus.BAD_REQUEST)
+            rest.request(HttpMethod.POST, "/api/short-links", headers, body)
+                .expectStatus(body, HttpStatus.BAD_REQUEST)
         }
     }
 
     @Test
     fun `rejects a blank target url with a 400 problem detail`() {
-        val response = create(CreateShortLinkRequest(""), ProblemDetail::class.java)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        create(CreateShortLinkRequest("")).expectStatus().isBadRequest()
     }
 
     @Test
     fun `404s on a well-formed but unknown short code`() {
-        val response = restTemplate.getForEntity("/zzzzzzz", ProblemDetail::class.java)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat(response.body?.detail).contains("zzzzzzz")
+        rest.get().uri("/zzzzzzz").exchange()
+            .expectStatus().isNotFound()
+            .expectBody(ProblemDetail::class.java).value { assertThat(it?.detail).contains("zzzzzzz") }
     }
 
     @Test
     fun `rejects a malformed short code before it reaches the service`() {
-        val response = restTemplate.getForEntity("/ab", ProblemDetail::class.java)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        rest.get().uri("/ab").exchange().expectStatus().isBadRequest()
     }
 
     @Test
     fun `creates a short link under a custom code and redirects through it`() {
-        val created = claim("promo-2026", "https://example.com/promo", ShortLinkResponse::class.java)
+        val created = claim("promo-2026", "https://example.com/promo").expectStatus().isCreated().returnResult(ShortLinkResponse::class.java)
 
-        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(created.body!!.shortCode).isEqualTo("promo-2026")
-        assertThat(created.headers.location.toString()).endsWith("/api/short-links/promo-2026")
-        assertThat(created.body!!.shortUrl).endsWith("/promo-2026").doesNotContain("/api/")
+        assertThat(created.responseBody!!.shortCode).isEqualTo("promo-2026")
+        assertThat(created.responseHeaders.location.toString()).endsWith("/api/short-links/promo-2026")
+        assertThat(created.responseBody!!.shortUrl).endsWith("/promo-2026").doesNotContain("/api/")
 
-        val redirect = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/promo-2026", Void::class.java)
-
-        assertThat(redirect.statusCode).isEqualTo(HttpStatus.FOUND)
-        assertThat(redirect.headers.location.toString()).isEqualTo("https://example.com/promo")
+        noRedirects.get().uri("/promo-2026").exchange()
+            .expectStatus().isFound()
+            .expectHeader().location("https://example.com/promo")
     }
 
     @Test
     fun `409s when the custom code is already taken for another target, and 200s when the claim is repeated`() {
-        val first = claim("taken-code", "https://example.com/first", ShortLinkResponse::class.java)
+        val first = claim("taken-code", "https://example.com/first").expectStatus().isCreated().returnResult(ShortLinkResponse::class.java)
 
-        val repeated = claim("taken-code", "https://example.com/first", ShortLinkResponse::class.java)
-        val other = claim("taken-code", "https://example.com/second", ProblemDetail::class.java)
-
-        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(repeated.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(repeated.body).isEqualTo(first.body)
-        assertThat(other.statusCode).isEqualTo(HttpStatus.CONFLICT)
-        assertThat(other.body?.detail).contains("taken-code")
+        claim("taken-code", "https://example.com/first")
+            .expectStatus().isOk()
+            .expectBody(ShortLinkResponse::class.java).isEqualTo(first.responseBody!!)
+        claim("taken-code", "https://example.com/second")
+            .expectStatus().isEqualTo(HttpStatus.CONFLICT)
+            .expectBody(ProblemDetail::class.java).value { assertThat(it?.detail).contains("taken-code") }
     }
 
     @Test
     fun `409s when the custom code is reserved`() {
-        val response = claim("actuator", "https://example.com", ProblemDetail::class.java)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        claim("actuator", "https://example.com").expectStatus().isEqualTo(HttpStatus.CONFLICT)
     }
 
     @Test
     fun `rejects a malformed custom code with a 400`() {
-        val response = claim("bad.code", "https://example.com", ProblemDetail::class.java)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        claim("bad.code", "https://example.com").expectStatus().isBadRequest()
     }
 }

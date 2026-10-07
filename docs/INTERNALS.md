@@ -722,7 +722,7 @@ runs the tools' tests too). Of the 255, 141 need no database and 114 do.
 
 ### Coverage (Kover)
 
-- **Tool.** Kover 0.9.11, which works with Kotlin 2.3.21 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
+- **Tool.** Kover 0.9.11, which works with Kotlin 2.4.20 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
   writes `build/reports/kover`, and CI keeps it as the `coverage` artifact. It is a measurement: there is no threshold.
 - **Scope.** The classes of `uy.ct.shortener`, from the 319 tests of `src/test`, all of which ran. The tools are a build of their own
   and are not measured.

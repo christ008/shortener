@@ -5,17 +5,16 @@ import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.http.ResponseEntity
+import org.springframework.test.web.servlet.client.RestTestClient
+import uy.ct.shortener.RestTestClientSupport.request
 import uy.ct.shortener.TestDpopClient
 import uy.ct.shortener.TestIdp
 import uy.ct.shortener.TestcontainersConfiguration
@@ -35,12 +34,12 @@ import java.util.UUID
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["shortener.security.dpop.required=true"],
 )
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class DpopIntegrationTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
 
     @LocalServerPort
     var port: Int = 0
@@ -54,7 +53,7 @@ class DpopIntegrationTest {
         authorization: String? = null,
         proof: String? = null,
         forwarded: Map<String, String> = emptyMap(),
-    ): ResponseEntity<String> {
+    ): RestTestClient.ResponseSpec {
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
             forwarded.forEach { (name, value) -> set(name, value) }
@@ -62,36 +61,28 @@ class DpopIntegrationTest {
             proof?.let { set("DPoP", it) }
         }
         val body = if (method == HttpMethod.POST) """{"targetUrl":"https://example.com/dpop"}""" else null
-        return restTemplate.exchange(url, method, HttpEntity(body, headers), String::class.java)
+        return rest.request(method, url, headers, body)
     }
 
-    private fun bound(method: HttpMethod = HttpMethod.GET, token: String = client.token(), proof: (String) -> String): ResponseEntity<String> =
+    private fun bound(method: HttpMethod = HttpMethod.GET, token: String = client.token(), proof: (String) -> String) =
         call(method, "DPoP $token", proof(token))
 
-    private fun assertRejected(response: ResponseEntity<String>, error: String) {
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(response.headers[HttpHeaders.WWW_AUTHENTICATE]).singleElement().satisfies({
-            assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("error=\"$error\"")
-        })
+    private fun RestTestClient.ResponseSpec.challenge(status: HttpStatus, check: (String) -> Unit) = expectStatus().isEqualTo(status)
+        .expectHeader().values(HttpHeaders.WWW_AUTHENTICATE) { challenges -> assertThat(challenges).singleElement().satisfies({ check(it) }) }
+
+    private fun assertRejected(response: RestTestClient.ResponseSpec, error: String) {
+        response.challenge(HttpStatus.UNAUTHORIZED) { assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("error=\"$error\"") }
     }
 
     @Test
     fun `serves a request made with a bound token and a proof made for it`() {
-        val created = bound(HttpMethod.POST) { client.proof("POST", url, it) }
-        val listed = bound { client.proof("GET", url, it) }
-
-        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(listed.statusCode).isEqualTo(HttpStatus.OK)
+        bound(HttpMethod.POST) { client.proof("POST", url, it) }.expectStatus().isCreated()
+        bound { client.proof("GET", url, it) }.expectStatus().isOk()
     }
 
     @Test
     fun `challenges with the DPoP scheme and its algorithms alone when no credentials are sent`() {
-        val response = call()
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(response.headers[HttpHeaders.WWW_AUTHENTICATE]).singleElement().satisfies({
-            assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("algs=\"").contains("ES256")
-        })
+        call().challenge(HttpStatus.UNAUTHORIZED) { assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("algs=\"").contains("ES256") }
     }
 
     @Test
@@ -125,7 +116,7 @@ class DpopIntegrationTest {
 
     @Test
     fun `behind the edge the proof names the port the client used, and the default port when none is forwarded`() {
-        fun behindEdge(host: String, forwardedPort: String?, signedFor: String): ResponseEntity<String> {
+        fun behindEdge(host: String, forwardedPort: String?, signedFor: String): RestTestClient.ResponseSpec {
             val token = client.token()
             val headers = buildMap {
                 put(HttpHeaders.HOST, host)
@@ -136,8 +127,8 @@ class DpopIntegrationTest {
             return call(authorization = "DPoP $token", proof = client.proof("GET", signedFor, token), forwarded = headers)
         }
 
-        assertThat(behindEdge("edge.example:9443", "9443", "https://edge.example:9443/api/short-links").statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(behindEdge("edge.example", "443", "https://edge.example/api/short-links").statusCode).isEqualTo(HttpStatus.OK)
+        behindEdge("edge.example:9443", "9443", "https://edge.example:9443/api/short-links").expectStatus().isOk()
+        behindEdge("edge.example", "443", "https://edge.example/api/short-links").expectStatus().isOk()
         assertRejected(behindEdge("edge.example:9443", null, "https://edge.example:9443/api/short-links"), "invalid_dpop_proof")
     }
 
@@ -160,11 +151,8 @@ class DpopIntegrationTest {
         val token = client.token()
         val jti = UUID.randomUUID().toString()
 
-        val first = call(authorization = "DPoP $token", proof = client.proof("GET", url, token, jti = jti))
-        val replay = call(authorization = "DPoP $token", proof = client.proof("GET", url, token, jti = jti))
-
-        assertThat(first.statusCode).isEqualTo(HttpStatus.OK)
-        assertRejected(replay, "invalid_dpop_proof")
+        call(authorization = "DPoP $token", proof = client.proof("GET", url, token, jti = jti)).expectStatus().isOk()
+        assertRejected(call(authorization = "DPoP $token", proof = client.proof("GET", url, token, jti = jti)), "invalid_dpop_proof")
     }
 
     @Test
@@ -178,30 +166,25 @@ class DpopIntegrationTest {
     fun `answers a bound token without the needed scope with a 403 that names the DPoP scheme`() {
         val token = client.token(scope = "shortlinks:read")
 
-        val response = call(HttpMethod.POST, "DPoP $token", client.proof("POST", url, token))
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat(response.headers[HttpHeaders.WWW_AUTHENTICATE]).singleElement().satisfies({
-            assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("error=\"insufficient_scope\"")
-        })
+        call(HttpMethod.POST, "DPoP $token", client.proof("POST", url, token))
+            .challenge(HttpStatus.FORBIDDEN) { assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("error=\"insufficient_scope\"") }
     }
 
     @Test
     fun `publishes what clients need to know about it as protected resource metadata`() {
-        val metadata = restTemplate.getForEntity("http://localhost:$port/.well-known/oauth-protected-resource", String::class.java)
-
-        assertThat(metadata.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(metadata.body)
-            .contains(""""authorization_servers":["${TestIdp.ISSUER}"]""")
-            .contains(""""dpop_bound_access_tokens_required":true""")
-            .contains(""""dpop_signing_alg_values_supported":["RS256"""")
-            .contains(""""tls_client_certificate_bound_access_tokens":false""")
+        rest.get().uri("http://localhost:$port/.well-known/oauth-protected-resource").exchange()
+            .expectStatus().isOk()
+            .expectBody(String::class.java).value {
+                assertThat(it)
+                    .contains(""""authorization_servers":["${TestIdp.ISSUER}"]""")
+                    .contains(""""dpop_bound_access_tokens_required":true""")
+                    .contains(""""dpop_signing_alg_values_supported":["RS256"""")
+                    .contains(""""tls_client_certificate_bound_access_tokens":false""")
+            }
     }
 
     @Test
     fun `leaves following a short link public`() {
-        val response = restTemplate.getForEntity("http://localhost:$port/unknown1", String::class.java)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        rest.get().uri("http://localhost:$port/unknown1").exchange().expectStatus().isNotFound()
     }
 }

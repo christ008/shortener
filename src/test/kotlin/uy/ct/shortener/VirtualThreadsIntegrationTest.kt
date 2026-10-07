@@ -8,13 +8,13 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.health.contributor.Health
 import org.springframework.boot.health.contributor.HealthIndicator
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.web.server.LocalManagementPort
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.test.web.servlet.client.RestTestClient
 import org.springframework.web.filter.OncePerRequestFilter
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -27,7 +27,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 @WithTestIdp
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class, VirtualThreadsIntegrationTest.ThreadRecorder::class)
 class VirtualThreadsIntegrationTest {
 
@@ -59,7 +59,7 @@ class VirtualThreadsIntegrationTest {
     }
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
 
     @Autowired
     lateinit var recorder: RecordingFilter
@@ -72,8 +72,8 @@ class VirtualThreadsIntegrationTest {
 
     @Test
     fun `serves requests on virtual threads on both ports`() {
-        restTemplate.getForEntity("/zzzzzzz", String::class.java)
-        restTemplate.getForEntity("http://localhost:$managementPort/actuator/health", String::class.java)
+        rest.get().uri("/zzzzzzz").exchange()
+        rest.get().uri("http://localhost:$managementPort/actuator/health").exchange()
 
         assertThat(recorder.seen.map { it.first }).contains("/zzzzzzz")
         assertThat(recorder.seen.filter { !it.second }).describedAs("application requests on platform threads").isEmpty()

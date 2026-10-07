@@ -4,17 +4,20 @@ import io.micrometer.core.instrument.MeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.http.client.HttpRedirects
-import org.springframework.boot.test.web.server.LocalManagementPort
-import org.springframework.boot.resttestclient.TestRestTemplate
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.web.server.LocalManagementPort
+import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.client.RestTestClient
+import uy.ct.shortener.RestTestClientSupport
+import uy.ct.shortener.RestTestClientSupport.expectStatus
+import uy.ct.shortener.RestTestClientSupport.request
+import uy.ct.shortener.RestTestClientSupport.text
 import uy.ct.shortener.TestIdp
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.WithTestIdp
@@ -38,12 +41,17 @@ import javax.sql.DataSource
         "shortener.shortlink.redirect-cache.stale-if-error=1m",
     ],
 )
-@AutoConfigureTestRestTemplate
+@AutoConfigureRestTestClient
 @Import(TestcontainersConfiguration::class)
 class StorageUnavailableIntegrationTest {
 
     @Autowired
-    lateinit var restTemplate: TestRestTemplate
+    lateinit var rest: RestTestClient
+
+    @LocalServerPort
+    var port: Int = 0
+
+    private val noRedirects by lazy { RestTestClientSupport.withoutRedirects(port) }
 
     @Autowired
     lateinit var dataSource: DataSource
@@ -54,62 +62,55 @@ class StorageUnavailableIntegrationTest {
     @LocalManagementPort
     var managementPort: Int = 0
 
-    private fun redirect(code: String) = restTemplate.withRedirects(HttpRedirects.DONT_FOLLOW).getForEntity("/$code", String::class.java)
+    private fun redirect(code: String) = noRedirects.get().uri("/$code").exchange()
 
-    private fun management(path: String) = restTemplate.getForEntity("http://localhost:$managementPort/actuator/health/$path", String::class.java)
+    private fun management(path: String) = rest.get().uri("http://localhost:$managementPort/actuator/health/$path").exchange()
 
-    private fun create() = restTemplate.exchange(
-        "/api/short-links",
+    private fun create() = rest.request(
         HttpMethod.POST,
-        HttpEntity(
-            """{"targetUrl":"https://example.com/unavailable"}""",
-            HttpHeaders().apply {
-                contentType = MediaType.APPLICATION_JSON
-                setBearerAuth(TestIdp.token())
-            },
-        ),
-        String::class.java,
+        "/api/short-links",
+        HttpHeaders().apply {
+            contentType = MediaType.APPLICATION_JSON
+            setBearerAuth(TestIdp.token())
+        },
+        """{"targetUrl":"https://example.com/unavailable"}""",
     )
 
     @Test
     fun `answers 503 with Retry-After while every connection is busy, then recovers`() {
         dataSource.connection.use {
-            val lookup = restTemplate.getForEntity("/zzzzzzz", String::class.java)
+            rest.get().uri("/zzzzzzz").exchange()
+                .expectStatus().isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
+                .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectHeader().valueEquals(HttpHeaders.RETRY_AFTER, "5")
+                .expectBody(String::class.java).value { assertThat(it).contains(""""status":503""") }
 
-            assertThat(lookup.statusCode).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
-            assertThat(lookup.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
-            assertThat(lookup.headers.getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("5")
-            assertThat(lookup.body).contains(""""status":503""")
-
-            val creation = create()
-
-            assertThat(creation.statusCode).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
-            assertThat(creation.headers.getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("5")
+            create()
+                .expectStatus().isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
+                .expectHeader().valueEquals(HttpHeaders.RETRY_AFTER, "5")
         }
 
-        assertThat(restTemplate.getForEntity("/zzzzzzz", String::class.java).statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat(create().statusCode).isEqualTo(HttpStatus.CREATED)
+        rest.get().uri("/zzzzzzz").exchange().expectStatus().isNotFound()
+        create().expectStatus().isCreated()
     }
 
     @Test
     fun `keeps redirecting the links it has read, and stays ready, while storage is unavailable`() {
-        val code = Regex(""""shortCode":"([^"]+)"""").find(create().body!!)!!.groupValues[1]
-        assertThat(redirect(code).statusCode).isEqualTo(HttpStatus.FOUND)
+        val code = Regex(""""shortCode":"([^"]+)"""").find(create().text())!!.groupValues[1]
+        redirect(code).expectStatus().isFound()
         Thread.sleep(1_200)
         val before = registry.get("shortlink.redirect.cache.stale").counter().count()
 
         dataSource.connection.use {
-            val stale = redirect(code)
-            val unknown = restTemplate.getForEntity("/zzzzzzz", String::class.java)
-
-            assertThat(stale.statusCode).describedAs("a link it read a moment ago").isEqualTo(HttpStatus.FOUND)
-            assertThat(stale.headers.location.toString()).startsWith("https://example.com/")
-            assertThat(unknown.statusCode).describedAs("a code it has never read").isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
-            assertThat(management("readiness").statusCode).describedAs("readiness while storage is down").isEqualTo(HttpStatus.OK)
-            assertThat(management("liveness").statusCode).isEqualTo(HttpStatus.OK)
+            redirect(code)
+                .expectStatus("a link it read a moment ago", HttpStatus.FOUND)
+                .expectHeader().value(HttpHeaders.LOCATION) { assertThat(it).startsWith("https://example.com/") }
+            rest.get().uri("/zzzzzzz").exchange().expectStatus("a code it has never read", HttpStatus.SERVICE_UNAVAILABLE)
+            management("readiness").expectStatus("readiness while storage is down", HttpStatus.OK)
+            management("liveness").expectStatus().isOk()
         }
 
         assertThat(registry.get("shortlink.redirect.cache.stale").counter().count()).isEqualTo(before + 1)
-        assertThat(redirect(code).statusCode).describedAs("once storage is back").isEqualTo(HttpStatus.FOUND)
+        redirect(code).expectStatus("once storage is back", HttpStatus.FOUND)
     }
 }

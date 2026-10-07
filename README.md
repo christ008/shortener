@@ -12,7 +12,7 @@ OpenTelemetry, a GraalVM native image, and a hardened Docker Compose / Swarm sta
   <img src="docs/images/dashboard.png" alt="Grafana dashboard of the service at 1,500 requests a second" width="420">
 </p>
 
-Spring Boot 4.1 · Kotlin 2.3 · Java 25 · Postgres 18 · Keycloak 26 · nginx · Apache-2.0
+Spring Boot 4.2 · Kotlin 2.4 · Java 25 · Postgres 18 · Keycloak 26 · nginx · Apache-2.0
 
 ## Behaviour
 
