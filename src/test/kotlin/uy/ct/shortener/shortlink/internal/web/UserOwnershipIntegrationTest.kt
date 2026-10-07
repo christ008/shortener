@@ -52,7 +52,7 @@ class UserOwnershipIntegrationTest {
     private fun disable(user: String) = call(user, HttpMethod.PATCH, "/api/short-links/$code", """{"disabled":true}""")
 
     private fun aliceCreatesALink() =
-        call(alice, HttpMethod.POST, "/api/short-links", """{"targetUrl":"https://example.com/alices","customCode":"$code"}""")
+        call(alice, HttpMethod.PUT, "/api/short-links/$code", """{"targetUrl":"https://example.com/alices"}""")
 
     @Test
     fun `a person owns what they create under their user id, not under the client of the web app`() {

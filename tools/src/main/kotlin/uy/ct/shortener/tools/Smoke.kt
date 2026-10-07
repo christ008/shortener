@@ -67,9 +67,12 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
             check("create with a generated code", 201, generated)
             val code = SHORT_CODE.find(generated.body)?.groupValues?.get(1) ?: ""
             val custom = "smoke-" + ThreadLocalRandom.current().nextInt(32768)
-            val customBody = """{"targetUrl":"https://example.com/custom","customCode":"$custom"}"""
-            check("create with a custom code", 201, call("demo-client", "POST", api, customBody))
-            check("custom code taken", 409, call("demo-client", "POST", api, customBody))
+            val customBody = """{"targetUrl":"https://example.com/custom"}"""
+            check("create with a custom code", 201, call("demo-client", "PUT", "$api/$custom", customBody))
+            check("claiming it again is harmless", 200, call("demo-client", "PUT", "$api/$custom", customBody))
+            check("claiming it for another target is refused", 409, call("demo-client", "PUT", "$api/$custom", """{"targetUrl":"https://example.com/other"}"""))
+            check("choosing a code needs the claim scope", 403, call("other-client", "PUT", "$api/$custom", customBody))
+            check("a POST does not take a code", 400, call("demo-client", "POST", api, """{"targetUrl":"https://example.com/x","customCode":"$custom"}"""))
             check("invalid url", 400, call("demo-client", "POST", api, """{"targetUrl":"not a url"}"""))
             check("missing url", 400, call("demo-client", "POST", api, "{}"))
             check("get own link", 200, call("demo-client", "GET", "$api/$code", null))

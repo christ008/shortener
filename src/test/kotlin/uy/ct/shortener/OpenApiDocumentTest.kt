@@ -3,6 +3,7 @@ package uy.ct.shortener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.yaml.snakeyaml.Yaml
+import uy.ct.shortener.shortlink.internal.web.ClaimShortLinkRequest
 import uy.ct.shortener.shortlink.internal.web.CreateShortLinkRequest
 import uy.ct.shortener.shortlink.internal.web.ShortLinkPageResponse
 import uy.ct.shortener.shortlink.internal.web.ShortLinkResponse
@@ -49,12 +50,12 @@ class OpenApiDocumentTest {
 
     private fun Operation.responses(): Map<String, Any?> = definition["responses"].map()
 
-    /** The failures an operation can cause, from what it takes in and who may call it. */
+    /** The failures an operation can cause, from what it takes in and who may call it. A `PUT` makes what is not there. */
     private fun Operation.mustDocument(): Set<String> = buildSet {
         val secured = (definition["security"] as? List<*>)?.isNotEmpty() ?: false
         if (secured) addAll(listOf("401", "403"))
         if ("{shortCode}" in path || "requestBody" in definition || "sort" in parameterNames()) add("400")
-        if ("{shortCode}" in path) add("404")
+        if ("{shortCode}" in path && method != "put") add("404")
         addAll(listOf("429", "503"))
     }
 
@@ -77,6 +78,16 @@ class OpenApiDocumentTest {
                     .describedAs("the $status of $operation")
                     .containsExactly("application/problem+json")
             }
+        }
+    }
+
+    @Test
+    fun `an operation that creates names what it made in a Location`() {
+        val creating = operations.filter { "201" in it.responses() }
+
+        assertThat(creating.map { it.toString() }).containsExactlyInAnyOrder("POST /api/short-links", "PUT /api/short-links/{shortCode}")
+        creating.forEach { operation ->
+            assertThat(response(operation.responses().getValue("201"))["headers"].map().keys).describedAs("the 201 of $operation").contains("Location")
         }
     }
 
@@ -105,6 +116,7 @@ class OpenApiDocumentTest {
             "ShortLink" to ShortLinkResponse::class,
             "ShortLinkPage" to ShortLinkPageResponse::class,
             "CreateShortLinkRequest" to CreateShortLinkRequest::class,
+            "ClaimShortLinkRequest" to ClaimShortLinkRequest::class,
             "UpdateShortLinkRequest" to UpdateShortLinkRequest::class,
         ).forEach { (schemaName, type) ->
             val schema = section("components", "schemas", schemaName)

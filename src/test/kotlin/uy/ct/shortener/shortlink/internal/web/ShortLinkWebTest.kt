@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import uy.ct.shortener.shortlink.ShortCode
@@ -35,8 +36,8 @@ import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
  * `AuthorizationIntegrationTest` covers against a running server.
  *
  * The addresses are the point. A link is a resource at `/api/short-links/{code}`, which is what a created link's `Location`
- * names, and its `shortUrl` is the public `/{code}` on the host the request was made to. A link is disabled with a `PATCH`, and
- * cannot be removed.
+ * names, and its `shortUrl` is the public `/{code}` on the host the request was made to. A generated code comes from a `POST`, a
+ * chosen one from a `PUT` that is harmless to repeat. A link is disabled with a `PATCH`, and cannot be removed.
  */
 class ShortLinkWebTest {
 
@@ -60,6 +61,8 @@ class ShortLinkWebTest {
 
     private val alice = TestingAuthenticationToken("alice", null, "shortlinks:create", "shortlinks:read", "shortlinks:delete")
 
+    private val bob = TestingAuthenticationToken("bob", null, "shortlinks:create", "shortlinks:claim")
+
     private fun MockHttpServletRequestBuilder.asAlice() = principal(alice)
 
     private fun MockHttpServletRequestBuilder.onHost(scheme: String, host: String, port: Int) =
@@ -72,6 +75,9 @@ class ShortLinkWebTest {
         mvc.perform(
             post("/api/short-links").asAlice().onHost("http", host, 80).json("""{"targetUrl":"$target"}"""),
         ).andReturn()
+
+    private fun claim(code: String, target: String = "https://example.com/target", by: TestingAuthenticationToken = alice, host: String = "localhost"): MvcResult =
+        mvc.perform(put("/api/short-links/$code").principal(by).onHost("http", host, 80).json("""{"targetUrl":"$target"}""")).andReturn()
 
     private fun MvcResult.status() = response.status
 
@@ -198,14 +204,68 @@ class ShortLinkWebTest {
     }
 
     @Test
-    fun `the codes the application keeps for itself cannot be chosen`() {
-        listOf("api", "actuator", "error", "app").forEach { reserved ->
-            val refused = mvc.perform(
-                post("/api/short-links").principal(TestingAuthenticationToken("alice", null, "shortlinks:create", "shortlinks:claim"))
-                    .json("""{"targetUrl":"https://example.com/x","customCode":"$reserved"}"""),
-            ).andReturn()
+    fun `a chosen code is claimed with a PUT, which answers 201 with the link as its Location, and 200 when it is repeated`() {
+        val first = claim("my-promo", host = "short.test")
+        val again = claim("my-promo", host = "short.test")
 
-            assertThat(refused.status()).describedAs(reserved).isEqualTo(409)
+        assertThat(first.status()).isEqualTo(201)
+        assertThat(first.response.getHeader(HttpHeaders.LOCATION)).isEqualTo("http://short.test/api/short-links/my-promo")
+        assertThat(first.body()).contains(""""shortCode":"my-promo"""", """"shortUrl":"http://short.test/my-promo"""")
+        assertThat(again.status()).isEqualTo(200)
+        assertThat(again.response.getHeader(HttpHeaders.LOCATION)).isNull()
+        assertThat(again.body()).isEqualTo(first.body())
+        assertThat(repository.saved).hasSize(1)
+        assertThat(mvc.perform(get("/my-promo")).andReturn().status()).isEqualTo(302)
+    }
+
+    @Test
+    fun `a code that is taken is a 409 for another target and for another client, never an overwrite`() {
+        claim("my-promo")
+
+        assertThat(claim("my-promo", target = "https://example.com/other").status()).isEqualTo(409)
+        assertThat(claim("my-promo", by = bob).status()).isEqualTo(409)
+        assertThat(repository.saved.single().targetUrl.toString()).isEqualTo("https://example.com/target")
+    }
+
+    @Test
+    fun `repeating a claim after the link was disabled answers the link, disabled, not a new one`() {
+        claim("my-promo")
+        mvc.perform(patch("/api/short-links/my-promo").asAlice().json("""{"disabled":true}""")).andReturn()
+
+        val again = claim("my-promo")
+
+        assertThat(again.status()).isEqualTo(200)
+        assertThat(again.body()).contains(""""disabledAt":"2""")
+        assertThat(mvc.perform(get("/my-promo")).andReturn().status()).isEqualTo(410)
+    }
+
+    @Test
+    fun `a claim needs a valid code in the path and a valid body`() {
+        listOf("""{"targetUrl":""}""", "{}", """{"targetUrl":null}""", """{"targetUrl":"not a url"}""", "not json").forEach { body ->
+            val refused = mvc.perform(put("/api/short-links/my-promo").asAlice().json(body)).andReturn()
+
+            assertThat(refused.status()).describedAs(body).isEqualTo(400)
         }
+        assertThat(claim("no spaces").status()).isEqualTo(400)
+        assertThat(claim("ab").status()).isEqualTo(400)
+        assertThat(repository.saved).isEmpty()
+    }
+
+    @Test
+    fun `a POST does not take a code, and says so rather than answering with another one`() {
+        val refused = mvc.perform(
+            post("/api/short-links").asAlice().json("""{"targetUrl":"https://example.com/x","customCode":"my-promo"}"""),
+        ).andReturn()
+
+        assertThat(refused.status()).isEqualTo(400)
+        assertThat(repository.saved).isEmpty()
+    }
+
+    @Test
+    fun `the codes the application keeps for itself cannot be claimed`() {
+        listOf("api", "actuator", "error", "app").forEach { reserved ->
+            assertThat(claim(reserved).status()).describedAs(reserved).isEqualTo(409)
+        }
+        assertThat(repository.saved).isEmpty()
     }
 }

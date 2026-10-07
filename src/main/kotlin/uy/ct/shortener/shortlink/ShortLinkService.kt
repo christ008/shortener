@@ -23,13 +23,14 @@ interface ShortLinkService {
     fun shorten(targetUrl: String, createdBy: Actor.Client): ShortLink
 
     /**
-     * Creates a link for [targetUrl] under the chosen [shortCode], owned by [createdBy].
+     * Creates a link for [targetUrl] under the chosen [shortCode], owned by [createdBy], idempotently: when [createdBy] already
+     * has this link, under this code and for this target, nothing is created and the answer is [ClaimResult.Existing].
      *
      * @throws InvalidTargetUrlException if [targetUrl] isn't an absolute http(s) URL
-     * @throws ShortCodeUnavailableException if [shortCode] is taken or reserved
+     * @throws ShortCodeUnavailableException if [shortCode] is reserved, or taken by anyone else or for another target
      * @throws StorageUnavailableException if storage cannot be reached right now
      */
-    fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ShortLink
+    fun claim(shortCode: ShortCode, targetUrl: String, createdBy: Actor.Client): ClaimResult
 
     /**
      * Returns the link a redirect follows. Public: no caller is involved.

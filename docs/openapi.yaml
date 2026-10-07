@@ -54,9 +54,12 @@ paths:
       operationId: createShortLink
       summary: Create a short link
       description: |
-        Without `customCode` the service picks a random 7-character code. With one, the client also needs the `claim`
-        scope. Codes `api`, `actuator`, `error` and `app` are reserved. An instance may accept only some target hosts
+        The service picks a random 7-character code. To choose the code, `PUT /api/short-links/{shortCode}`. A `customCode`
+        here is a `400`, not ignored. An instance may accept only some target hosts
         (`shortener.shortlink.target-urls.allowed-hosts`), and answers `400` for any other.
+
+        Posting twice creates two links, so a client that lost the answer to a `POST` should look before it repeats it:
+        see "Lost answers" in docs/OPERATING.md.
       security:
         - dpop: ['shortlinks:create']
       parameters:
@@ -72,11 +75,6 @@ paths:
                 summary: A generated code
                 value:
                   targetUrl: https://example.com/some/long/path
-              custom:
-                summary: A custom code (needs the claim scope)
-                value:
-                  targetUrl: https://example.com/spring-sale
-                  customCode: spring-sale
       responses:
         '201':
           description: Created. `Location` is the new link; the URL to share is `shortUrl` in the body.
@@ -97,12 +95,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '409':
-          description: The custom code is taken or reserved.
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
@@ -192,6 +184,70 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    put:
+      tags: [Links]
+      operationId: claimShortLink
+      summary: Create a short link under a code of your choice
+      description: |
+        The client chooses the code, so the request names the link and can be repeated. Needs the `claim` scope as well as
+        `create`. Codes `api`, `actuator`, `error` and `app` are reserved. An instance may accept only some target hosts
+        (`shortener.shortlink.target-urls.allowed-hosts`), and answers `400` for any other.
+
+        - The code is free: the link is created, `201`.
+        - The caller already has this link, under this code and for this target: nothing is created, `200` with the link as it
+          is now, which may be disabled. This is what a client that lost the answer gets by sending the request again.
+        - Anything else on a code that exists is a `409`: another client's link, or the caller's own for another target. A
+          link is never overwritten, because its target never changes. A `GET` of the code tells the two apart: the
+          caller's own link is read, another client's is a `404`.
+      security:
+        - dpop: ['shortlinks:create', 'shortlinks:claim']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimShortLinkRequest'
+            examples:
+              custom:
+                summary: A custom code
+                value:
+                  targetUrl: https://example.com/spring-sale
+      responses:
+        '200':
+          description: The caller already had this link. Nothing was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShortLink'
+        '201':
+          description: Created. `Location` is the new link.
+          headers:
+            Location:
+              description: The link just created, `/api/short-links/{shortCode}`.
+              schema:
+                type: string
+                format: uri
+                examples: ['http://localhost:8080/api/short-links/spring-sale']
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShortLink'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: The code is reserved, or taken by another client, or by this one for another target.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
@@ -288,7 +344,7 @@ components:
           tokenUrl: http://localhost:8180/realms/shortener/protocol/openid-connect/token
           scopes:
             'shortlinks:create': Create links with a generated code.
-            'shortlinks:claim': Also choose the code (needs `shortlinks:create` too).
+            'shortlinks:claim': Also choose the code, with `PUT` (needs `shortlinks:create` too).
             'shortlinks:read': Read and list the client's own links.
             'shortlinks:delete': Disable the client's own links.
             'shortlinks:admin': Read and disable any client's links.
@@ -325,9 +381,17 @@ components:
           description: An absolute http or https URL.
           examples: ['https://example.com/some/long/path']
         customCode:
+          not: {}
+          description: Must be absent. A code is chosen with `PUT /api/short-links/{shortCode}`.
+    ClaimShortLinkRequest:
+      type: object
+      required: [targetUrl]
+      properties:
+        targetUrl:
           type: string
-          pattern: '^[A-Za-z0-9_-]{3,32}$'
-          description: Ask for this code instead of a generated one.
+          format: uri
+          description: An absolute http or https URL.
+          examples: ['https://example.com/spring-sale']
     UpdateShortLinkRequest:
       type: object
       description: A JSON merge patch (RFC 7396). `disabled` is the only field, and it is required for now.
@@ -407,7 +471,7 @@ components:
   responses:
     BadRequest:
       description: |
-        A body that is not valid JSON or lacks a field, a short code that is not 3 to 32 letters, digits, `-` or `_`, a sort
+        A body that is not valid JSON, lacks a field or has a `customCode` on a `POST`, a short code that is not 3 to 32 letters, digits, `-` or `_`, a sort
         property that is not allowed, a `PATCH` that is not `{"disabled": true}`, or a target whose host this instance does
         not accept.
       content:

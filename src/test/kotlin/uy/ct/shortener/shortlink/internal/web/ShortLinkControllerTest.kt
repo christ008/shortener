@@ -44,6 +44,11 @@ class ShortLinkControllerTest {
         return restTemplate.exchange("/api/short-links", HttpMethod.POST, HttpEntity(body, headers), type)
     }
 
+    private fun <T : Any> claim(code: String, target: String, type: Class<T>): ResponseEntity<T> {
+        val headers = HttpHeaders().apply { setBearerAuth(TestIdp.token()) }
+        return restTemplate.exchange("/api/short-links/$code", HttpMethod.PUT, HttpEntity(ClaimShortLinkRequest(target), headers), type)
+    }
+
     @Test
     fun `creates a short link and redirects through it`() {
         val created = create(CreateShortLinkRequest("https://example.com/some/long/path"), ShortLinkResponse::class.java)
@@ -110,7 +115,7 @@ class ShortLinkControllerTest {
 
     @Test
     fun `creates a short link under a custom code and redirects through it`() {
-        val created = create(CreateShortLinkRequest("https://example.com/promo", "promo-2026"), ShortLinkResponse::class.java)
+        val created = claim("promo-2026", "https://example.com/promo", ShortLinkResponse::class.java)
 
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(created.body!!.shortCode).isEqualTo("promo-2026")
@@ -124,26 +129,29 @@ class ShortLinkControllerTest {
     }
 
     @Test
-    fun `409s when the custom code is already taken`() {
-        val request = CreateShortLinkRequest("https://example.com/first", "taken-code")
-        create(request, ShortLinkResponse::class.java)
+    fun `409s when the custom code is already taken for another target, and 200s when the claim is repeated`() {
+        val first = claim("taken-code", "https://example.com/first", ShortLinkResponse::class.java)
 
-        val response = create(request, ProblemDetail::class.java)
+        val repeated = claim("taken-code", "https://example.com/first", ShortLinkResponse::class.java)
+        val other = claim("taken-code", "https://example.com/second", ProblemDetail::class.java)
 
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
-        assertThat(response.body?.detail).contains("taken-code")
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(repeated.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(repeated.body).isEqualTo(first.body)
+        assertThat(other.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(other.body?.detail).contains("taken-code")
     }
 
     @Test
     fun `409s when the custom code is reserved`() {
-        val response = create(CreateShortLinkRequest("https://example.com", "actuator"), ProblemDetail::class.java)
+        val response = claim("actuator", "https://example.com", ProblemDetail::class.java)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
     }
 
     @Test
     fun `rejects a malformed custom code with a 400`() {
-        val response = create(CreateShortLinkRequest("https://example.com", "no spaces!"), ProblemDetail::class.java)
+        val response = claim("bad.code", "https://example.com", ProblemDetail::class.java)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }

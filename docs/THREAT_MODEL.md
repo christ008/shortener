@@ -231,7 +231,7 @@ Most rows map to the table above.
 |---|---|---|---|
 | API1 | Broken Object Level Authorization | Covered | the permission evaluator and `ManageableLinks`, tested for two clients and two people on one client |
 | API2 | Broken Authentication | Covered | see A07 |
-| API3 | Broken Object Property Level Authorization | Covered | the response has a fixed shape. A client sets only `targetUrl` and `customCode`. `createdBy` comes from the token |
+| API3 | Broken Object Property Level Authorization | Covered | the response has a fixed shape. A client sets only `targetUrl`, and the code in the path of a `PUT`. `createdBy` comes from the token |
 | API4 | Unrestricted Resource Consumption | Partial | limits, bounded pages (200), body 16 KiB. No quota ([F-04](#findings)), deep pages ([F-12](#findings)) |
 | API5 | Broken Function Level Authorization | Covered | each operation names its scope, `claim` and `admin` are separate |
 | API6 | Unrestricted Access to Sensitive Business Flows | Partial | creating links is the sensitive flow, and the controls are the limits and the allowlist ([ADR 0023](adr/0023-production-must-decide-its-targets.md)) |

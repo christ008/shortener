@@ -149,13 +149,37 @@ does `DpopCalls` in `tools/src/main/kotlin`, which `Smoke` uses.
 
 | To | Request |
 |---|---|
-| choose the code | `POST /api/short-links` with `{"targetUrl": "...", "customCode": "my-promo"}` |
+| make a link | `POST /api/short-links` with `{"targetUrl": "..."}`, which picks the code |
+| choose the code | `PUT /api/short-links/my-promo` with `{"targetUrl": "..."}`, which needs the `claim` scope |
 | list your links | `GET /api/short-links?page=0&size=20&sort=createdAt,desc` |
 | read one | `GET /api/short-links/<code>` |
 | disable one | `PATCH /api/short-links/<code>` with `{"disabled": true}` |
 | list every client's | `GET /api/short-links` as `admin-client`, or `?createdBy=<client>` |
 
 Contract: [openapi.yaml](openapi.yaml).
+
+### Lost answers
+
+A timeout or a reset leaves a client not knowing whether the service served the request. What to do depends on the request:
+
+| You sent | Send it again? | If the answer is still missing or is a `409` |
+|---|---|---|
+| `GET` | yes | |
+| `PATCH` with `{"disabled": true}` | yes, it is idempotent: the answer is the link as it was first disabled | |
+| `PUT /api/short-links/<code>` | yes. `201` if the first one never arrived, `200` with the link if it did | `409` is another client's code, a reserved one, or yours for another target. `GET /api/short-links/<code>`, which needs `read`, tells which: `200` is yours (compare `targetUrl`), `404` is not |
+| `POST /api/short-links` | **not blindly**: every `POST` makes another link, with another code | look first, see below |
+
+For a `POST` whose answer was lost:
+
+1. `GET /api/short-links?size=20&sort=createdAt,desc` lists your links, newest first. A link with your `targetUrl` made after
+   you sent the request is the one you lost.
+2. If it is there, use it. If it is not, send the `POST` again.
+3. This cannot tell your links apart when you make several to the same target, and a page is only as far back as you look.
+4. If duplicates matter and the client has the `claim` scope, make the code yourself (a random one of 12 or more letters and
+   digits) and `PUT` it. Then sending it again is always safe, and none of this is needed.
+
+The service keeps no record of requests, so there is nothing else to ask it. [ADR 0034](adr/0034-claim-a-chosen-code-with-put.md)
+says why.
 
 ## Test it
 
@@ -218,7 +242,7 @@ minutes, and answers `503` with `Retry-After` for the rest.
 | `429` | rate limit: 300 a minute per address, 60 per client | wait `Retry-After`; limits are per instance. Everyone behind one NAT shares the address limit |
 | `503` with `Retry-After` | no database connection, a statement over 5 s, or a lock over 2 s | check Postgres, `perf/pg-diagnostics.sql` |
 | `400` "not accepted by this service" | target host not on the allowlist | add the host |
-| `409` creating a code | code taken or reserved (`api`, `actuator`, `error`, `app`) | choose another |
+| `409` claiming a code | code reserved (`api`, `actuator`, `error`, `app`), taken by another client, or yours for another target | choose another; see [lost answers](#lost-answers) to tell yours from theirs |
 | app exits at start with `permission denied` | schema behind, and the application role cannot change it | run the migration job first |
 | native build exits with 137 | out of memory | free about 7 GB |
 | `docker ps` shows nothing you started | Docker Desktop switched the CLI to its own daemon | `DOCKER_CONTEXT=default`; for Gradle `DOCKER_HOST=unix:///var/run/docker.sock` |

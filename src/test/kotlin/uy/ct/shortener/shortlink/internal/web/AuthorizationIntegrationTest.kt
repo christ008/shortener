@@ -48,10 +48,11 @@ class AuthorizationIntegrationTest {
     private fun disable(code: String, client: String?, scopes: String = manage) =
         call(HttpMethod.PATCH, "/api/short-links/$code", client, scopes, """{"disabled":true}""")
 
-    private fun create(client: String, scopes: String = manage, customCode: String? = null): ResponseEntity<String> {
-        val custom = customCode?.let { ""","customCode":"$it"""" } ?: ""
-        return call(HttpMethod.POST, "/api/short-links", client, scopes, """{"targetUrl":"https://example.com/${UUID.randomUUID()}"$custom}""")
-    }
+    private fun create(client: String, scopes: String = manage): ResponseEntity<String> =
+        call(HttpMethod.POST, "/api/short-links", client, scopes, """{"targetUrl":"https://example.com/${UUID.randomUUID()}"}""")
+
+    private fun claim(code: String, client: String?, scopes: String = "$manage shortlinks:claim", target: String = "https://example.com/claimed") =
+        call(HttpMethod.PUT, "/api/short-links/$code", client, scopes, """{"targetUrl":"$target"}""")
 
     private fun codeOf(response: ResponseEntity<String>) = Regex(""""shortCode":"([^"]+)"""").find(response.body!!)!!.groupValues[1]
 
@@ -109,19 +110,57 @@ class AuthorizationIntegrationTest {
         val alice = client()
         val code = "claim-${UUID.randomUUID().toString().take(8)}"
 
-        val without = create(alice, scopes = "shortlinks:create", customCode = code)
-        val with = create(alice, scopes = "shortlinks:create shortlinks:claim", customCode = code)
+        val without = claim(code, alice, scopes = "shortlinks:create")
+        val withoutCreate = claim(code, alice, scopes = "shortlinks:claim")
+        val with = claim(code, alice, scopes = "shortlinks:create shortlinks:claim")
 
-        assertThat(without.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat(without.headers.getFirst(HttpHeaders.WWW_AUTHENTICATE)).contains("""error="insufficient_scope"""")
+        listOf(without, withoutCreate).forEach {
+            assertThat(it.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
+            assertThat(it.headers.getFirst(HttpHeaders.WWW_AUTHENTICATE)).contains("""error="insufficient_scope"""")
+        }
         assertThat(with.statusCode).isEqualTo(HttpStatus.CREATED)
+    }
+
+    @Test
+    fun `a POST does not take a code, so the claim scope is decided by the route and not by the body`() {
+        val alice = client()
+
+        val refused = call(
+            HttpMethod.POST, "/api/short-links", alice, "shortlinks:create shortlinks:claim",
+            """{"targetUrl":"https://example.com/x","customCode":"not-here-${UUID.randomUUID().toString().take(8)}"}""",
+        )
+
+        assertThat(refused.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(refused.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
+    }
+
+    @Test
+    fun `claiming a code again is harmless for its owner, and a 409 for anyone else, who can tell it from a link that is not theirs`() {
+        val alice = client()
+        val bob = client()
+        val code = "mine-${UUID.randomUUID().toString().take(8)}"
+
+        val first = claim(code, alice)
+        val again = claim(code, alice)
+        val other = claim(code, alice, target = "https://example.com/another")
+        val stolen = claim(code, bob)
+
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(first.headers.location.toString()).endsWith("/api/short-links/$code")
+        assertThat(again.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(again.body).isEqualTo(first.body)
+        assertThat(other.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(stolen.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(call(HttpMethod.GET, "/api/short-links/$code", alice).statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(call(HttpMethod.GET, "/api/short-links/$code", bob).statusCode).describedAs("what a GET tells the loser").isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(codesIn(call(HttpMethod.GET, "/api/short-links", alice))).containsOnlyOnce(code)
     }
 
     @Test
     fun `disabling a link answers it disabled, makes it answer 410, keeps its code taken and is idempotent`() {
         val alice = client()
         val code = "gone-${UUID.randomUUID().toString().take(8)}"
-        create(alice, scopes = "$manage shortlinks:claim", customCode = code)
+        claim(code, alice)
 
         val first = disable(code, alice)
         val second = disable(code, alice)
@@ -135,7 +174,10 @@ class AuthorizationIntegrationTest {
         assertThat(redirect.statusCode).isEqualTo(HttpStatus.GONE)
         assertThat(redirect.headers.contentType).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON)
         assertThat(call(HttpMethod.GET, "/api/short-links/$code", alice).body).contains(""""disabledAt":"2""")
-        assertThat(create(alice, scopes = "$manage shortlinks:claim", customCode = code).statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(claim(code, alice, target = "https://example.com/another").statusCode).isEqualTo(HttpStatus.CONFLICT)
+        val replay = claim(code, alice)
+        assertThat(replay.statusCode).describedAs("the same claim again finds the link, disabled").isEqualTo(HttpStatus.OK)
+        assertThat(replay.body).contains(""""disabledAt":"2""")
     }
 
     @Test

@@ -11,13 +11,16 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.util.UriComponentsBuilder
 import uy.ct.shortener.shortlink.Actor
+import uy.ct.shortener.shortlink.ClaimResult
 import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.ShortCode
+import uy.ct.shortener.shortlink.ShortLink
 import uy.ct.shortener.shortlink.ShortLinkService
 import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
 import java.net.URI
@@ -25,8 +28,10 @@ import java.net.URI
 /**
  * The HTTP API of the short link service. Failures are problem details.
  *
- * - `POST /api/short-links` creates a link for the authenticated client under a generated or a custom code: `201` with the
- *   link and its `Location`, `/api/short-links/{shortCode}`. The link's `shortUrl` is the URL to share.
+ * - `POST /api/short-links` creates a link for the authenticated client under a generated code: `201` with the link and its
+ *   `Location`, `/api/short-links/{shortCode}`. The link's `shortUrl` is the URL to share.
+ * - `PUT /api/short-links/{shortCode}` creates it under the code the client chose: `201`. Repeating it, with the same target,
+ *   is harmless and answers `200` with the link. Any other claim on a code that exists is `409`.
  * - `GET /api/short-links` lists the client's own links a page at a time (`page`, `size`, `sort`). An administrator may list
  *   any client's.
  * - `GET /api/short-links/{shortCode}` reads one, and `PATCH` with `{"disabled": true}` disables it: `200` with the link.
@@ -53,10 +58,21 @@ class ShortLinkController(
         @Valid @RequestBody request: CreateShortLinkRequest,
         authentication: Authentication,
         uriBuilder: UriComponentsBuilder,
-    ): ResponseEntity<ShortLinkResponse> {
-        val shortLink = request.customCode
-            ?.let { service.claim(ShortCode(it), request.targetUrl, authentication.asClient()) }
-            ?: service.shorten(request.targetUrl, authentication.asClient())
+    ): ResponseEntity<ShortLinkResponse> = created(service.shorten(request.targetUrl, authentication.asClient()), uriBuilder)
+
+    @PutMapping("/api/short-links/{shortCode}")
+    fun claim(
+        @PathVariable shortCode: ShortCode,
+        @Valid @RequestBody request: ClaimShortLinkRequest,
+        authentication: Authentication,
+        uriBuilder: UriComponentsBuilder,
+    ): ResponseEntity<ShortLinkResponse> =
+        when (val claimed = service.claim(shortCode, request.targetUrl, authentication.asClient())) {
+            is ClaimResult.Created -> created(claimed.link, uriBuilder)
+            is ClaimResult.Existing -> ResponseEntity.ok(ShortLinkResponse.from(claimed.link, uriBuilder.shortUrl(shortCode)))
+        }
+
+    private fun created(shortLink: ShortLink, uriBuilder: UriComponentsBuilder): ResponseEntity<ShortLinkResponse> {
         val location = uriBuilder.cloneBuilder().replacePath("/api/short-links/{shortCode}").build(shortLink.shortCode.value)
         return ResponseEntity.created(location).body(ShortLinkResponse.from(shortLink, uriBuilder.shortUrl(shortLink.shortCode)))
     }
