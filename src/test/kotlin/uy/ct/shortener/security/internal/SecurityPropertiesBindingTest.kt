@@ -81,4 +81,17 @@ class SecurityPropertiesBindingTest {
         assertThat(relaxed.dpop.required).isFalse
         assertThat(relaxed.accessTokenType).isEmpty()
     }
+
+    @Test
+    fun `asks for a DPoP nonce every five minutes by default, and binds the secret from the environment`() {
+        val defaults = bindSecurity()
+        val set = bindSecurity("SHORTENER_SECURITY_DPOP_NONCE_SECRET" to "s3cret", "SHORTENER_SECURITY_DPOP_NONCE_INTERVAL" to "2m", "SHORTENER_SECURITY_DPOP_NONCE_ENABLED" to "false")
+
+        assertThat(defaults.dpop.nonce.enabled).isTrue
+        assertThat(defaults.dpop.nonce.secret).isEmpty()
+        assertThat(defaults.dpop.nonce.interval.toMinutes()).isEqualTo(5)
+        assertThat(set.dpop.nonce.secret).isEqualTo("s3cret")
+        assertThat(set.dpop.nonce.interval.toMinutes()).isEqualTo(2)
+        assertThat(set.dpop.nonce.enabled).isFalse
+    }
 }

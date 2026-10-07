@@ -135,7 +135,17 @@ class ComposeStackTest {
     fun `the application gets no Flyway settings of its own`() {
         assertThat(environmentOf(services.getValue("shortener")).keys).noneMatch { it.startsWith("SPRING_FLYWAY_") }
         val targets = services.getValue("shortener").list("secrets").filterIsInstance<Map<*, *>>().map { it["target"] }
-        assertThat(targets).containsExactly("spring.datasource.password")
+        assertThat(targets).containsExactlyInAnyOrder("spring.datasource.password", "shortener.security.dpop.nonce.secret")
+    }
+
+    @Test
+    fun `the DPoP nonce secret is the application's alone, and the migration job, which serves no requests, turns nonces off`() {
+        services.filterKeys { it != "shortener" }.forEach { (name, service) ->
+            assertThat(secretsOf(service)).describedAs("secrets of $name").doesNotContain("dpop_nonce_secret")
+        }
+        assertThat(secretsOf(services.getValue("shortener"))).contains("dpop_nonce_secret")
+        assertThat(environmentOf(services.getValue("migrate"))).containsEntry("SHORTENER_SECURITY_DPOP_NONCE_ENABLED", "false")
+        assertThat(environmentOf(services.getValue("shortener"))).doesNotContainKey("SHORTENER_SECURITY_DPOP_NONCE_ENABLED")
     }
 
     @Test

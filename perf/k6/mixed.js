@@ -44,8 +44,27 @@ async function sign(privateKey, header, claims) {
   return `${input}.${text(signature)}`;
 }
 
+let nonce;
+
+const nonceOf = (res) => res.headers['Dpop-Nonce'];
+const asksForNonce = (res) => (res.status === 401 && String(res.headers['Www-Authenticate'] || '').includes('error="use_dpop_nonce"'))
+  || (res.status === 400 && String(res.body || '').includes('use_dpop_nonce'));
+
+// Sends a request that `send` makes with the proof it is given, keeps the server's nonce, and repeats it once with a new
+// proof when the server asks for one.
+async function signed(send, dpop, method, url, accessToken) {
+  let res;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    res = await send(await proof(dpop, method, url, accessToken));
+    if (nonceOf(res)) nonce = nonceOf(res);
+    if (!asksForNonce(res) || !nonceOf(res)) break;
+  }
+  return res;
+}
+
 async function proof(dpop, method, url, accessToken) {
   const claims = { jti: jti(), htm: method, htu: url, iat: now() };
+  if (nonce) claims.nonce = nonce;
   if (accessToken) {
     claims.ath = text(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(accessToken)));
   }
@@ -65,26 +84,25 @@ export async function setup() {
   const dpop = await load(dpopJwk);
 
   const clientKey = await crypto.subtle.importKey('jwk', CLIENT_KEY, ES256, false, ['sign']);
-  const assertion = await sign(clientKey, { alg: 'ES256', kid: CLIENT_KEY.kid }, {
-    iss: CLIENT_ID, sub: CLIENT_ID, aud: ISSUER, jti: jti(), iat: now(), exp: now() + 60,
-  });
-  const response = http.post(TOKEN_URL, {
+  const response = await signed(async (dpopProof) => http.post(TOKEN_URL, {
     grant_type: 'client_credentials',
     client_id: CLIENT_ID,
     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-    client_assertion: assertion,
-  }, { headers: { DPoP: await proof(dpop, 'POST', TOKEN_URL) } });
+    client_assertion: await sign(clientKey, { alg: 'ES256', kid: CLIENT_KEY.kid }, {
+      iss: CLIENT_ID, sub: CLIENT_ID, aud: ISSUER, jti: jti(), iat: now(), exp: now() + 60,
+    }),
+  }, { headers: { DPoP: dpopProof } }), dpop, 'POST', TOKEN_URL);
   const token = response.json('access_token');
 
   const codes = [];
   for (let i = 0; i < SEEDS; i++) {
     const url = `${BASE}/api/short-links`;
-    const created = http.post(url, JSON.stringify({ targetUrl: `https://example.com/seed/${i}` }), {
-      headers: { Authorization: `DPoP ${token}`, DPoP: await proof(dpop, 'POST', url, token), 'Content-Type': 'application/json' },
-    });
+    const created = await signed(async (dpopProof) => http.post(url, JSON.stringify({ targetUrl: `https://example.com/seed/${i}` }), {
+      headers: { Authorization: `DPoP ${token}`, DPoP: dpopProof, 'Content-Type': 'application/json' },
+    }), dpop, 'POST', url, token);
     if (created.status === 201) codes.push(created.json('shortCode'));
   }
-  return { token, dpopJwk, codes };
+  return { token, dpopJwk, codes, nonce };
 }
 
 let dpop;
@@ -92,11 +110,12 @@ let dpop;
 export default async function (data) {
   if (Math.random() < CREATE_SHARE) {
     dpop = dpop || await load(data.dpopJwk);
+    nonce = nonce || data.nonce;
     const url = `${BASE}/api/short-links`;
-    const res = http.post(url, JSON.stringify({ targetUrl: `https://example.com/load/${__VU}-${__ITER}` }), {
-      headers: { Authorization: `DPoP ${data.token}`, DPoP: await proof(dpop, 'POST', url, data.token), 'Content-Type': 'application/json' },
+    const res = await signed(async (dpopProof) => http.post(url, JSON.stringify({ targetUrl: `https://example.com/load/${__VU}-${__ITER}` }), {
+      headers: { Authorization: `DPoP ${data.token}`, DPoP: dpopProof, 'Content-Type': 'application/json' },
       tags: { name: 'create' },
-    });
+    }), dpop, 'POST', url, data.token);
     createLatency.add(res.timings.duration);
     check(res, { created: (r) => r.status === 201 });
   } else {
