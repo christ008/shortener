@@ -30,6 +30,9 @@ PG_CONTAINER=${PG_CONTAINER:-$(docker compose -f "$ROOT/compose.yaml" ps -q post
 [ -n "$PG_CONTAINER" ] || { echo "no Postgres container: start the compose services (docker compose --profile observability up -d postgres keycloak prometheus), or set PGPORT and PG_CONTAINER" >&2; exit 1; }
 PROM=http://localhost:9090
 say() { printf '\n\033[1m[%s] %s\033[0m\n' "$(date +%T)" "$*"; }
+case $(docker info --format '{{.OperatingSystem}}' 2>/dev/null) in
+  *"Docker Desktop"*) echo "the Docker daemon is Docker Desktop's, whose host network and cores are a virtual machine's, not this machine's: use the host daemon (DOCKER_CONTEXT=default)" >&2; exit 1;;
+esac
 command -v jq >/dev/null 2>&1 || { echo "perf/bench.sh needs jq: it removes the DPoP key and the token from the k6 summaries" >&2; exit 1; }
 
 APP_CPUSET=${APP_CPUSET:-0-1}
@@ -125,6 +128,7 @@ J
 
 k6() { # name rate duration share
   say "load $1: $2 requests/s for $3, a create share of $4"
+  rm -f "$OUT/$1.k6.json"
   docker run --rm -t --network host --cpuset-cpus 6-9 -v "$HERE/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
     -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS="$SEEDS" -e MAX_VUS=3000 \
     ${DATASET_FILE:+-v "$DATASET_FILE:/dataset.txt:ro" -e DATASET_FILE=/dataset.txt} -e DATASET_HOT="${DATASET_HOT:-0}" -e DATASET_HOT_SHARE="${DATASET_HOT_SHARE:-0.8}" \
