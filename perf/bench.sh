@@ -4,13 +4,22 @@
 # run, the container's CPU and memory, and its log. A k6 summary never keeps the DPoP key or the token of the run (perf/scrub-k6-summary.sh).
 #   [RATES="250 500 1000"] [DURATION=60s] [CREATES_PER_SECOND=15] [REPEAT=3] [COOLDOWN=15] [DOCKER_ARGS="..."] perf/bench.sh VARIANT IMAGE OUT_DIR [COMMAND...]
 #   [RUNS="name rate duration create_share|..."] ...                         the runs written out, instead of RATES
-# - RATES: one run for each rate in requests a second, of DURATION, with CREATES_PER_SECOND creates (the rest redirects). Without it or RUNS: 1,500,
-#   5,000 and 10,000.
+# - RATES: one run for each rate in requests a second, of DURATION, with CREATES_PER_SECOND creates (the rest redirects), or CREATE_SHARE of
+#   them if given: CREATE_SHARE=1 is creates only. Without it or RUNS: 1,500, 5,000 and 10,000.
 # - REPEAT: every run N times in a row, as NAME-1 to NAME-N, COOLDOWN seconds apart; `tools/run Report summary` gives the median and the range.
-# - APP_CPUSET (0-1), APP_CPUS (2) and APP_MEMORY (512m) are the application's limits, for runs that vary them.
+# - APP_CPUSET (0,1), APP_CPUS (2) and APP_MEMORY (512m) are the application's limits, for runs that vary them.
+# - APP_CPUSET=none leaves the application on any CPU with only the quota of APP_CPUS, as a Swarm limit does. PG_CPUS and PG_MEMORY (for example 2 and
+#   1g) limit the Postgres container for the run, and the limits it had are put back. RATE_LIMITS=on keeps the application's own request limits,
+#   which the run lifts by default. (Docker cannot remove a limit once set, so afterwards Postgres has all the CPUs and 64g, which on this machine is none.)
+# - WARMUP_RATE (2000) and WARMUP_DURATION (30s) are the warm-up before the runs. EDGE_CONF is the nginx configuration of the edge.
+# - EDGE=1 puts the production edge in front of the application: deploy/edge/nginx.conf as it is, in a container with 1 CPU (EDGE_CPUSET, default 2)
+#   and 128 MiB, TLS with a certificate made for the run, and k6 over HTTPS (HTTP/2) to it. The application then runs on a Docker network and
+#   Postgres takes CPUs 3,9, so that the edge has a physical core of its own. Docker stats of the edge go to docker-stats-edge.txt, and the count of its answers by status to edge-status.txt.
 # DATASET_FILE=FILE [DATASET_HOT=H] [DATASET_HOT_SHARE=0.8] reads the codes of the file that perf/load-dataset.sh loaded, not seeds made through
 # the API: it keeps the table instead of truncating it. Every read goes to a code at random, or the share of them to the first H.
-# CPUs: the app 0-1 with the production memory limit, Postgres 2-5, k6 6-9. Needs Postgres, Keycloak and Prometheus (profile
+# CPUs: the app 0,1 with the production memory limit, Postgres 2,3,8,9, k6 4,5,10,11: each on physical cores of its own, which on a CPU whose
+# thread N shares a core with thread N+6 (6 cores, 12 threads) leaves 6 and 7 idle. APP_CPUSET, PG_CPUSET and K6_CPUSET change them, and the run
+# says so when two of them share a core. Needs Postgres, Keycloak and Prometheus (profile
 # observability) running: the compose services, or containers of your own with PGPORT and PG_CONTAINER set. Needs GNU date (`%N`) and jq.
 set -eu
 
@@ -35,7 +44,14 @@ case $(docker info --format '{{.OperatingSystem}}' 2>/dev/null) in
 esac
 command -v jq >/dev/null 2>&1 || { echo "perf/bench.sh needs jq: it removes the DPoP key and the token from the k6 summaries" >&2; exit 1; }
 
-APP_CPUSET=${APP_CPUSET:-0-1}
+APP_CPUSET=${APP_CPUSET:-0,1}
+EDGE=${EDGE:-0}
+EDGE_CPUSET=${EDGE_CPUSET:-2}
+EDGE_CONF=${EDGE_CONF:-$ROOT/deploy/edge/nginx.conf}
+WARMUP_RATE=${WARMUP_RATE:-2000}
+WARMUP_DURATION=${WARMUP_DURATION:-30s}
+if [ "$EDGE" = 1 ]; then PG_CPUSET=${PG_CPUSET:-3,9}; else PG_CPUSET=${PG_CPUSET:-2,3,8,9}; fi
+K6_CPUSET=${K6_CPUSET:-4,5,10,11}
 APP_CPUS=${APP_CPUS:-2}
 APP_MEMORY=${APP_MEMORY:-512m}
 DURATION=${DURATION:-60s}
@@ -50,6 +66,7 @@ if [ -z "${RUNS:-}" ]; then
     for rate in $RATES; do
       case $rate in ''|*[!0-9]*|0) echo "RATES are whole numbers of requests a second, found '$rate'" >&2; exit 2;; esac
       share=$(awk -v creates="$CREATES_PER_SECOND" -v rate="$rate" 'BEGIN { share = creates / rate; if (share > 0.5) share = 0.5; printf "%.6g", share }')
+      [ -z "${CREATE_SHARE:-}" ] || share=$CREATE_SHARE
       RUNS="${RUNS:+$RUNS|}r$rate $rate $DURATION $share"
     done
   else
@@ -66,28 +83,87 @@ done >"$OUT/runs.txt"
 echo '{}' >"$OUT/.preflight.json"
 "$ROOT/tools/run" Report json "$OUT/.preflight.json"
 rm -f "$OUT/.preflight.json"
+cpus_of() { # a cpuset such as 0,1 or 2-5,8 as one CPU a word
+  for part in $(echo "$1" | tr ',' ' '); do
+    case $part in *-*) seq "${part%-*}" "${part#*-}";; *) echo "$part";; esac
+  done
+}
+SHARED=$(for role in APP PG K6 $([ "$EDGE" = 1 ] && echo EDGE); do
+  eval "set=\$${role}_CPUSET"
+  [ "$set" != none ] || continue
+  for cpu in $(cpus_of "$set"); do
+    core=$(cat "/sys/devices/system/cpu/cpu$cpu/topology/core_id" 2>/dev/null) || continue
+    echo "$core $role"
+  done
+done | sort -u | awk '{ roles[$1] = roles[$1] " " $2; n[$1]++ } END { for (c in n) if (n[c] > 1) print "core " c ":" roles[c] }' | sort | tr '\n' ';')
+[ -z "$SHARED" ] || say "WARNING: roles share a physical core ($SHARED): their threads compete, so the figures are lower than the hardware can do. Set APP_CPUSET, PG_CPUSET and K6_CPUSET"
+LOAD=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)
+awk -v average="$LOAD" 'BEGIN { exit !(average > 1.5) }' && say "WARNING: the machine is busy (load average $LOAD): close what you can, a browser or Docker Desktop's VM take CPU from the run" || true
 HIGHEST=$(awk '{ if ($2 > top) top = $2 } END { printf "%d", top }' "$OUT/runs.txt")
 if [ "$HIGHEST" -gt 5000 ]; then
   say "WARNING: $HIGHEST req/s is past what the docs call safe to run: overload can take down the network of a machine whose firewall inspects new connections (docs/INTERNALS.md#running-load-tests-safely)"
 fi
 
 say "== $VARIANT: $IMAGE $*"
-docker update --cpuset-cpus 2-5 "$PG_CONTAINER" >/dev/null
-docker rm -f bench-app >/dev/null 2>&1 || true
+docker update --cpuset-cpus "$PG_CPUSET" "$PG_CONTAINER" >/dev/null
+PG_LIMITED=
+if [ -n "${PG_CPUS:-}${PG_MEMORY:-}" ]; then
+  docker update ${PG_CPUS:+--cpus "$PG_CPUS"} ${PG_MEMORY:+--memory "$PG_MEMORY" --memory-swap "$PG_MEMORY"} "$PG_CONTAINER" >/dev/null
+  PG_LIMITED=1
+  # Lowering the memory limit below the page cache the container holds makes the kernel reclaim the difference, and Postgres stalls
+  # for seconds meanwhile: the first reads of the run answered 504.
+  [ -z "${PG_MEMORY:-}" ] || sleep 30
+fi
+docker rm -f bench-app bench-edge >/dev/null 2>&1 || true
+
+RATE_LIMIT_ARGS="-e SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY=1000000000 -e SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY=1000000000"
+[ "${RATE_LIMITS:-}" != on ] || RATE_LIMIT_ARGS=
+BASE_URL=http://localhost:8080
+K6_TLS=
+APP_CPUSET_ARGUMENT="--cpuset-cpus $APP_CPUSET"
+[ "$APP_CPUSET" != none ] || APP_CPUSET_ARGUMENT=
+if [ "$EDGE" = 1 ]; then
+  docker network rm bench-net >/dev/null 2>&1 || true
+  docker network create bench-net >/dev/null
+  APP_NETWORK="--network bench-net --network-alias shortener --add-host host.docker.internal:host-gateway -p 127.0.0.1:8081:8081"
+  DB_HOST=host.docker.internal
+  EDGE_TLS=$(mktemp -d)
+  chmod 755 "$EDGE_TLS"
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 -subj "/CN=edge" -keyout "$EDGE_TLS/tls_key" -out "$EDGE_TLS/tls_cert" 2>/dev/null
+  chmod 644 "$EDGE_TLS/tls_key" "$EDGE_TLS/tls_cert"
+  K6_TLS=--insecure-skip-tls-verify
+else
+  APP_NETWORK="--network host"
+  DB_HOST=localhost
+fi
 
 t0=$(date +%s%N)
-# DOCKER_ARGS is several words on purpose.
+# DOCKER_ARGS and APP_NETWORK are several words on purpose.
 # shellcheck disable=SC2086
-docker run -d --name bench-app --network host --cpuset-cpus "$APP_CPUSET" --cpus "$APP_CPUS" --memory "$APP_MEMORY" \
-  -e SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:$PGPORT/mydatabase" \
+docker run -d --name bench-app $APP_NETWORK $APP_CPUSET_ARGUMENT --cpus "$APP_CPUS" --memory "$APP_MEMORY" \
+  -e SPRING_DATASOURCE_URL="jdbc:postgresql://$DB_HOST:$PGPORT/mydatabase" \
+  ${EDGE_TLS:+-e SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI=http://host.docker.internal:8180/realms/shortener/protocol/openid-connect/certs} \
   -e SPRING_DATASOURCE_USERNAME=myuser -e "SPRING_DATASOURCE_PASSWORD=$PGPASS" \
-  -e SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY=1000000000 -e SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY=1000000000 \
+  ${RATE_LIMIT_ARGS} \
   ${DOCKER_ARGS:-} "$IMAGE" "$@" >/dev/null
 until curl -sf -m 2 -o /dev/null localhost:8081/actuator/health/readiness; do
   [ -n "$(docker ps -q -f name=bench-app)" ] || { echo "the application container stopped:"; docker logs bench-app 2>&1 | tail -20; exit 1; }
   sleep 0.05
 done
 ready=$((($(date +%s%N) - t0) / 1000000))
+if [ "$EDGE" = 1 ]; then
+  docker run -d --name bench-edge --network bench-net --user 101:101 --read-only --tmpfs /tmp:rw,mode=1777,size=64m \
+    --cpuset-cpus "$EDGE_CPUSET" --cpus 1 --memory 128m --cap-drop ALL --security-opt no-new-privileges:true \
+    -v "$EDGE_CONF:/etc/nginx/nginx.conf:ro" -v "$EDGE_TLS/tls_cert:/run/secrets/tls_cert:ro" -v "$EDGE_TLS/tls_key:/run/secrets/tls_key:ro" \
+    nginxinc/nginx-unprivileged:1.31.5-alpine >/dev/null
+  EDGE_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "bench-net").IPAddress}}' bench-edge)
+  until curl -sf -m 2 -o /dev/null "http://$EDGE_IP:8080/healthz"; do
+    [ -n "$(docker ps -q -f name=bench-edge)" ] || { echo "the edge container stopped:"; docker logs bench-edge 2>&1 | tail -20; exit 1; }
+    sleep 0.2
+  done
+  BASE_URL=https://$EDGE_IP:8443
+  say "edge up at $BASE_URL (nginx, $(docker exec bench-edge nginx -v 2>&1 | cut -d/ -f2), $(docker exec bench-edge sh -c 'ps' 2>/dev/null | grep -c 'nginx: worker') workers)"
+fi
 sleep 5
 idle_mem=$(docker stats --no-stream --format '{{.MemUsage}}' bench-app | cut -d/ -f1 | xargs)
 started=$(docker logs bench-app 2>&1 | grep -oE "Started .* in [0-9.]+ seconds" | head -1)
@@ -120,8 +196,10 @@ cat >"$OUT/metadata.json" <<J
   "version": "$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/build.gradle.kts")",
   "date": "$(date -u +%FT%TZ)",
   "host": {"kernel": "$(uname -r)", "cpus": $(nproc)},
-  "limits": {"app_cpuset": "$APP_CPUSET", "app_cpus": "$APP_CPUS", "app_memory": "$APP_MEMORY", "postgres_cpuset": "2-5", "k6_cpuset": "6-9"},
-  "load": {"executor": "constant-arrival-rate", "warmup": "2000 req/s for 30s", "duration": "$DURATION", "creates_per_second": $CREATES_PER_SECOND, "repeat": $REPEAT, "cooldown_seconds": $COOLDOWN, "max_vus": 3000},
+  "topology": "$([ "$EDGE" = 1 ] && echo edge || echo direct)",
+  "edge": {"enabled": $([ "$EDGE" = 1 ] && echo true || echo false), "cpuset": "$EDGE_CPUSET", "cpus": "1", "memory": "128m", "config": "$(js "$(basename "$(dirname "$EDGE_CONF")")/$(basename "$EDGE_CONF")")", "image": "nginxinc/nginx-unprivileged:1.31.5-alpine", "tls": "self-signed ECDSA P-256, HTTP/2"},
+  "limits": {"app_cpuset": "$APP_CPUSET", "app_cpus": "$APP_CPUS", "app_memory": "$APP_MEMORY", "postgres_cpuset": "$PG_CPUSET", "postgres_cpus": "${PG_CPUS:-unlimited}", "postgres_memory": "${PG_MEMORY:-unlimited}", "rate_limits": "${RATE_LIMITS:-lifted}", "k6_cpuset": "$K6_CPUSET"},
+  "load": {"executor": "constant-arrival-rate", "warmup": "$WARMUP_RATE req/s for $WARMUP_DURATION", "duration": "$DURATION", "creates_per_second": $CREATES_PER_SECOND, "repeat": $REPEAT, "cooldown_seconds": $COOLDOWN, "max_vus": 3000},
   "workload": {"dataset_file": "$(js "$(basename "${DATASET_FILE:-}")")", "dataset_rows": $DATASET_ROWS, "dataset_hot": ${DATASET_HOT:-0}, "dataset_hot_share": ${DATASET_HOT_SHARE:-0.8}, "seeded_links": $SEEDS}
 }
 J
@@ -129,24 +207,40 @@ J
 k6() { # name rate duration share
   say "load $1: $2 requests/s for $3, a create share of $4"
   rm -f "$OUT/$1.k6.json"
-  docker run --rm -t --network host --cpuset-cpus 6-9 -v "$HERE/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
-    -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS="$SEEDS" -e MAX_VUS=3000 \
+  docker run --rm -t --network host --cpuset-cpus "$K6_CPUSET" -v "$HERE/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
+    -e RATE="$2" -e DURATION="$3" -e CREATE_SHARE="$4" -e SEEDS="$SEEDS" -e MAX_VUS=3000 -e BASE_URL="$BASE_URL" \
     ${DATASET_FILE:+-v "$DATASET_FILE:/dataset.txt:ro" -e DATASET_FILE=/dataset.txt} -e DATASET_HOT="${DATASET_HOT:-0}" -e DATASET_HOT_SHARE="${DATASET_HOT_SHARE:-0.8}" \
-    grafana/k6 run --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" --summary-export "/out/$1.k6.json" /scripts/mixed.js </dev/null 2>&1 | tee "$OUT/$1.k6.txt" || true
+    grafana/k6 run $K6_TLS --summary-trend-stats "avg,min,med,max,p(90),p(95),p(99)" --summary-export "/out/$1.k6.json" /scripts/mixed.js </dev/null 2>&1 | tee "$OUT/$1.k6.txt" || true
   "$HERE/scrub-k6-summary.sh" "$OUT/$1.k6.json"
 }
 
 sampler() { while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-app 2>/dev/null)"; done; }
 sampler >"$OUT/docker-stats.txt" &
 SAMPLER=$!
+SAMPLER_EDGE=
+if [ "$EDGE" = 1 ]; then
+  edge_sampler() { while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-edge 2>/dev/null)"; done; }
+  edge_sampler >"$OUT/docker-stats-edge.txt" &
+  SAMPLER_EDGE=$!
+fi
 cleanup() {
-  kill "$SAMPLER" 2>/dev/null || true
+  kill "$SAMPLER" $SAMPLER_EDGE 2>/dev/null || true
+  [ -z "$PG_LIMITED" ] || docker update --cpus "$(nproc)" --memory 64g --memory-swap 64g "$PG_CONTAINER" >/dev/null 2>&1 || true
+  [ -z "$(docker ps -aq -f name=bench-edge)" ] || {
+    docker logs bench-edge >"$OUT/edge.full.log" 2>&1 || true
+    tail -n 200 "$OUT/edge.full.log" >"$OUT/edge.log" || true
+    grep -o '"status":[0-9]*' "$OUT/edge.full.log" | sort | uniq -c >"$OUT/edge-status.txt" || true
+    grep -c 'limiting connections' "$OUT/edge.full.log" >>"$OUT/edge-status.txt" || true
+    rm -f "$OUT/edge.full.log"
+    docker rm -f bench-edge >/dev/null 2>&1 || true
+  }
+  [ "$EDGE" != 1 ] || { docker network rm bench-net >/dev/null 2>&1 || true; rm -rf "$EDGE_TLS"; }
   [ -z "$(docker ps -aq -f name=bench-app)" ] || { docker logs bench-app >"$OUT/app.log" 2>&1 || true; docker rm -f bench-app >/dev/null 2>&1 || true; }
 }
 trap cleanup EXIT
 
-say "warming up for 30s"
-k6 warmup 2000 30s 0.005
+say "warming up for $WARMUP_DURATION"
+k6 warmup "$WARMUP_RATE" "$WARMUP_DURATION" 0.005
 echo "{\"variant\":\"$VARIANT\",\"image\":\"$IMAGE\",\"ready_ms\":$ready,\"idle_mem\":\"$idle_mem\",\"started\":\"$started\",\"runs\":[" >"$OUT/summary.json"
 first=1
 exec 3<"$OUT/runs.txt"
@@ -165,7 +259,7 @@ done
 exec 3<&-
 echo "]}" >>"$OUT/summary.json"
 
-kill $SAMPLER 2>/dev/null || true
+kill $SAMPLER $SAMPLER_EDGE 2>/dev/null || true
 docker logs bench-app >"$OUT/app.log" 2>&1
 docker rm -f bench-app >/dev/null
 say "$VARIANT finished; app log has $(grep -c OutOfMemoryError "$OUT/app.log" || true) OutOfMemoryError lines; results in $OUT"
