@@ -1,24 +1,8 @@
 # Internals
 
 How the service works: a request from end to end, the database, the cache, the native image, the deployment, and the evidence
-(tests and measurements). [OPERATING.md](OPERATING.md) covers running it, [DESIGN.md](DESIGN.md) says why the code has this shape,
-[SECURITY.md](SECURITY.md) describes the controls, and [openapi.yaml](openapi.yaml) is the API contract (a test keeps it in step
-with the code).
-
-> [!NOTE]
-> This documents a *designed* system, and the tests are the evidence that the design is the system. A statement that names a
-> test or a measurement is a result. One that names neither is a decision, and [Limitations](#limitations) says what is
-> not shown.
-
-**A reading path for a reviewer**
-
-1. [Invariants](DESIGN.md#invariants): what must stay true, and what holds each one.
-2. [Request flows](#request-flows): what each endpoint does, and the redirect hot path.
-3. [SECURITY.md](SECURITY.md), then [THREAT_MODEL.md](THREAT_MODEL.md): what is defended, the findings register with its fix
-   dates, and the risks accepted.
-4. [Testing](#testing): the counts, coverage, and what the mutation survivors showed.
-5. [Performance](#performance), starting with its warning about what the figures are.
-6. [DESIGN.md](DESIGN.md#decisions) and the [ADRs](adr/README.md): why this and not the alternative.
+(tests and measurements). A statement that names a test or a measurement is a result; one that names neither is a decision, and
+[Limitations](#limitations) says what is not shown.
 
 - [Request flows](#request-flows)
 - [Persistence](#persistence)
@@ -180,7 +164,7 @@ Limits on the application role apply at login, so no application setting lifts t
 | Setting | Value | Why |
 |---|---|---|
 | `statement_timeout` | 5 s | a request needing more database time is a bug |
-| `lock_timeout` | 2 s | a held lock must not pin one of an instance's ten connections |
+| `lock_timeout` | 2 s | a held lock must not pin one of the pool's connections |
 | `idle_in_transaction_session_timeout` | 10 s | an abandoned transaction must not pin one either |
 
 The migrator has `lock_timeout` 10 s and no statement timeout: a migration may run for minutes, but must fail rather
@@ -226,7 +210,7 @@ Migrations run in a one-shot job, the `migrate` service of the stack:
 Requests run on virtual threads, so blocking JDBC does not hold platform threads. The database is bounded by the Hikari
 pool (10 connections, 3 s wait).
 
-- Throughput is capped by what 10 connections can serve, not by threads. The pool saturates first on the JVM, which is
+- Throughput is capped by what the pool can serve, not by threads. The pool saturates first on the JVM, which is
   why redirects are cached.
 - Each open connection holds about 150 KB of Tomcat buffers on the heap, so concurrency is bounded at the door:
   `server.tomcat.max-connections` (500) plus `accept-count` (100), and the rest are refused. That sheds load instead of
@@ -370,14 +354,13 @@ A native image decides at build time which beans, classes and reflection entries
    - Cause: SpEL reads `authentication.name`, `#createdBy.name` and `#filter.isLimitedTo(...)` by reflection.
    - Fix: `AuthorizationRuntimeHints` registers them.
 
-Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exercises every endpoint with real tokens (26 checks).
+Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exercises every endpoint with real tokens.
 `./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
 
 ## Deployment
 
 One file, `deploy/stack/compose.prod.yaml`, runs as `docker stack deploy` on Swarm and as `docker compose` on one host. The runbook is
-[DEPLOY.md](DEPLOY.md). Kubernetes was dropped: four cluster operators, none of which ever ran on a real cluster, for a
-service this size.
+[DEPLOY.md](DEPLOY.md), and why not Kubernetes is [ADR 0016](adr/0016-compose-and-swarm-instead-of-kubernetes.md).
 
 Services:
 
@@ -411,31 +394,25 @@ flowchart LR
 
 ### Hardening
 
-`ComposeStackTest` holds every service to this.
+Every service runs with a read-only root filesystem, no capabilities, a non-root user, memory and CPU limits, rotated logs and
+secrets as files, and only the edge publishes a port. `ComposeStackTest` holds each service to that. The `data` network has no
+route out, and both networks are encrypted across nodes on Swarm.
 
-| Control | How | Swarm |
-|---|---|---|
-| Read-only root filesystem | `read_only`, writable memory mounted for `/tmp` | applied |
-| No capabilities | `cap_drop: [ALL]`; only Postgres adds the five its entrypoint needs | applied |
-| Not root | `user` 1000, 101 and 65534; Postgres starts as root and hands over | applied |
-| No privilege gain | `no-new-privileges` | **ignored**, see below |
-| Writable memory | long `volumes:` syntax with a size | applied. The short `tmpfs:` key is silently dropped |
-| Resources | memory and CPU limits, rotated logs | applied |
-| Secrets | Docker secrets, read as files by Spring's `configtree:` | applied: in memory at `/run/secrets` |
-| Network | `data` has no route out. `edge` and `data` encrypt across nodes on Swarm (IPsec overlay) | applied, one node only verified |
-| Exposure | only the edge publishes, in host mode so it sees client addresses | applied |
-| Health | Tiny Health Checker on the readiness probe; Swarm replaces unhealthy tasks | applied |
+The exceptions, and what Swarm does differently:
 
-- `no-new-privileges` is not applied by Swarm (verified on Docker 29.8). The application, nginx and Prometheus images
-  have no setuid binaries, so it would add nothing. Postgres has some, and with every capability dropped they have
-  nothing to escalate to.
-- The app and migration job get the database password as the file `spring.datasource.password`, named like the
-  property. Only the migration job gets `spring.flyway.password`.
+- **`no-new-privileges` is ignored** (verified on Docker 29.8). The application, nginx and Prometheus images have no setuid
+  binaries, so it would add nothing. Postgres has some, and with every capability dropped they have nothing to escalate to.
+- **The short `tmpfs:` key is silently dropped.** Writable memory for `/tmp` uses the long `volumes:` syntax with a size.
+- **Postgres starts as root** and hands over, and adds back the five capabilities its entrypoint needs.
+- **The edge publishes in host mode**, so it sees client addresses.
+- **Secrets are mounted in memory at `/run/secrets`** with the file's mode. The application and the migration job read the
+  database password as the file `spring.datasource.password`, named like the property, and only the job gets
+  `spring.flyway.password`.
 
 ### Edge
 
 - Certificates are files (`tls_cert`, `tls_key` secrets). Issuing and renewing them is outside the stack. nginx has an
-  ACME module (HTTP-01 and TLS-ALPN-01, no wildcards), which is the way to automate it. It was not tried.
+  ACME module (HTTP-01 and TLS-ALPN-01, no wildcards), which is the way to automate it.
 - Replaces the forwarded headers rather than appending, because the application builds the DPoP proof's URL from them
   and trusts them only from private addresses. It also sends the port of the client's `Host` header as `X-Forwarded-Port`:
   the stack may publish the edge on a port other than 443, a proof names that port, and without the header Tomcat assumes 443.
@@ -514,10 +491,7 @@ Prometheus 3.15.0, Grafana 13.2.3, Tempo 3.1.0), with a JVM image standing in fo
 - the migration job, which failed on every attempt under the `production` profile after Flyway had run, because it never
   decided the link targets (ADR 0023). It now sets `allow-any`, since it checks no link, and completes.
 
-> [!WARNING]
-> Not verified: the native image since the nonces (it needs about 7 GB of free memory), more than one node (overlay encryption,
-> host-mode edge on several nodes, where Postgres lands), real certificates and ACME, pulling from a registry, and any failure of
-> the database node.
+What was not verified is in [Limitations](#limitations).
 
 ## Releasing
 
@@ -529,10 +503,6 @@ tag the commit `v<version>` and push the tag. The `Release` workflow (`.github/w
 - scans it, and fails on a fixable high or critical vulnerability;
 - pushes that image to `ghcr.io/christ008/shortener`, signs it by digest with the workflow's own identity (no key to
   manage), and attaches an SPDX bill of materials. The job summary prints the digest and the `cosign verify` command.
-
-> [!WARNING]
-> The release workflow has not run yet, and no signature exists for `deploy.sh` to verify.
-
 Notes:
 
 - Only amd64 is built.
@@ -564,12 +534,7 @@ files and scripts of the repository.
 | The tools ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 61 | `tools/src/test` | none |
 | **Total** | **380** | | |
 
-By class, the infrastructure of the repository is `ComposeStackTest` 22, `DpopClientTest` 22, `MigrationConventionsTest` 8,
-`DeployScriptTest` 6, `ToolingTasksTest` 3 and `ReleaseVersionTest` 3. The tools are `RealmsTest` 8, `DevSetupTest` 8,
-`ReportTest` 13, `SmokeTest` 4, `ToolsLauncherTest` 13, `ClientKeysTest` 5 and `DpopCallsTest` 10.
-
-So 255 tests are about the service and 125 are about its tooling and infrastructure. All 380 ran and passed (`./gradlew test`, which
-runs the tools' tests too). Of the 255, 141 need no database and 114 do.
+All 380 ran and passed (`./gradlew test`, which runs the tools' tests too).
 
 ### Coverage (Kover)
 
@@ -606,8 +571,11 @@ runs the tools' tests too). Of the 255, 141 need no database and 114 do.
   would kill would show as surviving, and none did.
 - **First run: 95 mutants, 83 killed (87%), 2 with no coverage, test strength 89%.** A mutant killed by running forever (a
   `TIMED_OUT` change to the retry loop in `shorten`) counts as killed.
-- **What the survivors showed.** Four were not checked by the tests PIT ran. Two were behaviour that no test checked, and two were
-  checked only by tests with a database or tests PIT was not running. Each got a test named for the behaviour, except the last:
+- **What the survivors showed.** Four were not checked by the tests PIT ran: two were behaviour no test checked, two were
+  checked only by tests PIT was not running. Each got a test named for the behaviour, or was added to PIT's run.
+
+  <details>
+  <summary>The four survivors</summary>
 
   1. **`ShortCode.RESERVED` replaced by an empty set.**
      - Why it mattered: the two tests of reserved codes take their codes from that set, so with none they pass without checking
@@ -624,6 +592,8 @@ runs the tools' tests too). Of the 255, 141 need no database and 114 do.
      - Why it mattered: it was covered by tests that PIT was not running.
      - Test: none new. `AuditTrailTest` and `ShortLinkAuthorizationTest`, which need no Docker and read it, were added to the tests
        PIT runs.
+
+  </details>
 
 - **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same again with the whole suite, the DPoP nonces and the port fix). Eight survive, and none is behaviour of the
   project: six are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
@@ -655,10 +625,6 @@ What each control of the documents rests on, so that a claim can be followed to 
 - Limits: `IpRateLimitIntegrationTest` and `ClientRateLimitIntegrationTest`.
 - Outage: `StorageUnavailableIntegrationTest`. The repository test uses hand-written fakes of the pool.
 - Contract: `OpenApiContractTest`.
-
-What no test shows: that the stack behaves under a real multi-node Swarm, a real certificate, or a registry pull, and that the
-release workflow produces a signature `deploy.sh` accepts. See [Limitations](#limitations).
-
 ## Performance
 
 > [!IMPORTANT]
@@ -765,22 +731,33 @@ Tooling: `perf/profile.sh`, `tools/run Report` (`gc` and `hprof`), `perf/tune-co
 
 ## Limitations
 
+The one list of what is not shown and what is known to fall short. Other documents link here rather than repeat it.
+
+### Not run or not verified
+
 - It has not served real traffic. What is said about its behaviour under load comes from a synthetic workload on one machine
   (see [Performance](#performance)).
+- The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
+- The stack has run on one node only: not overlay encryption between nodes, the host-mode edge on several nodes, or where
+  Postgres lands ([Verified](#verified)).
+- Not tried: real certificates and their issuance (ACME), pulling the image from a registry, any failure of the database node,
+  and the native image since the DPoP nonces (it needs about 7 GB of free memory to build).
+- Reads of links the cache has not seen were measured only up to 2,000 req/s over 10M links, on one machine ([Results](#results)). A miss
+  is a primary-key read with a 5 s limit, and concurrent misses for one code share one load. Where misses saturate Postgres is unknown.
+
+### Known limits
+
+- A link disabled on one instance can redirect on the others for up to the cache TTL.
+- Rate limits and the DPoP replay cache are per instance.
+- Beyond capacity (6,000 req/s for the native image of the stack on two cores, in the stack's scenario) the service sheds load, but creates still
+  queue for seconds. nginx caps connections per address but not in total, which Tomcat does at 500.
+- The database connection is not forced to use TLS: the URL comes from the environment and the driver falls back to plain
+  text. Production should use `sslmode=verify-full`.
+- Observability: no metrics from the nginx edge, no Grafana dashboard for Postgres, no alerts on the database server itself, and
+  nothing delivers the alerts that Prometheus fires.
 - The migration history creates a table and drops it. `V2__create_event_publication.sql` made Modulith's event publication
   table, and `V4__jdbc_schema.sql` begins by dropping it, from when the project moved from JPA to plain JDBC. Nothing in the code
   publishes or listens to events, and the table is not in the schema now. It stays in the history because an applied migration
   is not edited: Flyway checks its checksum. Anything that wants events again needs a migration that creates the table.
-- A link disabled on one instance can redirect on the others for up to the cache TTL (30 s).
-- Reads of links the cache has not seen were measured only up to 2,000 req/s over 10M links, on one machine ([Results](#results)). A miss
-  is a primary-key read with a 5 s limit, and concurrent misses for one code share one load. Where misses saturate Postgres is unknown.
-- The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
-- Rate limits and the DPoP replay cache are per instance.
-- Beyond capacity (6,000 req/s for the native image of the stack on two cores, in the stack's scenario) the service sheds load, but creates still
-  queue for seconds. nginx caps connections per address but not in total, which Tomcat does at 500.
-- The stack has run on one node only, see [Deployment](#deployment).
-- The database connection is not forced to use TLS: the URL comes from the environment and the driver falls back to plain
-  text. Production should use `sslmode=verify-full`.
-- No proxy metrics, no alerts on the database server itself, and nothing sends the alerts that Prometheus fires.
 - The dev keys and passwords are generated per developer by `dev-setup`. The earlier committed ones are in the Git history
   and no longer work against any setup made since.

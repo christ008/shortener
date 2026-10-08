@@ -1,7 +1,9 @@
 # A public instance in the cloud
 
-Plan for an instance anyone can try. **Status: a plan. Nothing here has been deployed.** The production stack is rehearsed
-on one machine ([DEPLOY.md](DEPLOY.md)).
+Plan for an instance anyone can try. The production stack is rehearsed on one machine ([DEPLOY.md](DEPLOY.md)).
+
+> [!NOTE]
+> A plan. Nothing here has been deployed.
 
 - [Goal](#goal)
 - [Shape](#shape)
@@ -79,7 +81,7 @@ Before anyone is invited:
 - Set `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` to a short list (`example.com`, `*.example.org`). Anything else is
   refused with `400`. Never use `ALLOW_ANY_TARGET=true` on a public instance.
 - Use the realm `./gradlew productionRealm` writes, never the dev one.
-- Keep the default rate limits (300 a minute per address, 60 per client).
+- Keep the default [rate limits](REFERENCE.md#tunables).
 - Keep an administrator client whose key only you hold. Takedown: `PATCH /api/short-links/<code>` with `{"disabled": true}`.
 - Say in the README, next to the URL, that availability is not promised.
 - Store nothing you would mind losing: one disk, one machine, no backup yet.

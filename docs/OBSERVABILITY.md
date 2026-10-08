@@ -147,6 +147,4 @@ Tokens, proofs, query strings and target paths are never logged.
 
 ## Not done
 
-- Metrics from the nginx edge.
-- A Grafana dashboard for Postgres.
-- Delivery of the alerts Prometheus fires.
+Edge metrics, a Postgres dashboard and alert delivery are missing: [Limitations](INTERNALS.md#limitations).

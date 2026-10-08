@@ -152,7 +152,7 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 | T | Header injection through the target | the target is parsed as a `URI`, which rejects line breaks, and only `http` and `https` are accepted | |
 | T | Stale target after takedown | the disabling instance evicts at once | other instances serve it up to 30 s, and up to 5 minutes if the database is down |
 | R | Who followed a link | not recorded, by design: no analytics | |
-| I | Enumerating codes | generated codes are 7 base62 characters from `SecureRandom`, about 3.5 x 10^12 | custom codes are guessable by nature. A `410` says a code once existed |
+| I | Enumerating codes | generated codes are 7 base62 characters from `SecureRandom`, about $3.5 \times 10^{12}$ | custom codes are guessable by nature. A `410` says a code once existed |
 | D | Random codes to reach the database | the cache answers hot links. A miss is a primary-key read with a 5 s limit. 300 a minute per address. A database failure is `503`, and links already read keep redirecting | many addresses can keep the pool of ten busy and make cold reads fail |
 | E | Redirecting to a non-web scheme | `javascript:` and `data:` are refused | |
 
@@ -247,11 +247,11 @@ Most rows map to the table above.
 ## Findings
 
 Ordered by severity for a public instance. None is a known exploit. *Known* marks limits that were already documented. The table
-is the summary, and each finding has its own section below with what it is, why it matters and what to do.
+lists what is still open, fully or in part, and each finding has its own section below with what it is, why it matters and what
+to do. The fixed ones are collapsed at the end.
 
 | ID | Severity | Status | Finding |
 |---|---|---|---|
-| F-01 | High | Fixed 2026-10-06 | [Any host as a link target](#f-01-any-host-as-a-link-target) |
 | F-02 | Medium | Mostly fixed 2026-10-06 | [The identity provider decides ownership and admin](#f-02-the-identity-provider-decides-ownership-and-admin) |
 | F-03 | Medium | Partly fixed 2026-10-06 | [Logs are local, and nobody is told when an alert fires](#f-03-logs-are-local-and-nobody-is-told-when-an-alert-fires) |
 | F-04 | Medium | Open | [No quota on links per client](#f-04-no-quota-on-links-per-client) |
@@ -261,16 +261,8 @@ is the summary, and each finding has its own section below with what it is, why 
 | F-08 | Low | Open | [The edge accepts any `Host`](#f-08-the-edge-accepts-any-host) |
 | F-09 | Low | Open, latent | [The address limit keys on the full address, which breaks with IPv6](#f-09-the-address-limit-keys-on-the-full-address-which-breaks-with-ipv6) |
 | F-10 | Low | Open | [The issuer and key URL need not be `https`](#f-10-the-issuer-and-key-url-need-not-be-https) |
-| F-11 | Low | Fixed 2026-10-06 | [`deploy.sh` expanded names from `.env` in an `eval`](#f-11-deploysh-expanded-names-from-env-in-an-eval) |
 | F-12 | Low | Open | [Page depth is unbounded and the count scans the table](#f-12-page-depth-is-unbounded-and-the-count-scans-the-table) |
 | F-13 | Low | Open | [The Keycloak image has no supply-chain evidence](#f-13-the-keycloak-image-has-no-supply-chain-evidence) |
-
-### F-01. Any host as a link target
-
-- **Rating:** ~~High~~ **Fixed** 2026-10-06
-- **Finding:** The production profile now refuses to start with no list unless `allow-any` is set on purpose ([ADR 0023](adr/0023-production-must-decide-its-targets.md))
-- **Why it matters:** `allow-any=true` on a public instance is still possible, and is now a visible choice
-- **Recommendation:** review `.env` before a public deployment
 
 ### F-02. The identity provider decides ownership and admin
 
@@ -325,7 +317,7 @@ is the summary, and each finding has its own section below with what it is, why 
 
 - **Rating:** Low, latent
 - **Finding:** The address limit keys on the full address, and so does the connection cap at the edge. The edge listens on IPv4 only (`listen 8443`, no `[::]`), so it does not bite today
-- **Why it matters:** the day IPv6 is enabled, one client with a /64 has 2^64 addresses and no limit
+- **Why it matters:** the day IPv6 is enabled, one client with a /64 has $2^{64}$ addresses and no limit
 - **Recommendation:** key on the /64 for IPv6 before enabling it
 
 ### F-10. The issuer and key URL need not be `https`
@@ -334,13 +326,6 @@ is the summary, and each finding has its own section below with what it is, why 
 - **Finding:** The issuer and key URL come from the environment and nothing requires `https`. The stack's own Keycloak is reached by `http` over the encrypted network on purpose
 - **Why it matters:** a misconfiguration would fetch signing keys from an address nobody checked
 - **Recommendation:** a production check that the issuer starts with `https://`, and that a key URL with `http` names a host of the stack
-
-### F-11. `deploy.sh` expanded names from `.env` in an `eval`
-
-- **Rating:** Low, **fixed** 2026-10-06
-- **Finding:** `deploy/stack/deploy.sh` accepts only names that match `[A-Za-z_][A-Za-z0-9_]*` from `.env` before it expands them in an `eval` (`DeployScriptTest`)
-- **Why it matters:** only the operator writes that file, so it was never an attack. It was the shape that becomes one
-- **Recommendation:** none
 
 ### F-12. Page depth is unbounded and the count scans the table
 
@@ -355,6 +340,30 @@ is the summary, and each finding has its own section below with what it is, why 
 - **Finding:** The Keycloak image is built by the operator, not by the release workflow: no scan, signature or bill of materials. Keycloak sits on the `edge` network, which has a way out, and its database is not backed up. A bad realm file or a restart loop is only visible in its log
 - **Why it matters:** the most trusted component has the least supply-chain evidence
 - **Recommendation:** build, scan and sign it in the release workflow ([ADR 0018](adr/0018-signed-scanned-releases.md)), back up its database with the rest, and alert on its health
+
+<details>
+<summary>Fixed findings</summary>
+
+| ID | Severity | Status | Finding |
+|---|---|---|---|
+| F-01 | High | Fixed 2026-10-06 | [Any host as a link target](#f-01-any-host-as-a-link-target) |
+| F-11 | Low | Fixed 2026-10-06 | [`deploy.sh` expanded names from `.env` in an `eval`](#f-11-deploysh-expanded-names-from-env-in-an-eval) |
+
+### F-01. Any host as a link target
+
+- **Rating:** ~~High~~ **Fixed** 2026-10-06
+- **Finding:** The production profile now refuses to start with no list unless `allow-any` is set on purpose ([ADR 0023](adr/0023-production-must-decide-its-targets.md))
+- **Why it matters:** `allow-any=true` on a public instance is still possible, and is now a visible choice
+- **Recommendation:** review `.env` before a public deployment
+
+### F-11. `deploy.sh` expanded names from `.env` in an `eval`
+
+- **Rating:** Low, **fixed** 2026-10-06
+- **Finding:** `deploy/stack/deploy.sh` accepts only names that match `[A-Za-z_][A-Za-z0-9_]*` from `.env` before it expands them in an `eval` (`DeployScriptTest`)
+- **Why it matters:** only the operator writes that file, so it was never an attack. It was the shape that becomes one
+- **Recommendation:** none
+
+</details>
 
 ## Risks accepted
 
@@ -380,5 +389,5 @@ Update this document when:
 
 - a component, a way in or a kind of data is added (web UI: browser token storage, XSS, CORS; target previews: SSRF);
 - an ADR is accepted or superseded, so each row still names the control that exists;
-- a finding is fixed: mark it in the summary, and record the fix in the ADR that made it;
+- a finding is fixed: move it to the fixed findings, and record the fix in the ADR that made it;
 - before the first public instance: the open [findings](#findings) are the list to clear, highest severity first.
