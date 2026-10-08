@@ -23,10 +23,11 @@ OUT=$(cd "$OUT_ARGUMENT" && pwd)
 chmod 777 "$OUT"
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
-PGPASS=$(sed -n "s/^DEV_POSTGRES_PASSWORD='\{0,1\}\([^']*\)'\{0,1\}$/\1/p" "$ROOT/.env" 2>/dev/null)
+PGPASS=$(sed -n "s/^DEV_POSTGRES_PASSWORD='\{0,1\}\([^']*\)'\{0,1\}$/\1/p" "$ROOT/.env" 2>/dev/null || true)
 [ -n "$PGPASS" ] || { echo "no Postgres password in $ROOT/.env: run deploy/keycloak/dev-setup first" >&2; exit 1; }
 PGPORT=${PGPORT:-$(docker compose -f "$ROOT/compose.yaml" port postgres 5432 | cut -d: -f2)}
 PG_CONTAINER=${PG_CONTAINER:-$(docker compose -f "$ROOT/compose.yaml" ps -q postgres)}
+[ -n "$PG_CONTAINER" ] || { echo "no Postgres container: start the compose services (docker compose --profile observability up -d postgres keycloak prometheus), or set PGPORT and PG_CONTAINER" >&2; exit 1; }
 PROM=http://localhost:9090
 say() { printf '\n\033[1m[%s] %s\033[0m\n' "$(date +%T)" "$*"; }
 command -v jq >/dev/null 2>&1 || { echo "perf/bench.sh needs jq: it removes the DPoP key and the token from the k6 summaries" >&2; exit 1; }
@@ -59,6 +60,9 @@ printf '%s\n' "$RUNS" | tr '|' '\n' | while read -r name rate duration share; do
     n=$((n + 1))
   done
 done >"$OUT/runs.txt"
+echo '{}' >"$OUT/.preflight.json"
+"$ROOT/tools/run" Report json "$OUT/.preflight.json"
+rm -f "$OUT/.preflight.json"
 HIGHEST=$(awk '{ if ($2 > top) top = $2 } END { printf "%d", top }' "$OUT/runs.txt")
 if [ "$HIGHEST" -gt 5000 ]; then
   say "WARNING: $HIGHEST req/s is past what the docs call safe to run: overload can take down the network of a machine whose firewall inspects new connections (docs/INTERNALS.md#running-load-tests-safely)"
@@ -131,6 +135,11 @@ k6() { # name rate duration share
 sampler() { while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-app 2>/dev/null)"; done; }
 sampler >"$OUT/docker-stats.txt" &
 SAMPLER=$!
+cleanup() {
+  kill "$SAMPLER" 2>/dev/null || true
+  [ -z "$(docker ps -aq -f name=bench-app)" ] || { docker logs bench-app >"$OUT/app.log" 2>&1 || true; docker rm -f bench-app >/dev/null 2>&1 || true; }
+}
+trap cleanup EXIT
 
 say "warming up for 30s"
 k6 warmup 2000 30s 0.005
