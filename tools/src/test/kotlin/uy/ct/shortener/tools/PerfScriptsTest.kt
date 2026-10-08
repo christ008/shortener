@@ -13,6 +13,7 @@ import java.nio.file.Path
  * with `perf/scrub-k6-summary.sh`. The scripts are not run: they need Docker, Postgres and Keycloak.
  *
  * - The scrubber keeps everything of the summary but those two members, in particular the code list.
+ * - A file it cannot write, as the one k6 leaves when it runs as another user, is replaced, since the directory is what must be writable.
  * - A file that is not JSON is removed and the script fails, because it may hold what it was asked to remove.
  * - `bench.sh` and `profile.sh` call it after every k6 run.
  *
@@ -66,6 +67,21 @@ class PerfScriptsTest {
 
         assertThat(status).describedAs(output).isZero()
         assertThat(parseJson(Files.readString(plain))).isEqualTo(mapOf("metrics" to emptyMap<String, Any>()))
+    }
+
+    @Test
+    fun `a summary that its owner cannot write to is replaced`() {
+        needsJq()
+        val summary = directory.resolve("r1500.k6.json").also {
+            Files.writeString(it, """{"setup_data":{"token":"eyJhbGciOi.payload.signature","codes":["AAAAAAA"]}}""")
+            it.toFile().setWritable(false)
+        }
+
+        val (status, output) = scrub(summary)
+
+        assertThat(status).describedAs(output).isZero()
+        assertThat(parseJson(Files.readString(summary))["setup_data"]).isEqualTo(mapOf("codes" to listOf("AAAAAAA")))
+        assertThat(directory.toFile().list()).containsExactly("r1500.k6.json")
     }
 
     @Test
