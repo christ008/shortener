@@ -729,7 +729,7 @@ The native image lost its heap at 5,000 requests a second. Profiled with JFR, GC
   About 450 of 453 MB was Tomcat's per-connection buffers, roughly 150 KB each.
 - **A feedback loop.** A slightly slower server makes an open-model client open more connections, each costs heap, GC
   pauses grow (up to 2.8 s), and it slows further until the heap is full. The JVM stays below that point.
-- **Collector.** Serial GC, young generation 10% of the heap. A 30% young generation did not help.
+- **Collector.** Serial GC, young generation 10% of the heap.
 - **Allocation.** 12.7% of sampled allocation is virtual-thread stack copies. Micrometer observation, including one per
   Spring Security filter, is another visible share.
 

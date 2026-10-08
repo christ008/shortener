@@ -13,7 +13,6 @@ echo "building $JAR"
 
 DOCKER_ARGS="-v $PWD/$JAR:/app.jar:ro" perf/bench.sh jvm eclipse-temurin:25-jre "$OUT/jvm" java -XX:MaxRAMPercentage=70 -jar /app.jar
 perf/bench.sh native "shortener:$VERSION" "$OUT/native"
-perf/bench.sh native-young30 "shortener:$VERSION" "$OUT/native-young30" -XX:MaximumYoungGenerationSizePercent=30
 
 printf '\n\033[1m== comparison (%s)\033[0m\n\n' "$OUT"
 tools/run Report summary "$OUT"
