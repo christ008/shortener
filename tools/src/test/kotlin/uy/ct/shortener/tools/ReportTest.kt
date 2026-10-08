@@ -89,6 +89,36 @@ class ReportTest {
         assertThat(table).describedAs("the worst run of the pool figures").contains("| pool acquire max (ms) / timeouts | 900.0 / 2 | 100.0 / 0 |")
     }
 
+    private fun withStats(variant: String, application: List<String>, edge: List<String>?) {
+        val dir = Files.createDirectories(directory.resolve(variant))
+        Files.writeString(dir.resolve("docker-stats.txt"), application.joinToString("\n", postfix = "\n"))
+        if (edge != null) Files.writeString(dir.resolve("docker-stats-edge.txt"), edge.joinToString("\n", postfix = "\n"))
+        Files.writeString(dir.resolve("r1000.k6.json"), """{"metrics":{"http_reqs":{"rate":1000},"http_req_failed":{"value":0},"redirect_latency":{"p(95)":1.0}}}""")
+        Files.writeString(
+            dir.resolve("summary.json"),
+            """{"variant":"$variant","runs":[{"name":"r1000","rate":1000,"duration":"60s","create_share":0.01,"start":100,"end":160,"server":{}}]}""",
+        )
+    }
+
+    @Test
+    fun `cpu is what the application and the edge used while a run lasted, and what a served request cost`() {
+        withStats("direct", listOf("90 999.0% 100MiB / 512MiB", "100 50.0% 100MiB / 512MiB", "110 100.0% 100MiB / 512MiB", "120 150.0% 100MiB / 512MiB", "170 999.0% 100MiB / 512MiB"), null)
+        withStats("edge", listOf("100 50.0% 100MiB / 512MiB", "110 100.0% 100MiB / 512MiB", "120 150.0% 100MiB / 512MiB"), listOf("90 99.0% 5MiB / 128MiB", "100 10.0% 5MiB / 128MiB", "130 20.0% 5MiB / 128MiB"))
+
+        val result = run("cpu", directory.toString())
+
+        assertThat(result.status).describedAs(result.stderr).isZero()
+        assertThat(result.stdout.lines()).contains(
+            "| direct | r1000 | 1000 | 100 / 150 | 1.000 | - | - |",
+            "| edge | r1000 | 1000 | 100 / 150 | 1.000 | 15 / 20 | 0.150 |",
+        )
+    }
+
+    @Test
+    fun `cpu says in words when there is nothing to read`() {
+        assertThat(run("cpu", directory.toString()).stderr).contains("has no subdirectory with a summary.json and a docker-stats.txt")
+    }
+
     @Test
     fun `a variant without the runs of another is said in words`() {
         repeated("a", 1000, listOf(990), listOf(0.0), listOf(0.001), listOf(0.5), listOf(0))

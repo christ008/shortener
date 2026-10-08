@@ -24,6 +24,8 @@ import java.util.Locale
  *     tools/run Report summary RESULTS_DIR       the output of perf/bench.sh for several variants, one subdirectory each, as a table. Runs
  *                                                of one rate that `REPEAT` made several times are one block: the median of each figure, the
  *                                                range of throughput, failures and redirect p99, and the worst run for the pool
+ *     tools/run Report cpu RESULTS_DIR           for each run of each variant, the CPU the application (and the edge, when the run had one) used
+ *                                                while it ran and the CPU time each served request cost, from docker-stats.txt
  *     tools/run Report gc APP_LOG                how often a native image collects, how long it pauses and whether the live heap
  *                                                grows (needs the log of a run with -XX:+PrintGC)
  *     tools/run Report hprof DUMP [TOP]          the classes of an HPROF heap dump by shallow size, with byte[] and char[] by size
@@ -39,6 +41,7 @@ object Report : Tool(
     "Report",
     """
     usage: tools/run Report summary RESULTS_DIR
+           tools/run Report cpu RESULTS_DIR
            tools/run Report gc APP_LOG
            tools/run Report hprof DUMP [TOP]
            tools/run Report profile OUT_DIR
@@ -53,6 +56,7 @@ object Report : Tool(
         if (arguments.isEmpty()) throw Usage("a command is needed")
         when (arguments[0]) {
             "summary" -> summary(arguments, context)
+            "cpu" -> cpu(arguments, context)
             "gc" -> GcSummary.print(arguments, context)
             "hprof" -> HeapHistogram.print(arguments, context)
             "profile" -> profile(arguments, context)
@@ -190,6 +194,44 @@ object Report : Tool(
     /** A number as a person writes it: 1500 and not 1500.0. */
     private fun trimmed(value: Any?): String =
         if (value is Number && value.toDouble() == Math.rint(value.toDouble())) value.toDouble().toLong().toString() else value.toString()
+
+    // ---- cpu ----------------------------------------------------------------------------------------------------------
+
+    private val STATS_LINE = Regex("^(\\d+)\\s+(\\d+(?:\\.\\d+)?)%")
+
+    /** The CPU readings of a `docker stats` sampler file, as (epoch second, percent of one CPU). */
+    private fun cpuSamples(file: Path): List<Pair<Long, Double>> =
+        Files.readAllLines(file).mapNotNull { line -> STATS_LINE.find(line)?.let { it.groupValues[1].toLong() to it.groupValues[2].toDouble() } }
+
+    private fun cpuCells(samples: List<Pair<Long, Double>>, start: Long, end: Long, served: Double): List<String> {
+        val inside = samples.filter { it.first in start..end }.map { it.second }
+        if (inside.isEmpty()) return listOf("n/a", "n/a")
+        val average = inside.average()
+        return listOf("${d(average, 0)} / ${d(inside.max(), 0)}", d(average / 100 * 1000 / maxOf(served, 1e-9), 3))
+    }
+
+    private fun cpu(arguments: List<String>, context: Context) {
+        if (arguments.size != 2) throw Usage("cpu takes a results directory")
+        val directory = context.path(arguments[1])
+        val variants = Files.list(directory).use { children ->
+            children.filter { Files.exists(it.resolve("summary.json")) && Files.exists(it.resolve("docker-stats.txt")) }.sorted().toList()
+        }
+        if (variants.isEmpty()) throw Failure("${arguments[1]} has no subdirectory with a summary.json and a docker-stats.txt")
+        context.out.println("| variant | run | served req/s | application CPU avg / max (% of one CPU) | application ms of CPU a request | edge CPU avg / max | edge ms of CPU a request |")
+        context.out.println("|---|---|---|---|---|---|---|")
+        for (variant in variants) {
+            val application = cpuSamples(variant.resolve("docker-stats.txt"))
+            val edge = variant.resolve("docker-stats-edge.txt").takeIf { Files.exists(it) }?.let { cpuSamples(it) }
+            for (run in array(parse(variant.resolve("summary.json"), context)["runs"]).map { obj(it) }) {
+                val start = number(run["start"]).toLong()
+                val end = number(run["end"]).toLong()
+                val served = k6(variant.resolve("${run["name"]}.k6.json"), "http_reqs", "rate", context)
+                val own = cpuCells(application, start, end, served)
+                val front = if (edge == null) listOf("-", "-") else cpuCells(edge, start, end, served)
+                context.out.println("| ${variant.fileName} | ${run["name"]} | ${d(served, 0)} | ${own[0]} | ${own[1]} | ${front[0]} | ${front[1]} |")
+            }
+        }
+    }
 
     // ---- profile, server, json ----------------------------------------------------------------------------------------
 
