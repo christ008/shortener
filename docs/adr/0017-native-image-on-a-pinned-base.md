@@ -1,6 +1,6 @@
 # 0017. A GraalVM native image on a pinned Alpaquita base
 
-- Status: Accepted, 2026-10-03, pinned 2026-10-05
+- Status: Superseded by [0036](0036-jvm-image-for-arm64.md), 2026-10-09. Accepted 2026-10-03, pinned 2026-10-05
 - Evidence: `96fde0c`, `2128bd8`, `623d3d8`, `perf/smoke.sh`, `INTERNALS.md#native-image`
 
 ## Problem
@@ -37,4 +37,4 @@ rest. The image also carries whatever its base carries, and a rebuild of the sam
 ## Update, 2026-10-09
 
 Measured later, with the redirect cache and the edge in place: a warm JVM costs about 45% of this image's CPU a request and sustains at least twice its rate, and a JVM
-runs the same load in 256 MiB; this image keeps its 0.7 s start and no warm-up. See [Performance](../INTERNALS.md#performance). The decision stands until someone takes it again.
+runs the same load in 256 MiB; this image keeps its 0.7 s start and no warm-up. See [Performance](../INTERNALS.md#performance). This decision was taken again the same day: [0036](0036-jvm-image-for-arm64.md).

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs one native image at 5,000 requests a second (or the RUNS given) with 3,000 clients for each Tomcat connection limit.
+# Runs one image at 5,000 requests a second (or the RUNS given) with 3,000 clients for each Tomcat connection limit.
 # The first limit given is the default, which is effectively none.
 #   [IMAGE=shortener:0.15.0] [RUNS="name rate duration create_share"] perf/tune-connections.sh [OUT_DIR] [LIMIT...]
 # Grafana (http://localhost:3000/d/shortener/shortener) shows it with the compose observability profile running.

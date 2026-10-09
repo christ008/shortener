@@ -20,12 +20,12 @@ it, and sees that another client cannot see it.
 
 ## Shape
 
-One amd64 VM (Ubuntu, 2 vCPU, 4 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm:
+One arm64 VM (Ubuntu, Oracle's Always Free Ampere A1: up to 4 OCPU and 24 GB for the account, of which 2 OCPU and 12 GB would do) running `deploy/stack/compose.prod.yaml` on a single-node Swarm:
 
 ```mermaid
 flowchart LR
     visitor(["Visitor"]) -->|"HTTPS 443"| edge["nginx edge"]
-    subgraph vm["One amd64 VM"]
+    subgraph vm["One arm64 VM"]
         edge --> app["shortener x2"]
         edge --> idp["Keycloak (production realm)"]
         app --> db[("Postgres")]
@@ -38,13 +38,14 @@ flowchart LR
 - **Edge:** nginx with a Let's Encrypt certificate for one host name.
 - **Identity:** Keycloak with the production realm, behind the edge under `/realms/shortener` ([DEPLOY.md](DEPLOY.md#keycloak)).
 - **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, to a repository off the VM.
-- **Image:** `ghcr.io/christ008/shortener:<version>`, amd64 only.
+- **Image:** `ghcr.io/christ008/shortener:<version>`, arm64 only ([ADR 0036](adr/0036-jvm-image-for-arm64.md)). An amd64 host builds its own with `./gradlew bootBuildImage`.
+- **Not measured on Ampere:** the figures in [Performance](INTERNALS.md#performance) are from an x86-64 desktop.
 
 ## To decide
 
 | Decision | Options |
 |---|---|
-| Provider | any with an amd64 Ubuntu VM: Hetzner, DigitalOcean, Lightsail, Compute Engine |
+| Provider | Oracle Cloud, Always Free Ampere A1 (arm64). Another arm64 VM works; an amd64 one needs the image built there |
 | Host name | a domain or subdomain you control; the token `iss` must equal the public issuer URL |
 | Who can create links | the dev clients' public keys, or a demo client whose key is published in the README |
 | Certificate | `certbot` on the host, or nginx's ACME module (issuance untested either way) |

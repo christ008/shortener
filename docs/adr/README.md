@@ -37,7 +37,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0014](0014-offset-pagination-with-totals.md) | Pages with totals, not cursors | a UI that jumps to any page | deep pages cost more | needed |
 | [0015](0015-target-host-policy.md) | An allowlist of target hosts | an open redirector for phishing | optional, off by default | needed when exposed |
 | [0016](0016-compose-and-swarm-instead-of-kubernetes.md) | Compose and Swarm, not Kubernetes | four operators for one service | no egress filter, no autoscaling | needed |
-| [0017](0017-native-image-on-a-pinned-base.md) | Native image on pinned Alpaquita | startup, memory, attack surface | reflection hints, 3-minute builds, and about twice a warm JVM's CPU a request (measured 2026-10-09) | earned |
+| [0017](0017-native-image-on-a-pinned-base.md) | Native image on pinned Alpaquita (**superseded by 0036**) | startup, memory, attack surface | reflection hints, 3-minute builds, and about twice a warm JVM's CPU a request (measured 2026-10-09) | earned |
 | [0018](0018-signed-scanned-releases.md) | Signed, scanned, smoke-tested release | trusting what runs in production | a workflow that has not run yet | needed when exposed |
 | [0021](0021-encrypt-internal-traffic.md) | Both overlay networks encrypted | tokens crossing nodes in clear | IPsec cost, ports between nodes | needed when exposed |
 | [0022](0022-mtls-between-services.md) | Mutual TLS between services (**proposed**) | an unauthenticated peer on a stack network | a CA and a rotation job | needed when exposed, not yet |
@@ -51,6 +51,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0033](0033-link-is-a-resource-and-disabling-is-a-patch.md) | `Location` is the resource and `shortUrl` the URL to share; disabling is a `PATCH`, not a `DELETE` | a client sent to the target site by its own `Location`, a removal verb that removes nothing | an incompatible change, a `shortUrl` that follows the host | earned |
 | [0034](0034-claim-a-chosen-code-with-put.md) | A chosen code is claimed with `PUT`, and claiming again answers the link that is there | a lost answer that turns a retry into a `409`, and a permission that depended on the body | two ways to create, a `PUT` that never replaces | earned |
 | [0035](0035-production-refuses-bearer-tokens.md) | Production does not start if it would accept bearer tokens | an environment variable that turns off the control that makes a stolen token useless | the flag cannot be used in production | needed when exposed |
+| [0036](0036-jvm-image-for-arm64.md) | A JVM image on Liberica Lite, built on arm64 | a free-tier target that is Ampere, and a CPU bill that is twice a JVM's | a JIT warm-up, a larger image, nothing measured on Ampere yet | earned |
 
 <details>
 <summary>Conventions and tooling: common practice, recorded so the history is complete</summary>

@@ -10,19 +10,19 @@ access. The operator needs to know that the image is the one the tests ran on, b
 
 ## Decision
 
-- A `v*` tag runs the tests, builds the native image, smoke-tests that exact image against Postgres and Keycloak, scans
+- A `v*` tag runs the tests, builds the image on an arm64 runner, smoke-tests that exact image against Postgres and Keycloak, scans
   it and only then pushes it. The tag must equal the version in `build.gradle.kts`.
 - The scan fails the release on a fixable high or critical vulnerability.
 - The image is signed by digest with the workflow's own identity (keyless), and an SPDX bill of materials is attached.
   The job summary prints the digest and the `cosign verify` command.
-- Everything the build downloads is pinned ([0017](0017-native-image-on-a-pinned-base.md)). `deploy.sh` resolves the image
+- Everything the build downloads is pinned ([0036](0036-jvm-image-for-arm64.md)). `deploy.sh` resolves the image
   to its digest.
 - Dependabot proposes updates to the actions weekly.
 
 ## Consequences
 
 - Good: a signature says which workflow made the image, and a digest cannot be moved.
-- Cost: the first release will find what has not been exercised. It builds only amd64, and the package is private until
+- Cost: the first release will find what has not been exercised. It builds only arm64 ([0036](0036-jvm-image-for-arm64.md)), and the package is private until
   made public.
 - Gaps, listed in [THREAT_MODEL.md](../THREAT_MODEL.md): nothing at deploy time verifies the signature, Dependabot does
   not watch Gradle or the container images, the actions are pinned by tag and not by commit, and the scan ignores

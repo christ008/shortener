@@ -10,7 +10,7 @@
 #   ce-Os          native image, GraalVM Community Edition, -Os -march=compatibility (how the stack builds it, on glibc)
 #   oracle-v3      native image, Oracle GraalVM, -march=x86-64-v3
 #   oracle-O3-v3   native image, Oracle GraalVM, -O3 (GraalNN) -march=x86-64-v3
-#   stack-image    the native image of the stack as `bootBuildImage` makes it (static musl on Alpaquita, Liberica NIK): shortener:VERSION
+#   stack-image    shortener:VERSION, the image of the stack: a JVM since ADR 0036 (the native image of ADR 0017 was static musl on Alpaquita, Liberica NIK)
 set -eu
 
 SCENARIO_ARGUMENTS=
