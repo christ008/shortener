@@ -1,7 +1,8 @@
 name: Release
 
-# A tag like v0.18.1 builds the native image, smoke-tests that exact image, and only then publishes it, signed, with its
-# software bill of materials. The tag must match the version in build.gradle.kts.
+# A tag like v0.18.1 builds the image (a JVM, for arm64), smoke-tests that exact image, and only then publishes it,
+# signed, with its software bill of materials. The tag must match the version in build.gradle.kts.
+# It runs on an arm64 runner, the target's platform (Oracle's Ampere): what is smoke-tested is what runs there.
 on:
   push:
     tags: ['v*']
@@ -19,8 +20,8 @@ env:
 jobs:
   release:
     name: Build, check, publish and sign
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write   # push to GitHub Container Registry
@@ -46,8 +47,14 @@ jobs:
       - name: Run the tests (Testcontainers starts Postgres)
         run: ./gradlew test
 
-      - name: Build the native image
-        run: ./gradlew bootBuildImage --imageName="$IMAGE:$VERSION"
+      - name: Build the image
+        run: |
+          ./gradlew bootBuildImage --imageName="$IMAGE:$VERSION"
+          architecture=$(docker image inspect --format '{{.Architecture}}' "$IMAGE:$VERSION")
+          if [ "$architecture" != arm64 ]; then
+            echo "::error::the image is $architecture, and the target is arm64 (Ampere)"
+            exit 1
+          fi
 
       - name: Start Postgres and Keycloak
         run: |
@@ -110,6 +117,7 @@ jobs:
             printf '### Published\n\n'
             printf '`%s:%s`\n\n' "$IMAGE" "$VERSION"
             printf 'Digest: `%s`\n\n' "$DIGEST"
+            printf 'Platform: `linux/arm64`\n\n'
             printf 'Pull it:\n\n'
             printf '%s\n' '```bash' "docker pull $IMAGE@$DIGEST" '```' ''
             printf 'Verify the signature:\n\n'

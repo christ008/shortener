@@ -51,8 +51,8 @@ The problems that took the most work, and where each is written up:
   change a code. [Roles and migrations](docs/INTERNALS.md#roles-and-migrations)
 - **Redirects survive a database outage, for a bounded time.** A cache of active links with `stale-if-error`, and readiness
   that leaves the database out. [Redirect cache](docs/INTERNALS.md#redirect-cache), [ADR 0012](docs/adr/0012-readiness-excludes-the-database.md)
-- **Native image or JVM?** Three builds measured behind the edge on 2 CPUs: what a request costs, where each one's knee is, and
-  why the native image once ran out of heap. [Performance](docs/INTERNALS.md#performance)
+- **Why a JVM and not a native image?** Three builds measured behind the edge on 2 CPUs: what a request costs, where each one's knee is, and
+  why the native image once ran out of heap. [Performance](docs/INTERNALS.md#performance), [ADR 0036](docs/adr/0036-jvm-image-for-arm64.md)
 - **What each invariant rests on:** the test that fails without it. [Invariants](docs/DESIGN.md#invariants)
 
 ## Run it
@@ -100,7 +100,7 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
   [INTERNALS.md#testing](docs/INTERNALS.md#testing)
 - **Security:** the controls, and a STRIDE model with a register of findings, severities, fix dates and the risks accepted.
   [SECURITY.md](docs/SECURITY.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md)
-- **Performance:** one desktop, a synthetic load of 99% redirects on links the cache holds. With 2 CPUs the native image of the stack sustains 6,000 req/s behind its edge, and a JVM at least 12,000.
+- **Performance:** one desktop, a synthetic load of 99% redirects on links the cache holds. With 2 CPUs a JVM sustains at least 12,000 req/s behind the edge of the stack, and the native image it replaced 6,000.
   The figure is for the cache, not the database. Method and a warning to read before load testing:
   [INTERNALS.md#performance](docs/INTERNALS.md#performance).
 - **Decisions:** one record per decision, with what it costs. [docs/adr/](docs/adr/README.md)
@@ -109,7 +109,7 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
 
 ```bash
 ./gradlew test                  # integration tests use Testcontainers (Docker)
-./gradlew bootBuildImage        # native image on Alpaquita (musl); about 7 GB free, 3 minutes
+./gradlew bootBuildImage        # JVM image on Alpaquita (glibc) by Paketo buildpacks; arm64 on an arm64 machine
 perf/smoke.sh                   # every endpoint, with real tokens, against a running instance
 ```
 
@@ -125,7 +125,7 @@ Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's s
 | [REFERENCE.md](docs/REFERENCE.md) | every configuration key, secret file and script |
 | [DEPLOY.md](docs/DEPLOY.md) | production stack runbook: first deploy, updates, Keycloak, backups |
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | metrics, dashboard, traces, alerts, logs |
-| [INTERNALS.md](docs/INTERNALS.md) | how it works: request flows, database, cache, native image, deployment, tests and measurements |
+| [INTERNALS.md](docs/INTERNALS.md) | how it works: request flows, database, cache, image, deployment, tests and measurements |
 | [DESIGN.md](docs/DESIGN.md) | invariants, and why the code has this shape: modules, types, design review |
 | [SECURITY.md](docs/SECURITY.md) | the controls: filter chain, tokens, DPoP, scopes, rate limits |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
@@ -143,7 +143,7 @@ Built with [Claude Code](https://claude.com/claude-code) since 2026-09-19: about
 - **Iterative, not one-shot.** Most of the work took several rounds of proposal, review and rework: designs, code, tests and
   these docs alike. Some choices were reversed outright, and the superseded ADRs keep that history.
 - **Generated code is checked, not trusted.** Each claim in the docs names its test or measurement, mutation testing shows
-  the tests catch real faults, and a smoke test exercises the shipped native image.
+  the tests catch real faults, and a smoke test exercises the shipped image.
 - **The reasoning is written down.** The ADRs and the threat model were drafted with Claude from the commit history, each with
   its cost and the alternatives it rejected.
 

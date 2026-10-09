@@ -5,8 +5,8 @@
 # anything the app writes to /out, such as a JFR recording or a heap dump. Analyse it with `tools/run Report gc` and
 # `tools/run Report hprof`.
 # The k6 summary is cleaned of the DPoP key and the token by perf/scrub-k6-summary.sh (needs jq).
-# Needs the compose Postgres and Keycloak. A native image built with -PnativeProfiling can record JFR and dump the heap:
-#   perf/profile.sh native-5000 shortener:0.14.0-profiling 5000 60s 0.003 3000 -XX:+PrintGC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/out/oom.hprof
+# Needs the compose Postgres and Keycloak. The JVM image takes JFR and heap dump options as arguments, for example:
+#   perf/profile.sh jvm-5000 shortener:0.21.1 5000 60s 0.003 3000 -XX:+PrintGC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/out/oom.hprof
 set -u
 NAME=$1; IMAGE=$2; RATE=$3; DUR=$4; SHARE=$5; MAXVUS=$6; shift 6
 ROOT=$(cd "$(dirname "$0")/.." && pwd)

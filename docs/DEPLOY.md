@@ -17,7 +17,8 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
 ## Requirements
 
 - Docker 25 or later on each host. Swarm for more than one.
-- The image `ghcr.io/christ008/shortener:<version>`, published by the Release workflow on a `v*` tag. A private package needs
+- The image `ghcr.io/christ008/shortener:<version>`, published by the Release workflow on a `v*` tag. It is arm64 ([ADR 0036](adr/0036-jvm-image-for-arm64.md)), so the hosts are
+  arm64 (Oracle's Ampere instances); on an amd64 host build it there with `./gradlew bootBuildImage` and set `SHORTENER_IMAGE`. A private package needs
   `docker login ghcr.io` on the manager. `deploy.sh` passes `--with-registry-auth`.
 - `cosign` on the manager. `deploy.sh` verifies the image's signature before it deploys anything, and `VERIFY_SIGNATURE=never`
   skips that (the [one-machine rehearsal](OPERATING.md#rehearse-production-on-one-machine) does, because its image is built locally).

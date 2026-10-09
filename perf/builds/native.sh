@@ -19,7 +19,7 @@ HOME_GRAALVM=$HOME/.sdkman/candidates/java/$GRAALVM
 cd "$ROOT"
 echo "== $("$HOME_GRAALVM/bin/native-image" --version | head -2 | tr '\n' ' ')with: $OPTIONS"
 JAVA_HOME=$HOME_GRAALVM GRAALVM_HOME=$HOME_GRAALVM NATIVE_IMAGE_OPTIONS="-J-Xmx7g $OPTIONS" \
-  ./gradlew nativeCompile -x test -q -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.paths="$HOME_GRAALVM"
+  ./gradlew nativeCompile -Pnative -x test -q -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.paths="$HOME_GRAALVM"
 
 OUTPUT=build/native/nativeCompile
 [ -x "$OUTPUT/shortener" ] || { echo "no $OUTPUT/shortener: the build left $(find "$OUTPUT" -maxdepth 1 -type f 2>/dev/null | tr '\n' ' ')" >&2; exit 1; }

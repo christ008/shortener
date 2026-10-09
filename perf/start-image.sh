@@ -2,8 +2,8 @@
 # Starts a built image of the application as the container "app", on the host network and against the Postgres and Keycloak of
 # compose.yaml, and returns when the application is ready. For CI and for trying an image by hand.
 #
-# - The image is processed ahead of time under the production profile, so it gets what production requires: every target host
-#   accepted, and a random DPoP nonce secret.
+# - The image runs under the production profile, so it gets what production requires: every target host accepted, and a random
+#   DPoP nonce secret.
 # - Waits up to 120 seconds for readiness, and fails at once when the container has stopped, printing the end of its log.
 #
 #   perf/start-image.sh IMAGE

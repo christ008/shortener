@@ -3,7 +3,7 @@ plugins {
     kotlin("plugin.spring") version "2.4.20"
     id("org.springframework.boot") version "4.2.0-M2"
     id("io.spring.dependency-management") version "1.1.7"
-    id("org.graalvm.buildtools.native") version "1.1.14"
+    id("org.graalvm.buildtools.native") version "1.1.14" apply false
     id("org.jetbrains.kotlinx.kover") version "0.9.11"
     id("info.solidsoft.pitest") version "1.19.0"
     id("org.sonarqube") version "7.5.0.8588"
@@ -22,6 +22,13 @@ java {
 repositories {
     mavenCentral()
 }
+
+/**
+ * The GraalVM plugin is applied only with `-Pnative`, for `perf/builds/native.sh`: it marks the jar
+ * `Spring-Boot-Native-Processed`, which the `spring-boot` buildpack reads as a request for a native image.
+ */
+val native = providers.gradleProperty("native").isPresent
+if (native) apply(plugin = "org.graalvm.buildtools.native")
 
 apply(from = "gradle/tooling.gradle.kts")
 
@@ -200,38 +207,31 @@ tasks.bootRun {
     }
 }
 
-tasks.named<org.springframework.boot.gradle.tasks.aot.ProcessAot>("processAot") {
-    args("--spring.profiles.active=production")
+if (native) {
+    tasks.named<org.springframework.boot.gradle.tasks.aot.ProcessAot>("processAot") {
+        args("--spring.profiles.active=production")
+    }
 }
 
 /**
- * The native image is built on BellSoft's Alpaquita (musl) builder, pinned for reproducible builds.
- *
- * - Paketo buildpacks are pinned by version, in detection order, which replaces the builder's default order. Liberica (the
- *   JDK and native image kit) comes from the builder.
- * - The builder and the run image are pinned by digest (BellSoft publishes only the rolling tags `musl` and `glibc`).
- * - The `health-checker` buildpack adds `/workspace/health-check` (Tiny Health Checker), which the container healthcheck runs
- *   with `THC_PORT` and `THC_PATH` set.
- * - `-Os` optimizes for size.
- *
- * To update: bump the version in each reference, or look up a digest with `docker buildx imagetools inspect <image>:<tag>`.
+ * A JVM image from the builder's own buildpacks (ADR 0036). The builder and the run image are pinned by digest, which pins the
+ * buildpacks they carry; `health-checker` adds `/workspace/health-check`. The flags are explained in INTERNALS.md#image.
  */
 tasks.bootBuildImage {
-    val profiling = providers.gradleProperty("nativeProfiling").isPresent
-    imageName = "shortener:${project.version}${if (profiling) "-profiling" else ""}"
-    builder = "bellsoft/buildpacks.builder:musl@sha256:11a4d7b224b5950fe77b7cccb7b03c182faefd7c05ccc3d12a125be24c8554da"
-    runImage = "bellsoft/buildpacks.hardened-run:musl@sha256:c4ad07072db55ea775e5b9364ab2899ef54688a260523bf8b52aa7367772ba91"
+    imageName = "shortener:${project.version}"
+    builder = "bellsoft/buildpacks.builder:glibc@sha256:c7a8d5fcc863a7e5c36a6691d7ccd174cd4acd701a7338867e1bb7a61389de92"
+    runImage = "bellsoft/buildpacks.hardened-run:glibc@sha256:81f455eb612bb818b37d3c02087fde31cd07a776334ed686f98906448b2eff42"
     buildpacks = listOf(
-        "urn:cnb:builder:bellsoft/buildpacks/liberica",
-        "docker://paketobuildpacks/syft:2.42.1",
-        "docker://paketobuildpacks/executable-jar:6.17.1",
-        "docker://paketobuildpacks/spring-boot:5.39.0",
-        "docker://paketobuildpacks/native-image:5.19.0",
+        "urn:cnb:builder:bellsoft/buildpacks/java",
         "docker://paketobuildpacks/health-checker:2.14.0",
     )
     environment = mapOf(
-        "BP_NATIVE_IMAGE_BUILD_ARGUMENTS" to "-march=compatibility -Os -J-Xmx7g${if (profiling) " --enable-monitoring=jfr,heapdump" else ""}",
-        "BP_OCI_VERSION" to project.version.toString(),
         "BP_HEALTH_CHECKER_ENABLED" to "true",
+        "BP_SPRING_CLOUD_BINDINGS_DISABLED" to "true",
+        "BPE_DELIM_JAVA_TOOL_OPTIONS" to " ",
+        "BPE_APPEND_JAVA_TOOL_OPTIONS" to "-XX:+UseG1GC -XX:+UseCompactObjectHeaders -XX:ReservedCodeCacheSize=64M",
+        "BPE_OVERRIDE_BPL_JVM_THREAD_COUNT" to "50",
+        "BPE_DEFAULT_BPL_JAVA_NMT_ENABLED" to "false",
+        "BPE_DEFAULT_SPRING_PROFILES_ACTIVE" to "production",
     )
 }

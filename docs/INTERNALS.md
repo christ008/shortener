@@ -1,6 +1,6 @@
 # Internals
 
-How the service works: a request from end to end, the database, the cache, the native image, the deployment, and the evidence
+How the service works: a request from end to end, the database, the cache, the image, the deployment, and the evidence
 (tests and measurements). A statement that names a test or a measurement is a result; one that names neither is a decision, and
 [Limitations](#limitations) says what is not shown.
 
@@ -12,7 +12,8 @@ How the service works: a request from end to end, the database, the cache, the n
 - [Redirect cache](#redirect-cache)
 - [Errors](#errors)
 - [Observability](#observability)
-- [Native image](#native-image)
+- [Image](#image)
+  - [The native image it replaced](#the-native-image-it-replaced)
 - [Deployment](#deployment)
   - [Hardening](#hardening)
   - [Edge](#edge)
@@ -293,42 +294,73 @@ What is reported, the dashboard, the traces and the alerts are in [OBSERVABILITY
 - **The database explains itself, without the application:** slow-statement logging, an exporter that cannot read data,
   and a diagnostics script. See `deploy/postgres/diagnostics.conf` and `perf/pg-diagnostics.sql`.
 
-## Native image
+## Image
 
-Built by `./gradlew bootBuildImage` on BellSoft's Alpaquita (musl) builder with Liberica NIK, through Paketo
-buildpacks.
+Built by `./gradlew bootBuildImage` through Paketo buildpacks on BellSoft's Alpaquita (glibc) builder, as a JVM image ([ADR 0036](adr/0036-jvm-image-for-arm64.md)). The target is
+Oracle's Ampere instances, which are arm64.
 
-- **Pinned.** Paketo buildpacks are pinned by version in `build.gradle.kts`, in a list that replaces the builder's
-  default order. BellSoft publishes only rolling `musl` and `glibc` tags for its builder and run image, so those two
-  are pinned by digest. Update by bumping a version, or looking up a new digest.
-- **Health check.** The `health-checker` buildpack adds Tiny Health Checker at `/workspace/health-check`, a static
-  binary that works on any stack and does not touch the native image. Run it with `THC_PORT=8081` and
-  `THC_PATH=/actuator/health/readiness`. Set the Docker health timeout above the 3 s database check.
-- **Runtime.** Starts in about 0.35 s, around 100 MB at rest. Runs as uid 1000. `-march=compatibility` runs on any
-  x86-64 host. `-J-Xmx7g` for the build, which needs about 7 GB free (the OOM killer ends it with exit 137).
-- **Hardening tested.** Healthy under `--read-only`, `--cap-drop ALL` and `no-new-privileges`. The run image still has a
-  shell (busybox).
+- **Platform.** The builder and run image have amd64 and arm64, and the image takes the platform of the Docker daemon that builds it. The Release workflow builds on an arm64
+  runner and fails if the image is not arm64, so what the smoke test runs is what runs on the target. On an amd64 machine the same command gives an amd64 image.
+- **Pinned.** The builder and the run image are pinned by digest in `build.gradle.kts`, because BellSoft publishes only rolling `musl` and `glibc` tags. The digest pins the buildpacks the
+  builder carries, which `bootBuildImage` uses in the builder's own order (`bellsoft/buildpacks/java`). Only `health-checker` is added, by version. Update by looking up a new digest.
+- **JVM.** Liberica JRE Lite 25 from the builder. `JAVA_TOOL_OPTIONS` carries `-XX:+UseG1GC -XX:+UseCompactObjectHeaders -XX:ReservedCodeCacheSize=64M`, added by the
+  builder's `environment-variables` buildpack (`BPE_APPEND_...`, so an operator's own options are added to them, not instead). G1 with compact object headers equalled Parallel on 2 CPUs, and the
+  JVM's own choice (Serial, on 512 MiB) was worse ([Performance](#performance)).
+- **Memory.** The memory calculator of the buildpack runs when the container starts and sets `-Xmx` from the limit. It subtracts the direct memory (10 MB), the metaspace (123 MB, for
+  the 19,000 classes it counts; the application loads about 17,600 and uses 83 MB), the code cache and the thread stacks (1 MiB each) before it gives the rest to the heap. Its defaults
+  stop it on 512 MiB (`fixed memory regions require 635277K`): a reserved code cache of 240 MB and 250 threads. The image sets 64 MB (the application used 16 MB after the smoke test)
+  and 50 threads (`BPL_JVM_THREAD_COUNT`; the threads are virtual; `BPE_OVERRIDE_`, because `spring-boot` runs before `environment-variables` and its default of 250 would win). The heap is then 274 MiB on 512 MiB and 798 MiB on 1 GiB. `-XX:+ExitOnOutOfMemoryError` comes from the Liberica buildpack,
+  so a task that runs out of heap exits and the restart policy replaces it. Native memory tracking, on by default in the buildpack, is off (`BPL_JAVA_NMT_ENABLED`).
+- **Profile.** `SPRING_PROFILES_ACTIVE` defaults to `production` in the image, and the stack sets it too. Under a JVM the profile and the properties are read when the container starts.
+- **Health check.** `/workspace/health-check` (Tiny Health Checker), with `THC_PORT=8081` and `THC_PATH=/actuator/health/readiness`. Readiness does not include the database
+  ([ADR 0012](adr/0012-readiness-excludes-the-database.md)).
+- **Runtime.** Ready after about 4 seconds, about 240 MiB resident after the smoke test, about 400 MB uncompressed. Runs as uid 1000 and is healthy under `--read-only`,
+  `--cap-drop ALL` and `no-new-privileges` with a 16 MiB `/tmp`.
+- **Warm-up.** About the first 15 seconds are slow while the JIT learns (see [Results](#results)). Nothing holds a task back from the edge until it is warm.
+- **Not measured.** Anything on Ampere. The collector, the heap and the 512 MiB limit were chosen on an x86-64 desktop.
 
-### Size
+### Spring AOT, CDS and the JVM's AOT cache
 
-The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compressed).
+The Paketo `spring-boot` buildpack prints several flags that look alike and are three different things:
 
-| Part | Size |
-|---|--:|
-| code area | 76 MB |
-| image heap | 80 MB |
-| run image | about 35 MB |
+| | What it is | When | Flags of the buildpack |
+|---|---|---|---|
+| **Spring AOT** | the application's context, generated as code | in `bootJar` (`processAot`) | `BP_SPRING_AOT_ENABLED`, `BPL_SPRING_AOT_ENABLED` |
+| **CDS** | the JVM's archive of loaded classes (deprecated in the buildpack) | a training run in the image build | `BP_JVM_CDS_ENABLED`, `BPL_JVM_CDS_ENABLED` |
+| **The JVM's AOT cache** (JEP 483, 514, 515) | the same plus what the JIT learned | a training run, or a cache shipped in the jar | `BP_JVM_AOTCACHE_ENABLED`, `BPL_JVM_AOTCACHE_ENABLED`, `BP_JVM_AOTCACHE_PATH`, `BPL_JVM_AOTCACHE` |
 
-- `-Os` (optimize for size) is on. It shrinks the binary to 125 MB (code area 48 MB).
-- Its cost, measured with `perf/bench.sh` at 1,500 and 5,000 req/s, two runs each, ordered baseline, `-Os`, `-Os`,
-  baseline: same throughput, no failures, redirect p99 of 1.0 ms at 5,000 req/s in all four runs. It uses about 10% more
-  CPU for the same load (48% against 53% of the two cores at 5,000 req/s). Beyond 5,000 req/s it was not
-  measured then, so expect about 10% less headroom (the ceiling came later: see [Results](#results)). Results: `perf/results/2026-10-05-os`.
-- Dependencies are not the lever. Moving Spring Modulith to test scope saved 0.3 MB.
-- Largest contributors: `java.base` 17 MB, Tomcat 6 MB, kotlin-reflect 5 MB, 13,000 types registered for reflection.
-- UPX shrinks it further but costs startup time and memory sharing, which is the point of a native image.
+- **What Spring AOT does.** At run time Spring reads the classpath, evaluates every `@Conditional*` and `@Profile`, and builds bean definitions by reflection. `processAot` does that
+  once, when the jar is built, and writes the result as classes (`*__BeanDefinitions`, 231 here, under the `production` profile that `build.gradle.kts` passes) and as hints
+  (`META-INF/native-image`, 273 entries: reflection, resources, proxies). A native image needs both, because it cannot do the reading later. A JVM needs neither, and can use the classes
+  only when it is started with `-Dspring.aot.enabled=true`. Without that property they are inert.
+- **What it costs.** What the build decided is fixed: a bean that a condition left out is not there, and a property or profile that is set only when the container starts has no
+  effect on it. These are the failures of [the native image](#the-native-image-it-replaced), and they apply on a JVM that turns AOT on too.
+- **What it buys on a JVM, here.** The same code as a plain jar and as a jar processed by AOT, on the image's JRE with 2 CPUs and 512 MiB, three runs each, time to ready:
 
-### What the native image had to be taught
+  | | Ready | `Started ... in` |
+  |---|--:|--:|
+  | plain jar | 4.8 to 5.2 s | 4.1 to 4.3 s |
+  | AOT jar, property off | 4.9 to 5.1 s | 4.1 to 4.3 s |
+  | AOT jar, `-Dspring.aot.enabled=true` | 4.3 to 4.5 s | 3.5 to 3.7 s |
+
+  About 0.6 s, 12%, and nothing when the property is off.
+- **How the buildpack uses it.** `BP_SPRING_AOT_ENABLED=true` makes it add `-Dspring.aot.enabled=true` to `JAVA_TOOL_OPTIONS` (`BPL_SPRING_AOT_ENABLED` is the same decision at run time),
+  but only if the jar has `META-INF/native-image`. The buildpack also reads the manifest: `Spring-Boot-Native-Processed: true`, which the Spring Boot plugin writes whenever the GraalVM plugin
+  is applied, is a request for a native image. On a JVM builder the detector then fails ("provides unused native-processed"), which is why `build.gradle.kts` applies that plugin only with `-Pnative`.
+- **CDS and the AOT cache** are the JVM's, not Spring's, and need no AOT-processed jar. The buildpack starts the application during the image build, with a training run, and keeps
+  the archive (`application.jsa`, or `application.aot` from Java 25); at launch it adds `-XX:SharedArchiveFile` or `-XX:AOTCache`. Both are tied to the JDK, the architecture and the jar.
+  The training run starts the application during the image build, where there is no Postgres, and whether it gets through without one was not tried; a cache recorded outside the build is shipped with `BP_JVM_AOTCACHE_PATH`. Measured earlier
+  ([Results](#results)): the AOT cache took the start to 3.9 s and the latency of the first 15 seconds from 31 ms to 2.5 ms at p95, for up to 25% more CPU a request once warm.
+- **State here.** All three off: no `BP_SPRING_AOT_ENABLED`, no CDS, no AOT cache, and the jar is not processed.
+
+### The native image it replaced
+
+[ADR 0017](adr/0017-native-image-on-a-pinned-base.md) built the service as a GraalVM native image through Paketo buildpacks on BellSoft's Alpaquita (musl) builder
+(Liberica NIK, `-Os`, `-march=compatibility`, amd64): ready in 0.35 s, about 100 MB at rest, a 125 MB binary in a 205 MB image, 3 minutes and about 7 GB to build.
+`perf/builds/native.sh` and the `nativeCompile` task still build one for the benchmarks, and the hints below are still in the code. What it had to be taught is kept
+because a native image would need it again, and it explains code that does nothing on a JVM.
+
+#### What the native image had to be taught
 
 A native image decides at build time which beans, classes and reflection entries exist. These are the failures that showed in it.
 
@@ -355,7 +387,6 @@ A native image decides at build time which beans, classes and reflection entries
    - Fix: `AuthorizationRuntimeHints` registers them.
 
 Unit tests cannot run a native image, so `perf/smoke.sh` (the `Smoke` tool) exercises every endpoint with real tokens.
-`./gradlew bootBuildImage -PnativeProfiling` adds JFR and heap dumps (`shortener:<version>-profiling`).
 
 ## Deployment
 
@@ -474,7 +505,7 @@ provider's. It is not worth it for a demo ([CLOUD.md](CLOUD.md)).
 
 ### Verified
 
-On Docker 29.8, a single-node swarm and plain Compose, with the native image:
+On Docker 29.8, a single-node swarm and plain Compose, with the native image (the image is a JVM since [ADR 0036](adr/0036-jvm-image-for-arm64.md): its smoke test and its hardening were run, the stack on a swarm was not):
 
 - the whole stack through the TLS edge, with the 21-check smoke test (`perf/smoke.sh`), on both;
 - the migration job as the migrator role from a file secret, and the application refusing to change the schema;
@@ -499,13 +530,13 @@ Change `version` in `build.gradle.kts` (the OpenAPI document and the deployment 
 tag the commit `v<version>` and push the tag. The `Release` workflow (`.github/workflows/release.yml`):
 
 - refuses a tag that does not match the version in the build;
-- runs the tests, builds the native image, and smoke-tests that exact image against Postgres and Keycloak;
+- runs the tests, builds the image on an arm64 runner, and smoke-tests that exact image against Postgres and Keycloak;
 - scans it, and fails on a fixable high or critical vulnerability;
 - pushes that image to `ghcr.io/christ008/shortener`, signs it by digest with the workflow's own identity (no key to
   manage), and attaches an SPDX bill of materials. The job summary prints the digest and the `cosign verify` command.
 Notes:
 
-- Only amd64 is built.
+- Only arm64 is built, the platform of the target ([ADR 0036](adr/0036-jvm-image-for-arm64.md)).
 - The package is private after the first release. Make it public in the repository's package settings, or give the
   hosts that pull it a registry login.
 - Dependabot proposes updates weekly to the actions, Gradle (the application and `tools/`), the Dockerfiles and the compose
@@ -752,7 +783,7 @@ The one list of what is not shown and what is known to fall short. Other documen
 
 - A link disabled on one instance can redirect on the others for up to the cache TTL.
 - Rate limits and the DPoP replay cache are per instance.
-- Beyond capacity (6,000 req/s for the native image of the stack on two cores, in the stack's scenario) the service sheds load, but creates still
+- Beyond capacity (6,000 req/s for the native image and at least 12,000 for a JVM, on two cores of a desktop in the stack's scenario, none measured on Ampere) the service sheds load, but creates still
   queue for seconds. nginx caps connections per address but not in total, which Tomcat does at 500.
 - The database connection is not forced to use TLS: the URL comes from the environment and the driver falls back to plain
   text. Production should use `sslmode=verify-full`.

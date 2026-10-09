@@ -22,7 +22,7 @@ Then:
 |---|---|
 | Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
 | `dev-setup`, `smoke`, `report` and the other [tools](REFERENCE.md#scripts) | a JDK 25 (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
-| The native image | about 7 GB free memory, 3 minutes |
+| The image | Docker; about a minute, built for the platform of the machine, amd64 or arm64 |
 | The load test | Docker (k6 runs in a container), spare cores, `jq` |
 | The production stack on one machine | `openssl`, `keytool` |
 
@@ -63,20 +63,17 @@ You finish with the service running on your machine, one call made and the tests
    ```
 4. **Test it.** `./gradlew test` takes about a minute and needs Docker (Testcontainers starts Postgres). Other levels,
    the smoke test and the load test are in [Test it](#test-it).
-5. **Optional: run the image you ship.** The native image takes about 7 GB free and 3 minutes to build. Postgres and Keycloak
-   still come from compose:
+5. **Optional: run the image you ship.** It is a JVM on Liberica ([ADR 0036](adr/0036-jvm-image-for-arm64.md)), built by Paketo buildpacks. Postgres and Keycloak still come from compose:
 
    ```bash
    ./gradlew bootBuildImage
    docker compose up -d postgres keycloak
-   port=$(docker compose port postgres 5432 | cut -d: -f2)
-   docker run --rm --network host --memory 512m \
-     -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:$port/mydatabase \
-     -e SPRING_DATASOURCE_USERNAME=myuser -e "SPRING_DATASOURCE_PASSWORD=$(deploy/keycloak/dev-setup --show | sed -n 's/^postgres *myuser \/ //p')" \
-     shortener:$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
+   perf/start-image.sh shortener:$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
    ```
 
-   It runs without a profile. Add `-e SPRING_PROFILES_ACTIVE=production` for the production settings.
+   The image runs under the `production` profile, which refuses to start without a decision on target hosts and a nonce secret, so `perf/start-image.sh`
+   accepts every target host and makes a random secret. It starts the container `app` on the host network against the compose services and returns when it is ready.
+   Stop it with `docker rm -f app`.
 
    > [!NOTE]
    > `mydatabase` and `myuser` are the development database and its superuser, from `compose.yaml`. Connecting as that user
@@ -97,7 +94,7 @@ migration job and Postgres, started by the same `deploy/stack/deploy.sh` that de
 certificate and the dev-realm Keycloak stand in for the real ones. Do it before the first deploy and after changing a stack
 file. It needs Docker 25 or later, `openssl` and `keytool`, plus the room to build the image.
 
-1. **Build the image** (or skip this and use a published one by setting `SHORTENER_IMAGE` in `.env`):
+1. **Build the image** (or skip this and use a published one by setting `SHORTENER_IMAGE` in `.env`; the published image is arm64):
 
    ```bash
    ./gradlew bootBuildImage
@@ -316,7 +313,7 @@ says why.
 The suite has unit tests (in-memory repository), integration tests (real Postgres, stand-in identity provider),
 architecture tests, and tests of the deployment files (stack, profiles, alert rules, release version).
 
-**Smoke test.** Run it against the native image:
+**Smoke test.** Run it against the image:
 
 ```bash
 perf/smoke.sh                   # http://localhost:8080, management on 8081
@@ -397,6 +394,5 @@ minutes, and answers `503` with `Retry-After` for the rest.
 | `400` "not accepted by this service" | target host not on the allowlist | add the host |
 | `409` claiming a code | code reserved (`api`, `actuator`, `error`, `app`), taken by another client, or yours for another target | choose another; see [lost answers](#lost-answers) to tell yours from theirs |
 | app exits at start with `permission denied` | schema behind, and the application role cannot change it | run the migration job first |
-| native build exits with 137 | out of memory | free about 7 GB |
 | `docker ps` shows nothing you started | Docker Desktop switched the CLI to its own daemon | `DOCKER_CONTEXT=default`; for Gradle `DOCKER_HOST=unix:///var/run/docker.sock` |
 | `The configuration of the pool is sealed` | environment variable spelled with a separator inside a word | `..._CONNECTIONTIMEOUT`, not `..._CONNECTION_TIMEOUT` |

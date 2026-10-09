@@ -1,6 +1,6 @@
-name: Native image
+name: Image
 
-# Building the image needs about 7 GB of memory and several minutes, so it runs on demand rather than on every push.
+# Builds the image and smoke-tests it on an arm64 runner, as the Release workflow does before it publishes, without publishing.
 on:
   workflow_dispatch:
 
@@ -8,10 +8,10 @@ permissions:
   contents: read
 
 jobs:
-  native:
-    name: Build and smoke-test the native image
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+  image:
+    name: Build and smoke-test the image
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -20,15 +20,16 @@ jobs:
           java-version: '25'
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
       - name: Build the image
-        run: ./gradlew bootBuildImage
+        run: |
+          ./gradlew bootBuildImage
+          echo "VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)" >> "$GITHUB_ENV"
       - name: Start Postgres and Keycloak
         run: |
           deploy/keycloak/dev-setup --yes
           docker compose up -d postgres keycloak
           until curl -sf http://localhost:8180/realms/shortener/.well-known/openid-configuration > /dev/null; do sleep 3; done
       - name: Run the image
-        run: |
-          perf/start-image.sh "shortener:$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)"
+        run: perf/start-image.sh "shortener:$VERSION"
       - name: Smoke test every endpoint
         run: perf/smoke.sh
       - name: Show the application log when something fails
