@@ -540,6 +540,9 @@ All 380 ran and passed (`./gradlew test`, which runs the tools' tests too).
 
 - **Tool.** Kover 0.9.11, which works with Kotlin 2.4.20 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
   writes `build/reports/kover`, and CI keeps it as the `coverage` artifact. It is a measurement: there is no threshold.
+- **SonarCloud.** CI then runs `./gradlew sonar -x test`, which sends the analysis and the Kover XML report (it has the JaCoCo
+  format) to project `christ008_shortener` of organization `christ008`. It needs the `SONAR_TOKEN` secret and Automatic Analysis
+  switched off on the project; without the secret, as on a pull request from a fork, the step is skipped.
 - **Scope.** The classes of `uy.ct.shortener`, from the 319 tests of `src/test`, all of which ran. The tools are a build of their own
   and are not measured.
 - **Result.** Lines 96.9% (632 of 652), branches 87.5% (258 of 295), methods 93.6% (206 of 220), classes 94.4% (84 of 89). By

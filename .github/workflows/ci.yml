@@ -18,8 +18,12 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # SonarCloud needs the history to blame lines and to tell new code
       - uses: actions/setup-java@v6
         id: jdk17
         with:
@@ -43,6 +47,9 @@ jobs:
         with:
           name: coverage
           path: build/reports/kover
+      - name: Send the analysis and the coverage to SonarCloud
+        if: success() && env.SONAR_TOKEN != ''  # a pull request from a fork has no secrets
+        run: ./gradlew sonar -x test
       - name: Keep the test reports when something fails
         if: failure()
         uses: actions/upload-artifact@v7

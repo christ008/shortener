@@ -6,6 +6,7 @@ plugins {
     id("org.graalvm.buildtools.native") version "1.1.14"
     id("org.jetbrains.kotlinx.kover") version "0.9.11"
     id("info.solidsoft.pitest") version "1.19.0"
+    id("org.sonarqube") version "7.5.0.8588"
 }
 
 group = "uy.ct"
@@ -92,6 +93,22 @@ kover {
                 classes("*__*", "*\$\$*", "uy.ct.shortener.ShortenerApplicationKt")
             }
         }
+    }
+}
+
+/**
+ * Analysis and coverage on SonarCloud, from CI: `./gradlew sonar -x test`, with SONAR_TOKEN in the environment.
+ *
+ * - Coverage: the XML report of Kover, which has the format of JaCoCo, so run `koverXmlReport` first.
+ * - Scope: the application. The tools are a build of their own and are not analysed.
+ * - Needs Automatic Analysis switched off on the project, because the two cannot both feed it.
+ */
+sonar {
+    properties {
+        property("sonar.host.url", "https://sonarcloud.io")
+        property("sonar.organization", "christ008")
+        property("sonar.projectKey", "christ008_shortener")
+        property("sonar.coverage.jacoco.xmlReportPaths", layout.buildDirectory.file("reports/kover/report.xml").get().asFile.path)
     }
 }
 
