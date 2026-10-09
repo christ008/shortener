@@ -82,7 +82,7 @@ Properties:
 - A stolen token is useless without the private key, and the `Bearer` scheme is refused even for a valid token.
 - Behind a gateway, `htu` is built from the forwarded host and scheme, so forwarded headers are handled by Tomcat's
   trust-aware valve.
-- The replay cache is in memory and per instance. A proof is remembered 30 s, at most 1,000 per DPoP key, about 30
+- The replay cache is in memory and per instance. A proof is remembered 30 s, at most 1,000 per DPoP key, about 33
   requests a second per key. A client can use several keys, so this is not a client limit.
 - The nonce is an HMAC of the current five-minute interval, good for that interval and the next, and stateless: any instance with
   the secret checks one it did not make. The secret is the Docker secret `dpop_nonce_secret`, required in `production`, and

@@ -51,8 +51,8 @@ The problems that took the most work, and where each is written up:
   change a code. [Roles and migrations](docs/INTERNALS.md#roles-and-migrations)
 - **Redirects survive a database outage, for a bounded time.** A cache of active links with `stale-if-error`, and readiness
   that leaves the database out. [Redirect cache](docs/INTERNALS.md#redirect-cache), [ADR 0012](docs/adr/0012-readiness-excludes-the-database.md)
-- **Why the native image ran out of heap at 5,000 req/s,** found with JFR and a heap dump, and closed by a connection limit.
-  [Native image under overload](docs/INTERNALS.md#native-image-under-overload)
+- **Native image or JVM?** Three builds measured behind the edge on 2 CPUs: what a request costs, where each one's knee is, and
+  why the native image once ran out of heap. [Performance](docs/INTERNALS.md#performance)
 - **What each invariant rests on:** the test that fails without it. [Invariants](docs/DESIGN.md#invariants)
 
 ## Run it
@@ -137,8 +137,7 @@ Releases are tagged `v0.x.0`, one minor version per change.
 
 ## Built with AI
 
-Built with [Claude Code](https://claude.com/claude-code) between 2026-09-19 and 2026-10-08: 118 of the 164 commits name Claude
-as co-author.
+Built with [Claude Code](https://claude.com/claude-code) since 2026-09-19: about three in four commits name Claude as co-author.
 
 - **I set the direction, Claude did most of the writing.** I set the requirements and constraints, and reviewed each change.
 - **Iterative, not one-shot.** Most of the work took several rounds of proposal, review and rework: designs, code, tests and

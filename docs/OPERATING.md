@@ -360,8 +360,8 @@ DATASET_FILE=perf/data/codes-10M-seed1.txt perf/bench.sh native shortener:0.21.0
 - Postgres limited to 512 MB had its processes killed by the kernel; at 1 GiB, with 2 GB of data, it did not.
 
 > [!CAUTION]
-> Stay at or below 5,000 requests a second. Overload runs can take down the network of a machine with an application
-> firewall that inspects new connections. See [INTERNALS.md](INTERNALS.md#running-load-tests-safely).
+> Overload runs can take down the network of a machine with an application firewall that inspects new connections. Pause
+> it before a run past the knee. See [INTERNALS.md](INTERNALS.md#running-load-tests-safely).
 
 ## Look after it
 

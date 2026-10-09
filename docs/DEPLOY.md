@@ -138,7 +138,8 @@ Notes:
   `docker exec $(docker ps -q -f name=shortener_postgres) sh /docker-entrypoint-initdb.d/30-keycloak-database.sh`
 - **Failed sign-ins** are logged by Keycloak as warnings with client and address. The edge limits the token endpoint to ten
   requests a second per address.
-- **Back it up with the database.**
+- **Its database is backed up with the shortener's** when the [backups and replica overlay](#backups-and-a-replica) is on:
+  pgBackRest copies the whole Postgres instance, and the replica streams all of it.
 - **The edge may be published on another port.** A DPoP proof names the URL with its port, and the application rebuilds that URL
   from the forwarded headers. The edge sends the port of the `Host` header as `X-Forwarded-Port` (`ComposeStackTest`), because
   without it Tomcat assumes 443 and a call on another port was refused with `invalid_dpop_proof` while the same call on 443
@@ -171,7 +172,8 @@ Notes:
    17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
    ```
 7. Test a restore, now and periodically: `deploy/postgres/backup restore-test` restores the latest backup into a throwaway
-   container and prints how many links the copy has and when the newest was created. Compare them with the database.
+   container and prints how many links the copy has and when the newest was created. Compare them with the database. It checks
+   only the shortener's database: Keycloak's is in the same backup, and nothing counts what it holds.
 
 Limits:
 
@@ -185,8 +187,9 @@ Limits:
 1. Check the replica is caught up: `docker exec -u postgres <replica> psql -tAc "select pg_last_wal_replay_lsn(), pg_is_in_recovery()"`.
 2. Stop the primary: `docker service scale shortener_postgres=0`.
 3. Promote the replica: `docker exec -u postgres <replica> psql -tAc "select pg_promote(wait => true)"`.
-4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`, then
-   `deploy/stack/deploy.sh <version>`.
+4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`. With
+   Keycloak, also change `KC_DB_URL` in `deploy/stack/overlays/compose.keycloak.yaml` to `postgres-replica`: it is not a variable.
+   Then `deploy/stack/deploy.sh <version>`.
 5. Later, rebuild a replica from the new primary, or restore the old primary's volume from a backup and make it the replica.
 
 ## Without Swarm

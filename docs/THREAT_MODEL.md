@@ -337,9 +337,9 @@ to do. The fixed ones are collapsed at the end.
 ### F-13. The Keycloak image has no supply-chain evidence
 
 - **Rating:** Low
-- **Finding:** The Keycloak image is built by the operator, not by the release workflow: no scan, signature or bill of materials. Keycloak sits on the `edge` network, which has a way out, and its database is not backed up. A bad realm file or a restart loop is only visible in its log
+- **Finding:** The Keycloak image is built by the operator, not by the release workflow: no scan, signature or bill of materials. Keycloak sits on the `edge` network, which has a way out. A bad realm file or a restart loop is only visible in its log
 - **Why it matters:** the most trusted component has the least supply-chain evidence
-- **Recommendation:** build, scan and sign it in the release workflow ([ADR 0018](adr/0018-signed-scanned-releases.md)), back up its database with the rest, and alert on its health
+- **Recommendation:** build, scan and sign it in the release workflow ([ADR 0018](adr/0018-signed-scanned-releases.md)), and alert on its health. Its database is backed up with the rest by the Postgres overlay ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md))
 
 <details>
 <summary>Fixed findings</summary>

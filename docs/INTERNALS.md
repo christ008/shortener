@@ -740,8 +740,8 @@ The one list of what is not shown and what is known to fall short. Other documen
 - The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
 - The stack has run on one node only: not overlay encryption between nodes, the host-mode edge on several nodes, or where
   Postgres lands ([Verified](#verified)).
-- Not tried: real certificates and their issuance (ACME), pulling the image from a registry, any failure of the database node,
-  and the native image since the DPoP nonces (it needs about 7 GB of free memory to build).
+- Not tried: real certificates and their issuance (ACME), pulling the image from a registry, and any failure of the database
+  node.
 - Reads of links the cache has not seen were measured only up to 2,000 req/s over 10M links, on one machine ([Results](#results)). A miss
   is a primary-key read with a 5 s limit, and concurrent misses for one code share one load. Where misses saturate Postgres is unknown.
 
