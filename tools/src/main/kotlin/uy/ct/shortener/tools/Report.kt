@@ -24,7 +24,7 @@ import java.util.Locale
  *     tools/run Report summary RESULTS_DIR       the output of perf/bench.sh for several variants, one subdirectory each, as a table. Runs
  *                                                of one rate that `REPEAT` made several times are one block: the median of each figure, the
  *                                                range of throughput, failures and redirect p99, and the worst run for the pool
- *     tools/run Report cpu RESULTS_DIR           for each run of each variant, the CPU the application (and the edge, when the run had one) used
+ *     tools/run Report cpu RESULTS_DIR           for each run of each variant, the CPU the application (and the edge and the load generator, when the run recorded them) used
  *                                                while it ran and the CPU time each served request cost, from docker-stats.txt
  *     tools/run Report gc APP_LOG                how often a native image collects, how long it pauses and whether the live heap
  *                                                grows (needs the log of a run with -XX:+PrintGC)
@@ -217,18 +217,20 @@ object Report : Tool(
             children.filter { Files.exists(it.resolve("summary.json")) && Files.exists(it.resolve("docker-stats.txt")) }.sorted().toList()
         }
         if (variants.isEmpty()) throw Failure("${arguments[1]} has no subdirectory with a summary.json and a docker-stats.txt")
-        context.out.println("| variant | run | served req/s | application CPU avg / max (% of one CPU) | application ms of CPU a request | edge CPU avg / max | edge ms of CPU a request |")
-        context.out.println("|---|---|---|---|---|---|---|")
+        context.out.println("| variant | run | served req/s | application CPU avg / max (% of one CPU) | application ms of CPU a request | edge CPU avg / max | edge ms of CPU a request | load generator CPU avg / max |")
+        context.out.println("|---|---|---|---|---|---|---|---|")
         for (variant in variants) {
             val application = cpuSamples(variant.resolve("docker-stats.txt"))
             val edge = variant.resolve("docker-stats-edge.txt").takeIf { Files.exists(it) }?.let { cpuSamples(it) }
+            val generator = variant.resolve("docker-stats-k6.txt").takeIf { Files.exists(it) }?.let { cpuSamples(it) }
             for (run in array(parse(variant.resolve("summary.json"), context)["runs"]).map { obj(it) }) {
                 val start = number(run["start"]).toLong()
                 val end = number(run["end"]).toLong()
                 val served = k6(variant.resolve("${run["name"]}.k6.json"), "http_reqs", "rate", context)
                 val own = cpuCells(application, start, end, served)
                 val front = if (edge == null) listOf("-", "-") else cpuCells(edge, start, end, served)
-                context.out.println("| ${variant.fileName} | ${run["name"]} | ${d(served, 0)} | ${own[0]} | ${own[1]} | ${front[0]} | ${front[1]} |")
+                val load = if (generator == null) "-" else cpuCells(generator, start, end, served)[0]
+                context.out.println("| ${variant.fileName} | ${run["name"]} | ${d(served, 0)} | ${own[0]} | ${own[1]} | ${front[0]} | ${front[1]} | $load |")
             }
         }
     }

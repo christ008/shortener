@@ -89,10 +89,11 @@ class ReportTest {
         assertThat(table).describedAs("the worst run of the pool figures").contains("| pool acquire max (ms) / timeouts | 900.0 / 2 | 100.0 / 0 |")
     }
 
-    private fun withStats(variant: String, application: List<String>, edge: List<String>?) {
+    private fun withStats(variant: String, application: List<String>, edge: List<String>?, generator: List<String>? = null) {
         val dir = Files.createDirectories(directory.resolve(variant))
         Files.writeString(dir.resolve("docker-stats.txt"), application.joinToString("\n", postfix = "\n"))
         if (edge != null) Files.writeString(dir.resolve("docker-stats-edge.txt"), edge.joinToString("\n", postfix = "\n"))
+        if (generator != null) Files.writeString(dir.resolve("docker-stats-k6.txt"), generator.joinToString("\n", postfix = "\n"))
         Files.writeString(dir.resolve("r1000.k6.json"), """{"metrics":{"http_reqs":{"rate":1000},"http_req_failed":{"value":0},"redirect_latency":{"p(95)":1.0}}}""")
         Files.writeString(
             dir.resolve("summary.json"),
@@ -103,14 +104,14 @@ class ReportTest {
     @Test
     fun `cpu is what the application and the edge used while a run lasted, and what a served request cost`() {
         withStats("direct", listOf("90 999.0% 100MiB / 512MiB", "100 50.0% 100MiB / 512MiB", "110 100.0% 100MiB / 512MiB", "120 150.0% 100MiB / 512MiB", "170 999.0% 100MiB / 512MiB"), null)
-        withStats("edge", listOf("100 50.0% 100MiB / 512MiB", "110 100.0% 100MiB / 512MiB", "120 150.0% 100MiB / 512MiB"), listOf("90 99.0% 5MiB / 128MiB", "100 10.0% 5MiB / 128MiB", "130 20.0% 5MiB / 128MiB"))
+        withStats("edge", listOf("100 50.0% 100MiB / 512MiB", "110 100.0% 100MiB / 512MiB", "120 150.0% 100MiB / 512MiB"), listOf("90 99.0% 5MiB / 128MiB", "100 10.0% 5MiB / 128MiB", "130 20.0% 5MiB / 128MiB"), listOf("100 20.0% 300MiB / 1GiB", "120 60.0% 300MiB / 1GiB"))
 
         val result = run("cpu", directory.toString())
 
         assertThat(result.status).describedAs(result.stderr).isZero()
         assertThat(result.stdout.lines()).contains(
-            "| direct | r1000 | 1000 | 100 / 150 | 1.000 | - | - |",
-            "| edge | r1000 | 1000 | 100 / 150 | 1.000 | 15 / 20 | 0.150 |",
+            "| direct | r1000 | 1000 | 100 / 150 | 1.000 | - | - | - |",
+            "| edge | r1000 | 1000 | 100 / 150 | 1.000 | 15 / 20 | 0.150 | 40 / 60 |",
         )
     }
 
