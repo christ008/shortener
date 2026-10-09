@@ -18,8 +18,12 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # SonarCloud needs the history to blame lines and to tell new code
       - uses: actions/setup-java@v6
         id: jdk17
         with:
@@ -29,7 +33,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
       - name: Run the tests (Testcontainers starts Postgres), and those of the tools
         env:
           DPOP_CLIENT_JAVA_HOME: ${{ steps.jdk17.outputs.path }}
@@ -43,6 +47,9 @@ jobs:
         with:
           name: coverage
           path: build/reports/kover
+      - name: Send the analysis and the coverage to SonarCloud
+        if: success() && env.SONAR_TOKEN != ''  # a pull request from a fork has no secrets
+        run: ./gradlew sonar -x test
       - name: Keep the test reports when something fails
         if: failure()
         uses: actions/upload-artifact@v7
@@ -62,7 +69,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'  # the tools of tools/ need 25, as the application does (stream gatherers), and dev-setup builds them with Gradle. This job does not build the application
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
       - name: Check the compose files
         run: |
           deploy/keycloak/dev-setup --yes
