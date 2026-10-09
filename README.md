@@ -93,7 +93,7 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
   [INTERNALS.md#testing](docs/INTERNALS.md#testing)
 - **Security:** the controls, and a STRIDE model with a register of findings, severities, fix dates and the risks accepted.
   [SECURITY.md](docs/SECURITY.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md)
-- **Performance:** one laptop, a synthetic load of 99% redirects, 5,000 req/s with a redirect p99 of 1 ms, for links the cache holds.
+- **Performance:** one desktop, a synthetic load of 99% redirects on links the cache holds. With 2 CPUs the native image of the stack sustains 6,000 req/s behind its edge, and a JVM at least 12,000.
   The figure is for the cache, not the database. Method and a warning to read before load testing:
   [INTERNALS.md#performance](docs/INTERNALS.md#performance).
 - **Decisions:** one record per decision, with what it costs. [DESIGN.md](docs/DESIGN.md#decisions), [docs/adr/](docs/adr/README.md)

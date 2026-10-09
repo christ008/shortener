@@ -33,3 +33,8 @@ rest. The image also carries whatever its base carries, and a rebuild of the sam
 - JVM image: simpler to build and to debug, and slower to start. Its numbers are in `INTERNALS.md#performance` if the
   trade turns out wrong.
 - UPX: shrinks the binary further and costs startup time and memory sharing.
+
+## Update, 2026-10-09
+
+Measured later, with the redirect cache and the edge in place: a warm JVM costs about 45% of this image's CPU a request and sustains at least twice its rate, and a JVM
+runs the same load in 256 MiB; this image keeps its 0.7 s start and no warm-up. See [Performance](../INTERNALS.md#performance). The decision stands until someone takes it again.
