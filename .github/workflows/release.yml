@@ -57,13 +57,7 @@ jobs:
 
       - name: Run the image and smoke-test every endpoint
         run: |
-          set -a; . ./.env; set +a
-          port=$(docker compose port postgres 5432 | cut -d: -f2)
-          docker run -d --name app --network host --memory 512m \
-            -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:$port/mydatabase \
-            -e SPRING_DATASOURCE_USERNAME=myuser -e SPRING_DATASOURCE_PASSWORD="$DEV_POSTGRES_PASSWORD" \
-            "$IMAGE:$VERSION"
-          until curl -sf http://localhost:8081/actuator/health/readiness > /dev/null; do sleep 1; done
+          perf/start-image.sh "$IMAGE:$VERSION"
           perf/smoke.sh
 
       - name: Show the application log when something fails
