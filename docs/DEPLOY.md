@@ -187,9 +187,8 @@ Limits:
 1. Check the replica is caught up: `docker exec -u postgres <replica> psql -tAc "select pg_last_wal_replay_lsn(), pg_is_in_recovery()"`.
 2. Stop the primary: `docker service scale shortener_postgres=0`.
 3. Promote the replica: `docker exec -u postgres <replica> psql -tAc "select pg_promote(wait => true)"`.
-4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`. With
-   Keycloak, also change `KC_DB_URL` in `deploy/stack/overlays/compose.keycloak.yaml` to `postgres-replica`: it is not a variable.
-   Then `deploy/stack/deploy.sh <version>`.
+4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`, and with
+   Keycloak `KEYCLOAK_DB_URL` to `jdbc:postgresql://postgres-replica:5432/keycloak`. Then `deploy/stack/deploy.sh <version>`.
 5. Later, rebuild a replica from the new primary, or restore the old primary's volume from a backup and make it the replica.
 
 ## Without Swarm

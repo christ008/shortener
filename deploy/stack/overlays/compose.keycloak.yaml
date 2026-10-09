@@ -4,7 +4,8 @@
 #
 # - Image: built from deploy/keycloak/Dockerfile: `docker build -t shortener-keycloak:26.8.0 deploy/keycloak`. On more than one
 #   node, push it to a registry (KEYCLOAK_IMAGE).
-# - Database: its own, in the stack's Postgres (deploy/postgres/keycloak-database.sh), with a role only it uses.
+# - Database: its own, in the stack's Postgres (deploy/postgres/keycloak-database.sh), with a role only it uses. KEYCLOAK_DB_URL
+#   points it elsewhere, such as the promoted replica (docs/DEPLOY.md#losing-the-primary).
 # - Edge: forwards the shortener realm and its static files only (deploy/edge/keycloak.conf). Administer from the node
 #   (docs/DEPLOY.md).
 # - Realm: imported at the first start only. Made by `tools/run Realms production` (./gradlew productionRealm).
@@ -21,7 +22,7 @@ services:
     user: '1000:0'
     command: ['start', '--optimized', '--import-realm']
     environment:
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_URL: '${KEYCLOAK_DB_URL:-jdbc:postgresql://postgres:5432/keycloak}'
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD_FILE: /run/secrets/db_keycloak_password
       KC_BOOTSTRAP_ADMIN_USERNAME: admin

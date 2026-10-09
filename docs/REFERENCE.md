@@ -95,6 +95,7 @@ the pool is sealed once started`.
 |---|---|---|
 | `PUBLIC_URL` | none, required with the Keycloak overlay | the public base URL, such as `https://shortener.example.com`. It is Keycloak's host name, and `ISSUER_URI` is `PUBLIC_URL/realms/shortener` |
 | `KEYCLOAK_IMAGE`, `KEYCLOAK_VERSION` | `shortener-keycloak`, `26.8.0` | the Keycloak image built from `deploy/keycloak` |
+| `KEYCLOAK_DB_URL` | the stack's `postgres` | Keycloak's database. Changed to the replica when it is promoted ([DEPLOY.md](DEPLOY.md#losing-the-primary)) |
 | `POSTGRES_IMAGE`, `POSTGRES_VERSION` | `shortener-postgres`, `18.6` | the Postgres image built from `deploy/postgres`, with the backups and replica overlay |
 | `SECRETS_DIR` | `secrets/` at the repository root | where the [secret files](#secret-files) are. Give an absolute path: a relative one is read from `deploy/stack` |
 
