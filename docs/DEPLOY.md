@@ -1,8 +1,8 @@
 # Deploying
 
 Runbook for the production stack, `deploy/stack/compose.prod.yaml`, on Swarm or on one host with Compose. The steps in order,
-with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production) and every variable and secret is described in
-[its configuration reference](OPERATING.md#configuration). This page has the detail behind them. Design and trade-offs:
+with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and every variable and secret is in
+[REFERENCE.md](REFERENCE.md#configuration). This page has the detail behind them. Design and trade-offs:
 [INTERNALS.md](INTERNALS.md#deployment).
 
 - [Requirements](#requirements)
@@ -30,20 +30,10 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production) and every
 1. **Settings.** Copy `deploy/stack/.env.example` to `.env` at the repository root and fill in the image version, the issuer and
    key endpoint of the identity provider, and either `ALLOWED_TARGET_HOSTS` or `ALLOW_ANY_TARGET=true`. The application does not
    start without one. What each variable does, and the optional ones, are in
-   [OPERATING.md](OPERATING.md#env-the-stacks-variables).
-2. **Secrets.** Create `secrets/` at the repository root (git-ignored) with these files, each `chmod 0444` (Swarm mounts a secret
-   with the file's mode, and the containers run as other users). Who reads each is in
-   [OPERATING.md](OPERATING.md#secret-files):
-
-   | File | Content |
-   |---|---|
-   | `tls_cert` | certificate chain, PEM |
-   | `tls_key` | private key, PEM |
-   | `db_postgres_password` | database superuser, used once to create the roles |
-   | `db_app_password` | `shortener_app`, serves requests |
-   | `db_migrator_password` | `shortener_migrator`, owns the tables |
-   | `db_exporter_password` | `shortener_exporter`, reads statistics |
-   | `dpop_nonce_secret` | key of the DPoP nonces, shared by every instance of the application |
+   [REFERENCE.md](REFERENCE.md#env-the-stacks-variables).
+2. **Secrets.** Create `secrets/` at the repository root (git-ignored): the certificate chain as `tls_cert` and its key as
+   `tls_key`, both PEM, and random values for the rest. Each file is `chmod 0444`. What each file is and who reads it:
+   [REFERENCE.md](REFERENCE.md#secret-files).
 
    ```bash
    for name in db_postgres_password db_app_password db_migrator_password db_exporter_password dpop_nonce_secret; do
@@ -126,7 +116,7 @@ the `shortener` realm and its static files only. The master realm and the consol
    start) and `keycloak_admin_password` (bootstrap administrator of the master realm).
 4. **Settings** in `.env`. The application reads keys over the stack's network, not through the edge:
 
-   ```
+   ```dotenv
    PUBLIC_URL=https://shortener.example.com
    ISSUER_URI=https://shortener.example.com/realms/shortener
    JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs
@@ -148,12 +138,13 @@ Notes:
   `docker exec $(docker ps -q -f name=shortener_postgres) sh /docker-entrypoint-initdb.d/30-keycloak-database.sh`
 - **Failed sign-ins** are logged by Keycloak as warnings with client and address. The edge limits the token endpoint to ten
   requests a second per address.
-- **Back it up with the database.**
+- **Its database is backed up with the shortener's** when the [backups and replica overlay](#backups-and-a-replica) is on:
+  pgBackRest copies the whole Postgres instance, and the replica streams all of it.
 - **The edge may be published on another port.** A DPoP proof names the URL with its port, and the application rebuilds that URL
   from the forwarded headers. The edge sends the port of the `Host` header as `X-Forwarded-Port` (`ComposeStackTest`), because
   without it Tomcat assumes 443 and a call on another port was refused with `invalid_dpop_proof` while the same call on 443
-  worked. `DpopIntegrationTest` reproduces the refusal at the application and shows the header fixing it. It has not been run
-  end to end on a published port other than 443.
+  worked. `DpopIntegrationTest` reproduces the refusal at the application and shows the header fixing it, and the smoke test
+  passed through the edge on 9443 ([Verified](INTERNALS.md#verified)).
 
 ## Backups and a replica
 
@@ -176,12 +167,13 @@ Notes:
 5. Make the first backup, once: `deploy/postgres/backup init`. The WAL archiving alert fires until it runs.
 6. Schedule the rest in the manager's crontab. Two full backups are kept:
 
-   ```
+   ```text
    17 3 * * 0   /srv/shortener/deploy/postgres/backup full
    17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
    ```
 7. Test a restore, now and periodically: `deploy/postgres/backup restore-test` restores the latest backup into a throwaway
-   container and prints how many links the copy has and when the newest was created. Compare them with the database.
+   container and prints how many links the copy has and when the newest was created. Compare them with the database. It checks
+   only the shortener's database: Keycloak's is in the same backup, and nothing counts what it holds.
 
 Limits:
 
@@ -190,13 +182,13 @@ Limits:
 - Nothing alerts when no backup ran. Check `deploy/postgres/backup info`, or have cron mail its failures.
 - The replica is read only, and the application does not read from it.
 
-**Losing the primary:**
+### Losing the primary
 
 1. Check the replica is caught up: `docker exec -u postgres <replica> psql -tAc "select pg_last_wal_replay_lsn(), pg_is_in_recovery()"`.
 2. Stop the primary: `docker service scale shortener_postgres=0`.
 3. Promote the replica: `docker exec -u postgres <replica> psql -tAc "select pg_promote(wait => true)"`.
-4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`, then
-   `deploy/stack/deploy.sh <version>`.
+4. In `.env`, set `SPRING_DATASOURCE_URL` and `SPRING_FLYWAY_URL` to `jdbc:postgresql://postgres-replica:5432/shortener`, and with
+   Keycloak `KEYCLOAK_DB_URL` to `jdbc:postgresql://postgres-replica:5432/keycloak`. Then `deploy/stack/deploy.sh <version>`.
 5. Later, rebuild a replica from the new primary, or restore the old primary's volume from a backup and make it the replica.
 
 ## Without Swarm
@@ -217,7 +209,7 @@ It needs the variables of `.env` (`--env-file`, because Compose looks for `.env`
 Drop the `postgres` service and the `db_postgres_password` secret. Run `deploy/postgres/bootstrap.sql` as a superuser, give
 the roles the passwords in the secret files, and set in `.env`:
 
-```
+```dotenv
 SPRING_DATASOURCE_URL=jdbc:postgresql://db.example.com:5432/shortener?sslmode=verify-full
 SPRING_FLYWAY_URL=jdbc:postgresql://db.example.com:5432/shortener?sslmode=verify-full
 ```

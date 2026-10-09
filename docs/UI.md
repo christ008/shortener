@@ -1,6 +1,9 @@
 # Web UI plan
 
-Plan for a browser front end. **Nothing here is built.**
+Plan for a browser front end.
+
+> [!NOTE]
+> A plan. Nothing here is built.
 
 - [Scope](#scope)
 - [Choices](#choices)
@@ -41,12 +44,8 @@ Authentication lives in a module with no UI imports (`src/auth`).
 
 ## Link ownership
 
-A link's owner is the token's `azp` claim, read through `shortener.security.client-id-claim`. For user tokens `azp` is the
-UI's client, so users need another claim. No service code changes:
-
-- Keycloak adds an `owner` claim to every token: the client id for service accounts, `user:<sub>` for users.
-- The service sets `shortener.security.client-id-claim=owner`.
-- `created_by` is free text: no migration.
+Done ([ADR 0007](adr/0007-owner-claim-and-ownership-rule.md)): a link's owner is the `owner` claim, the client id for service
+accounts and `user:<sub>` for users, so users of one UI client own their links apart.
 
 Each user owns their own links. Admins are users with the `shortlinks:admin` scope.
 
@@ -70,15 +69,14 @@ Done first; each item is testable without a front end.
      origins, refresh token rotation, short access token lifetime.
    - Scopes: `create`, `claim`, `read`, `delete` for users; `admin` for the administrator only.
    - The `owner` claim mapper on the UI client and the service-account clients.
-2. **Service:** set `client-id-claim` to `owner`. `ClientJwtAuthenticationConverter` already takes the claim name from
-   configuration. Add a test with a user token.
+2. **Service:** the owner is the `owner` claim, tested with a user token by `UserOwnershipIntegrationTest` (done).
 3. **Gateway:** `/app/*` to the UI, `/api/*` and single-segment short codes to the API, `/realms/*` to Keycloak. The short-code
    route must not match `/app`.
 4. **Reserved code:** `app` is among the reserved short codes (done).
 
 ## Structure
 
-```
+```text
 ui/
   src/
     auth/            no UI imports: PKCE and login redirect, DPoP key, token store, refresh, logout, fetch with proofs
@@ -93,17 +91,20 @@ ui/
 
 ## Sign-in and requests
 
-```
-Browser                                   Keycloak                     nginx -> API
-  | generate ES256 key (non-extractable)
-  | redirect to /auth?code_challenge&dpop_jkt ->
-  |                                         login
-  | <- redirect /app/auth/callback?code
-  | POST /token  code_verifier + DPoP proof ->
-  | <- access token (cnf.jkt) + refresh token
-  | GET /api/short-links
-  |   Authorization: DPoP <token>, DPoP: <proof for this request> ------------------->
-  |                                                                       validates proof
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser
+    participant Keycloak
+    participant API as nginx, then the API
+    Browser->>Browser: generate an ES256 key (non-extractable)
+    Browser->>Keycloak: redirect to /auth with code_challenge and dpop_jkt
+    Keycloak->>Keycloak: login
+    Keycloak-->>Browser: redirect to /app/auth/callback with the code
+    Browser->>Keycloak: POST /token with the code_verifier and a DPoP proof
+    Keycloak-->>Browser: access token bound to the key (cnf.jkt), and a refresh token
+    Browser->>API: GET /api/short-links, Authorization DPoP token and a proof for this request
+    API->>API: validate the proof
 ```
 
 - The key pair is non-extractable (WebCrypto), stored in IndexedDB.

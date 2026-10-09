@@ -2,24 +2,17 @@
 
 [![CI](https://github.com/christ008/shortener/actions/workflows/ci.yml/badge.svg)](https://github.com/christ008/shortener/actions/workflows/ci.yml)
 
-**TL;DR** A URL shortener designed to face the public internet: secure by default, and modern from the language to the
-deployment.
+**TL;DR** A URL shortener built to be safe on the public internet.
 
-- **Secure by default.** An OAuth2 resource server whose tokens are bound to the client's key (DPoP, RFC 9449), so a stolen
-  token is useless. Every client sees only its own links. Production refuses to start without a decision on which target
-  hosts links may point to, with DPoP off, or without a nonce secret shared by its instances.
-- **A link cannot be hijacked.** A code is never handed out twice: in the stack, the application's database role cannot delete a row or
-  change a code. A disabled link answers `410` and keeps its code.
-- **Fast, and light.** A redirect needs no database write, and an in-memory cache serves it. As a GraalVM native image it is
-  ready in under a second, on virtual threads.
-- **Made to be operated.** A hardened Docker Compose / Swarm stack with an nginx edge and TLS, migrations in a job of their
-  own, signed and scanned releases, Prometheus, OpenTelemetry and a Grafana dashboard.
-- **Argued, not asserted.** A STRIDE threat model, one record per decision with what it costs, and tests that hold the
-  invariants below.
+- **A stolen token is useless.** Each request is signed by the client's own key, and clients see only their own links.
+- **A link can't be hijacked.** A short code is never reused, and in production the app has no permission to change one.
+- **Fast.** Redirects come from memory, and the service starts in under a second.
+- **Ready to run.** One command deploys it with TLS, metrics and alerts, after checking the release's signature.
+- **Every choice explained.** A threat model, a short record per decision with its cost, and a test behind each guarantee.
 
 > [!IMPORTANT]
-> Designed for the public, not yet run for it: the service has not served real traffic, and every statement about load comes
-> from a synthetic workload on one machine. What a public instance still needs is in [docs/CLOUD.md](docs/CLOUD.md).
+> Not yet run in public: performance figures come from load tests on one machine. See [Limitations](docs/INTERNALS.md#limitations)
+> and what a public instance still needs ([CLOUD.md](docs/CLOUD.md)).
 
 <p align="center">
   <img src="docs/images/dashboard.png" alt="Grafana dashboard of the service at 1,500 requests a second" width="420">
@@ -27,26 +20,40 @@ deployment.
 
 Spring Boot 4.2 · Kotlin 2.4 · Java 25 · Postgres 18 · Keycloak 26 · nginx · Apache-2.0
 
-## Behaviour
+## What it does
 
-- Creates a link with a generated code (7 base62 characters) or a custom one. `GET /{code}` answers `302`, not `301`, so a
-  browser does not keep following a link after a takedown.
-- A client lists, reads and disables its own links. An administrator can act on any.
-- Another client's link answers `404`. A disabled link answers `410` and keeps its code. A code is never handed out twice.
-- A takedown reaches every instance within the cache TTL (30 s).
-- Every authentication, authorization and rate-limit failure is an RFC 9457 problem detail.
+- Creates a link with a generated code (7 base62 characters) or a chosen one, and redirects `GET /{code}` with `302`, not `301`,
+  so a browser does not keep following a link after a takedown.
+- A client lists, reads and disables its own links. Another client's link answers `404`, and an administrator can act on any.
+- A disabled link answers `410` and keeps its code: a code is never handed out twice. A takedown reaches every instance within
+  the cache TTL (30 s).
 
-## Invariants
+Not goals: editing a link's target, expiry, teams or shared ownership, several short domains, and billing. Click analytics
+and a web UI ([docs/UI.md](docs/UI.md)) are planned, not built.
 
-What must stay true, and the test or decision that holds each one: [docs/DESIGN.md#invariants](docs/DESIGN.md#invariants).
+```mermaid
+flowchart LR
+    client(["Client with a DPoP key"]) -->|HTTPS| edge["nginx edge<br/>TLS, limits"]
+    visitor(["Visitor"]) -->|"GET /{code}"| edge
+    edge --> app["shortener x2<br/>cache of active links"]
+    app -->|"shortener_app: no DELETE, no DDL"| db[("Postgres")]
+    migrate["migration job"] -->|shortener_migrator| db
+    app -. "signing keys" .-> idp(["Identity provider"])
+```
 
-- **Short codes.** A code is never reused. A disabled link answers `410`. A redirect never needs a database write. Staleness is
-  bounded by the cache TTL (by `stale-if-error` while the database is down). The application's database credentials cannot
-  change the schema.
-- **Security.** Production must decide where links may point. DPoP is required. Link ownership is enforced on the server.
-  Development keys are generated on the machine that uses them. Production secrets are never repository configuration.
-- **Operations.** An invalid production security configuration stops the start. Migrations run apart from the application.
-  Readiness and liveness are different questions.
+## Worth reading
+
+The problems that took the most work, and where each is written up:
+
+- **A stolen token is useless, across instances that share no state.** DPoP-bound tokens with stateless HMAC nonces any
+  instance can check. [SECURITY.md](docs/SECURITY.md#dpop-rfc-9449), [ADR 0032](docs/adr/0032-dpop-nonces.md)
+- **A code can never be reused, even by a compromised application.** The application's database role cannot delete a row or
+  change a code. [Roles and migrations](docs/INTERNALS.md#roles-and-migrations)
+- **Redirects survive a database outage, for a bounded time.** A cache of active links with `stale-if-error`, and readiness
+  that leaves the database out. [Redirect cache](docs/INTERNALS.md#redirect-cache), [ADR 0012](docs/adr/0012-readiness-excludes-the-database.md)
+- **Native image or JVM?** Three builds measured behind the edge on 2 CPUs: what a request costs, where each one's knee is, and
+  why the native image once ran out of heap. [Performance](docs/INTERNALS.md#performance)
+- **What each invariant rests on:** the test that fails without it. [Invariants](docs/DESIGN.md#invariants)
 
 ## Run it
 
@@ -84,7 +91,7 @@ Then call it, rehearse the production stack on your machine, and go to productio
 
 Defaults suit development. A deployment sets `.env` and a few secret files, and the `production` profile (JSON logs, no internals
 in errors or health, 5% trace sampling, DPoP required) is set by the stack. Every variable, where it goes and what reads it:
-[docs/OPERATING.md#configuration](docs/OPERATING.md#configuration).
+[docs/REFERENCE.md#configuration](docs/REFERENCE.md#configuration).
 
 ## Evidence
 
@@ -96,7 +103,7 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
 - **Performance:** one desktop, a synthetic load of 99% redirects on links the cache holds. With 2 CPUs the native image of the stack sustains 6,000 req/s behind its edge, and a JVM at least 12,000.
   The figure is for the cache, not the database. Method and a warning to read before load testing:
   [INTERNALS.md#performance](docs/INTERNALS.md#performance).
-- **Decisions:** one record per decision, with what it costs. [DESIGN.md](docs/DESIGN.md#decisions), [docs/adr/](docs/adr/README.md)
+- **Decisions:** one record per decision, with what it costs. [docs/adr/](docs/adr/README.md)
 
 ## Build, test, package
 
@@ -114,11 +121,12 @@ Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's s
 
 | Document | Contents |
 |---|---|
-| [OPERATING.md](docs/OPERATING.md) | develop, rehearse production, a go-live checklist, every configuration key |
+| [OPERATING.md](docs/OPERATING.md) | develop, rehearse production, a go-live checklist, call the API, troubleshoot |
+| [REFERENCE.md](docs/REFERENCE.md) | every configuration key, secret file and script |
 | [DEPLOY.md](docs/DEPLOY.md) | production stack runbook: first deploy, updates, Keycloak, backups |
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | metrics, dashboard, traces, alerts, logs |
 | [INTERNALS.md](docs/INTERNALS.md) | how it works: request flows, database, cache, native image, deployment, tests and measurements |
-| [DESIGN.md](docs/DESIGN.md) | invariants, and why the code has this shape: modules, types, SOLID review, decisions |
+| [DESIGN.md](docs/DESIGN.md) | invariants, and why the code has this shape: modules, types, design review |
 | [SECURITY.md](docs/SECURITY.md) | the controls: filter chain, tokens, DPoP, scopes, rate limits |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
 | [adr/](docs/adr/README.md) | decision records |
@@ -126,6 +134,18 @@ Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's s
 | [openapi.yaml](docs/openapi.yaml) | API contract |
 
 Releases are tagged `v0.x.0`, one minor version per change.
+
+## Built with AI
+
+Built with [Claude Code](https://claude.com/claude-code) since 2026-09-19: about three in four commits name Claude as co-author.
+
+- **I set the direction, Claude did most of the writing.** I set the requirements and constraints, and reviewed each change.
+- **Iterative, not one-shot.** Most of the work took several rounds of proposal, review and rework: designs, code, tests and
+  these docs alike. Some choices were reversed outright, and the superseded ADRs keep that history.
+- **Generated code is checked, not trusted.** Each claim in the docs names its test or measurement, mutation testing shows
+  the tests catch real faults, and a smoke test exercises the shipped native image.
+- **The reasoning is written down.** The ADRs and the threat model were drafted with Claude from the commit history, each with
+  its cost and the alternatives it rejected.
 
 ## License
 

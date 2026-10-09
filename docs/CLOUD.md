@@ -1,7 +1,9 @@
 # A public instance in the cloud
 
-Plan for an instance anyone can try. **Status: a plan. Nothing here has been deployed.** The production stack is rehearsed
-on one machine ([DEPLOY.md](DEPLOY.md)).
+Plan for an instance anyone can try. The production stack is rehearsed on one machine ([DEPLOY.md](DEPLOY.md)).
+
+> [!NOTE]
+> A plan. Nothing here has been deployed.
 
 - [Goal](#goal)
 - [Shape](#shape)
@@ -35,7 +37,7 @@ flowchart LR
 
 - **Edge:** nginx with a Let's Encrypt certificate for one host name.
 - **Identity:** Keycloak with the production realm, behind the edge under `/realms/shortener` ([DEPLOY.md](DEPLOY.md#keycloak)).
-- **Database:** the stack's Postgres on the VM's disk, with a nightly `pg_dump` to somewhere else.
+- **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, to a repository off the VM.
 - **Image:** `ghcr.io/christ008/shortener:<version>`, amd64 only.
 
 ## To decide
@@ -56,7 +58,7 @@ Built: the Keycloak overlay, the edge route for `/realms`, the production realm
 Not built:
 
 1. Certificate issuance and renewal, with an edge reload.
-2. A bootstrap script for a fresh VM: install Docker, make secrets, deploy, install the nightly dump.
+2. A bootstrap script for a fresh VM: install Docker, make secrets, deploy, schedule the backups.
 3. The backup repository off the VM.
 4. The `shortener-ui` client and web users (they wait for the [web UI](UI.md)).
 
@@ -67,7 +69,7 @@ Not built:
 3. Obtain the certificate and place it with the key in the secrets directory.
 4. Make the secrets (database passwords, Keycloak's two), the production realm and `.env`: image version, `PUBLIC_URL`,
    issuer, key endpoint, `ALLOWED_TARGET_HOSTS`.
-5. `KEYCLOAK=1 OBSERVABILITY=1 deploy/stack/deploy.sh <version>`, then `docker service ls`.
+5. `KEYCLOAK=1 OBSERVABILITY=1 POSTGRES_HA=1 deploy/stack/deploy.sh <version>`, then `docker service ls`. The backups overlay needs its image, a secret and a node label ([DEPLOY.md](DEPLOY.md#backups-and-a-replica)).
 6. `perf/smoke.sh` against the public URL with the demo client.
 7. Publish the demo client's key and the README commands with the URL.
 8. Check the Prometheus alerts. Set a billing alert at the provider.
@@ -79,10 +81,10 @@ Before anyone is invited:
 - Set `SHORTENER_SHORTLINK_TARGETURLS_ALLOWEDHOSTS` to a short list (`example.com`, `*.example.org`). Anything else is
   refused with `400`. Never use `ALLOW_ANY_TARGET=true` on a public instance.
 - Use the realm `./gradlew productionRealm` writes, never the dev one.
-- Keep the default rate limits (300 a minute per address, 60 per client).
+- Keep the default [rate limits](REFERENCE.md#tunables).
 - Keep an administrator client whose key only you hold. Takedown: `PATCH /api/short-links/<code>` with `{"disabled": true}`.
 - Say in the README, next to the URL, that availability is not promised.
-- Store nothing you would mind losing: one disk, one machine, no backup yet.
+- Store nothing you would mind losing: one disk, one machine.
 
 Known limits: rate limits and the DPoP replay cache are per task, the VM is a single point of failure, and backups stay on its disk until the repository leaves it.
 

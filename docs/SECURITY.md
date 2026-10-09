@@ -1,10 +1,7 @@
 # Security
 
 How the service decides who may call it, what they may do and how often, and why it does it this way. The threats these controls
-answer, checked against STRIDE and the OWASP Top 10, the register of findings and the risks accepted are in
-[THREAT_MODEL.md](THREAT_MODEL.md). How the service works is in [INTERNALS.md](INTERNALS.md), and why it is shaped this way is in
-[DESIGN.md](DESIGN.md). The five security invariants these controls uphold, and the tests that hold them, are in
-[DESIGN.md](DESIGN.md#invariants).
+answer, the register of findings and the risks accepted are in [THREAT_MODEL.md](THREAT_MODEL.md).
 
 > [!NOTE]
 > This covers the controls inside the application: the filter chain, tokens, DPoP, scopes and rate limits. The controls
@@ -85,7 +82,7 @@ Properties:
 - A stolen token is useless without the private key, and the `Bearer` scheme is refused even for a valid token.
 - Behind a gateway, `htu` is built from the forwarded host and scheme, so forwarded headers are handled by Tomcat's
   trust-aware valve.
-- The replay cache is in memory and per instance. A proof is remembered 30 s, at most 1,000 per DPoP key, about 30
+- The replay cache is in memory and per instance. A proof is remembered 30 s, at most 1,000 per DPoP key, about 33
   requests a second per key. A client can use several keys, so this is not a client limit.
 - The nonce is an HMAC of the current five-minute interval, good for that interval and the next, and stateless: any instance with
   the secret checks one it did not make. The secret is the Docker secret `dpop_nonce_secret`, required in `production`, and
@@ -115,7 +112,7 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 - A `PermissionEvaluator` lets a caller manage a link only if it created it, or is an administrator.
 - A denied link read becomes `404` through `@HandleAuthorizationDenied`.
 
-**Wiring that is easy to break**
+### Wiring that is easy to break
 
 - `ShortLinkScopes` is bound through its constructor, so it is immutable after start, and its defaults are `@DefaultValue`s:
   Kotlin default arguments would add a no-argument constructor that Spring rejects. A blank scope name stops startup, because
@@ -129,8 +126,8 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 
 ## Rate limiting
 
-- Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): 300 requests a minute per IP before
-  authentication, 60 a minute per client after it.
+- Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): one per IP before authentication, one per client after
+  it. The capacities are [tunables](REFERENCE.md#tunables).
 - State is per instance, so the effective limit is the limit times the replicas. A global limit needs a shared store.
 - Buckets live in a size-bounded Caffeine cache and expire once idle for a full refill period, so a flood of distinct keys
   cannot exhaust memory.
@@ -139,7 +136,7 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
   so two instances sharing one would skip each other.
 
 > [!WARNING]
-> Everyone behind one address shares the IP bucket (5 a second). A newsletter link or a carrier NAT can be answered with `429`
+> Everyone behind one address shares the IP bucket. A newsletter link or a carrier NAT can be answered with `429`
 > by readers who did nothing ([ADR 0008](adr/0008-rate-limits-per-instance-in-memory.md)).
 
 ## Identity provider and OAuth 2.1

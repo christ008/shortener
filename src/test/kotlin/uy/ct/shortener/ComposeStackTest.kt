@@ -22,7 +22,7 @@ import java.nio.file.Path
  * - Writable memory uses the long `volumes:` syntax, because Swarm silently drops the short `tmpfs:` key.
  * - The database network has no route out, and the images are pinned to a version.
  * - Keycloak, when the stack has one, is held to the same rules, is not published, and is the only service that holds its
- *   passwords besides the database that creates its role.
+ *   passwords besides the database that creates its role. Its database URL is a variable, so a promoted replica needs no file edit.
  * - The variables the files read and the ones `deploy/stack/.env.example` lists are the same, and the defaults the stack gives
  *   the application's tunables are the application's own.
  */
@@ -234,6 +234,8 @@ class ComposeStackTest {
         assertThat(environment.keys).contains("KC_DB_PASSWORD_FILE", "KC_BOOTSTRAP_ADMIN_PASSWORD_FILE")
         assertThat(environment["KC_HTTP_ENABLED"]).describedAs("TLS ends at the edge").isEqualTo("true")
         assertThat(environment["KC_PROXY_HEADERS"]).isEqualTo("xforwarded")
+        assertThat(environment["KC_DB_URL"]).describedAs("the stack's Postgres by default, and a variable for a promoted replica")
+            .isEqualTo("\${KEYCLOAK_DB_URL:-jdbc:postgresql://postgres:5432/keycloak}")
         assertThat(secretsOf(keycloak)).containsExactlyInAnyOrder("db_keycloak_password", "keycloak_admin_password")
         services.filterKeys { it !in setOf("keycloak", "postgres") }.forEach { (name, service) ->
             assertThat(secretsOf(service)).describedAs("secrets of $name").doesNotContain("db_keycloak_password", "keycloak_admin_password")

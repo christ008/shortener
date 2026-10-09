@@ -9,7 +9,7 @@
 # give it the one at the root: `docker compose --env-file .env -f deploy/stack/compose.prod.yaml ...` (deploy/stack/deploy.sh does
 # the equivalent for Swarm).
 #
-# Variables: deploy/stack/.env.example, described in docs/OPERATING.md#configuration. Secrets are files (`secrets:` at the end).
+# Variables: deploy/stack/.env.example, described in docs/REFERENCE.md#configuration. Secrets are files (`secrets:` at the end).
 # Swarm ignores some settings: docs/INTERNALS.md, "Hardening". `docker compose` honours all of them.
 
 x-logging: &logging

@@ -1,20 +1,13 @@
 # Design
 
-The shape of the code and why it has that shape: the invariants it keeps, the modules, the types, a review against SOLID, and the
-decisions in one list.
-How a request is served is in [INTERNALS.md](INTERNALS.md#request-flows), and the controls that guard it are in
-[SECURITY.md](SECURITY.md). Each decision has a record with its cost and alternatives in the [ADRs](adr/README.md).
+The invariants the code keeps, and why it has its shape: the modules and the types. Each decision has a record with its cost and
+alternatives in the [ADRs](adr/README.md).
 
 - [Invariants](#invariants)
 - [Structure](#structure)
 - [Domain types](#domain-types)
 - [Design review](#design-review)
-  - [Checked by the compiler](#checked-by-the-compiler)
-  - [Tell, don't ask](#tell-dont-ask)
-  - [SOLID](#solid)
-    - [Why the service keeps its observations](#why-the-service-keeps-its-observations)
-    - [Why the contract exposes Spring Data's paging types](#why-the-contract-exposes-spring-datas-paging-types)
-- [Decisions](#decisions)
+- [Decisions not in an ADR](#decisions-not-in-an-adr)
 
 ## Invariants
 
@@ -28,7 +21,7 @@ invariant has a limit, the limit is part of it.
 | 1 | A code is never reused | the code is the primary key and a claim is one atomic `INSERT ... ON CONFLICT DO NOTHING`; the application's role can neither delete a row nor change a code, and a disabled link keeps its code. `DatabaseRolesTest`, `ShortCodeRaceIntegrationTest`, `DefaultShortLinkServiceTest`. [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md) |
 | 2 | A disabled link answers `410` | a disabled link is a `410` at `GET /{code}`, and its code stays taken. `ShortLinkWebTest`, `DefaultShortLinkServiceTest`. [ADR 0033](adr/0033-link-is-a-resource-and-disabling-is-a-patch.md) |
 | 3 | A redirect never needs a database write | the redirect path only reads, through the cache. `DefaultShortLinkServiceTest` counts the writes of a miss, a hit and an expiry: none |
-| 4 | Staleness is bounded | a link disabled on another instance is followed for at most the cache TTL, 30 s. **While the database is unreachable the bound is `stale-if-error`, 5 minutes**, and `shortlink_redirect_cache_stale_total` counts each such redirect. `DefaultShortLinkServiceTest`, `StorageUnavailableIntegrationTest`. [ADR 0011](adr/0011-in-process-redirect-cache.md) |
+| 4 | Staleness is bounded | a link disabled on another instance is followed for at most the cache TTL. **While the database is unreachable the bound is `stale-if-error`**, both [tunables](REFERENCE.md#tunables), and `shortlink_redirect_cache_stale_total` counts each such redirect. `DefaultShortLinkServiceTest`, `StorageUnavailableIntegrationTest`. [ADR 0011](adr/0011-in-process-redirect-cache.md) |
 | 5 | The application's credentials cannot change the schema | `shortener_app` holds `SELECT`, `INSERT` and `UPDATE (disabled_at, disabled_by)`, and the tables belong to `shortener_migrator`. `DatabaseRolesTest`. **In the stack only:** `bootRun` connects as the development superuser |
 
 ### Security
@@ -97,8 +90,12 @@ Security callbacks. They are converted at that boundary, and the JSON API still 
 
 ## Design review
 
-A pass for what the compiler can check, and against SOLID and Tell, Don't Ask. What changed, and what was left alone on
-purpose.
+A pass against SOLID and Tell, Don't Ask, and for what the compiler can check. Most findings were fixed with standard Kotlin:
+sealed types, exhaustive `when`, and rules moved onto the object that owns the data. Two were kept with a cost: the service
+opens its own observations, and the contract exposes Spring Data's paging types.
+
+<details>
+<summary>The review, finding by finding</summary>
 
 ### Checked by the compiler
 
@@ -154,31 +151,14 @@ decide who may see a link, which is not what the observation is for.
 - The cost: the contract is tied to `spring-data-commons`, a library with no persistence in it. A different paging library would
   change the contract, not only an adapter.
 
-## Decisions
+</details>
 
-Each has a record with its problem, cost and alternatives in [adr/](adr/README.md). The list below is the summary.
+## Decisions not in an ADR
 
-- **Plain JDBC, not JPA.** Two statements dominate and need SQL features JPA hides. Only the persistence adapter knows SQL.
+The rest are in the [ADR index](adr/README.md).
+
 - **Spring facilities over bespoke code.** Method security with a `PermissionEvaluator`, `Pageable` and `Page`, Spring
   Security's resource server, DPoP and RFC 9728 metadata, MVC's problem details. Custom code is limited to what Spring
-  lacks: the Bearer refusal, rate limiting and the native hints.
-- **Absence is a type.** Sealed types and a null-object cache instead of nullable returns and fields (see
-  [Domain types](#domain-types)).
-- **Virtual threads, not coroutines.** Each request does one blocking query, so there is nothing to fan out. The native
-  image's problem was never scheduling: it was 150 KB of Tomcat buffers per connection and the collector. Revisit if a
-  request ever calls several things in parallel.
-- **Ownership is the client id.** There are no end users yet, so the token's `azp` is the owner and scopes are the only
-  permission model.
-- **Sender-constrained tokens by default.** A leaked bearer token is the main risk of a token API. DPoP removes it at the
-  cost of a client that can sign. A reference client is provided: `deploy/keycloak/DpopClient.java`, one file that needs only a JDK 17
-  or newer and no build, and that CI compiles for 17 and runs on 17.
-- **In-process redirect cache.** Caffeine, active links only, short TTL, local eviction on disable. See
-  [Redirect cache](INTERNALS.md#redirect-cache) for what was rejected.
-- **Which hosts a link may point to is a policy.** Empty by default, so a private instance accepts anything; a public
-  one lists the hosts it accepts, so it cannot be used to redirect to arbitrary sites.
+  lacks: the Bearer refusal, the DPoP nonces, rate limiting and the native hints.
 - **Reproducible image.** Everything the build downloads is pinned, by version where one exists and by digest where
   not.
-- **Offset pagination with totals, not cursors.** Listings take `page` and `size` and answer with totals, so a client can
-  jump to any page and draw a numbered pager. The web UI needs that. Cursor (keyset) paging only moves to the next or
-  previous page. Its advantages (constant cost at any depth, stable pages under inserts) do not matter at this size. See
-  [Request flows](INTERNALS.md#request-flows).

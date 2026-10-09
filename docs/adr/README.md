@@ -26,13 +26,10 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | ADR | Decision | The problem it solves | What it costs | Fit |
 |---|---|---|---|---|
 | [0002](0002-plain-jdbc-on-postgres.md) | Plain JDBC, not JPA | atomic claim of a code needs `ON CONFLICT ... RETURNING` | hand-written SQL | needed |
-| [0003](0003-modules-and-ports-checked-by-tests.md) | Public contract and adapters, held by tests | the web and storage layers drifting into the domain | two architecture test classes | needed |
-| [0004](0004-absence-is-a-type.md) | Sealed types and null objects, not nulls | a missed case is a runtime error | more types | needed |
 | [0005](0005-oauth2-resource-server-with-scopes.md) | OAuth2 resource server and scopes, no API keys | who may do what, without storing secrets | an identity provider to run | needed |
 | [0006](0006-require-dpop-bound-tokens.md) | Tokens bound to the client's key (DPoP) | a leaked token is a usable token | clients must sign every request | needed when exposed |
 | [0007](0007-owner-claim-and-ownership-rule.md) | Owner is the `owner` claim | one client, many people | identity provider mapper | needed |
 | [0008](0008-rate-limits-per-instance-in-memory.md) | Token buckets in memory, per instance | token guessing, floods | limits multiply by replicas | needed |
-| [0009](0009-problem-details-for-every-error.md) | One error shape, rendered by Spring MVC | clients parsing several formats | security failures go through an adapter | needed |
 | [0010](0010-virtual-threads-and-bounded-connections.md) | Virtual threads, 500 connections | blocking JDBC, memory per connection | a ceiling that sheds load | earned |
 | [0011](0011-in-process-redirect-cache.md) | Caffeine cache of active links | the pool of ten saturates before the CPU | takedowns take up to 30 s | earned |
 | [0012](0012-readiness-excludes-the-database.md) | Ready without the database, serve known links | an outage restarting every instance | stale redirects for 5 minutes | earned |
@@ -40,25 +37,39 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0014](0014-offset-pagination-with-totals.md) | Pages with totals, not cursors | a UI that jumps to any page | deep pages cost more | needed |
 | [0015](0015-target-host-policy.md) | An allowlist of target hosts | an open redirector for phishing | optional, off by default | needed when exposed |
 | [0016](0016-compose-and-swarm-instead-of-kubernetes.md) | Compose and Swarm, not Kubernetes | four operators for one service | no egress filter, no autoscaling | needed |
-| [0017](0017-native-image-on-a-pinned-base.md) | Native image on pinned Alpaquita | startup, memory, attack surface | reflection hints, 3-minute builds | earned |
+| [0017](0017-native-image-on-a-pinned-base.md) | Native image on pinned Alpaquita | startup, memory, attack surface | reflection hints, 3-minute builds, and about twice a warm JVM's CPU a request (measured 2026-10-09) | earned |
 | [0018](0018-signed-scanned-releases.md) | Signed, scanned, smoke-tested release | trusting what runs in production | a workflow that has not run yet | needed when exposed |
-| [0019](0019-no-secrets-in-git.md) | Generated dev keys, no secrets in Git | secrets in the history | a setup step per developer | needed |
-| [0020](0020-dpop-client-in-java.md) | The DPoP client is one Java file | hand-made DER and JSON in a security client | a JDK 17 on the client's machine | needed |
 | [0021](0021-encrypt-internal-traffic.md) | Both overlay networks encrypted | tokens crossing nodes in clear | IPsec cost, ports between nodes | needed when exposed |
 | [0022](0022-mtls-between-services.md) | Mutual TLS between services (**proposed**) | an unauthenticated peer on a stack network | a CA and a rotation job | needed when exposed, not yet |
 | [0023](0023-production-must-decide-its-targets.md) | Production refuses to start without a target decision | an open redirector by omission | one more variable to set | needed when exposed |
 | [0024](0024-logging-and-audit.md) | Security events, audit trail and notices, each a line and a counter | an attack or a takedown that leaves no trace | local logs with client addresses | needed when exposed |
 | [0025](0025-keycloak-in-the-stack.md) | Keycloak in the stack, optional, behind the edge | the provider decides ownership and admin, and none existed for production | one more service and an image to build | needed when exposed |
-| [0026](0026-scripting-standard.md) | sh to start programs, Java to compute, nothing else (**the Java tier is superseded by 0029**) | five languages and a helper written twice | a JDK 17 to run a compute script | needed |
-| [0027](0027-tools-on-jdk-25.md) | Tools on JDK 25, the client for strangers on 17 (**the tools are superseded by 0029**) | no shared code, a second per call, boilerplate | two baselines, by directory | needed |
 | [0028](0028-postgres-backups-and-a-replica.md) | Backups with pgBackRest, a replica promoted by hand, no partitioning | losing the one disk that holds every link | an image, a cron entry, a promotion runbook | needed when exposed |
-| [0029](0029-tools-in-kotlin.md) | The tools are Kotlin, in a build of their own | a second language, tests that start a process per case, a tool with no test | a build on the first run, and Gradle for `dev-setup` | earned |
 | [0030](0030-web-ui-as-a-static-spa.md) | A static single-page app that signs requests with a browser key (**proposed**) | people need a browser front end, and the API takes only DPoP-bound tokens | a DPoP implementation in the browser, an unverified Keycloak assumption | not built |
 | [0031](0031-human-administrators-need-a-second-factor.md) | A human administrator needs a second factor, and the API checks it (**proposed**) | a password that takes down any link, once users can be administrators | a converter change, a Keycloak flow to verify, a first factor to enrol | needed before users are admins |
 | [0032](0032-dpop-nonces.md) | The server hands out DPoP nonces and a proof must carry the current one | a proof the client made ahead or kept | a retry for clients that cannot, a shared secret, a round trip when the nonce changes | needed |
 | [0033](0033-link-is-a-resource-and-disabling-is-a-patch.md) | `Location` is the resource and `shortUrl` the URL to share; disabling is a `PATCH`, not a `DELETE` | a client sent to the target site by its own `Location`, a removal verb that removes nothing | an incompatible change, a `shortUrl` that follows the host | earned |
 | [0034](0034-claim-a-chosen-code-with-put.md) | A chosen code is claimed with `PUT`, and claiming again answers the link that is there | a lost answer that turns a retry into a `409`, and a permission that depended on the body | two ways to create, a `PUT` that never replaces | earned |
 | [0035](0035-production-refuses-bearer-tokens.md) | Production does not start if it would accept bearer tokens | an environment variable that turns off the control that makes a stolen token useless | the flag cannot be used in production | needed when exposed |
+
+<details>
+<summary>Conventions and tooling: common practice, recorded so the history is complete</summary>
+
+These are what a careful Kotlin and Spring project does anyway, or decisions about the repository's scripts rather than the
+service. 0026 and 0027 are superseded by 0029.
+
+| ADR | Decision | The problem it solves | What it costs | Fit |
+|---|---|---|---|---|
+| [0003](0003-modules-and-ports-checked-by-tests.md) | Public contract and adapters, held by tests | the web and storage layers drifting into the domain | two architecture test classes | needed |
+| [0004](0004-absence-is-a-type.md) | Sealed types and null objects, not nulls | a missed case is a runtime error | more types | needed |
+| [0009](0009-problem-details-for-every-error.md) | One error shape, rendered by Spring MVC | clients parsing several formats | security failures go through an adapter | needed |
+| [0019](0019-no-secrets-in-git.md) | Generated dev keys, no secrets in Git | secrets in the history | a setup step per developer | needed |
+| [0020](0020-dpop-client-in-java.md) | The DPoP client is one Java file | hand-made DER and JSON in a security client | a JDK 17 on the client's machine | needed |
+| [0026](0026-scripting-standard.md) | sh to start programs, Java to compute, nothing else (**the Java tier is superseded by 0029**) | five languages and a helper written twice | a JDK 17 to run a compute script | needed |
+| [0027](0027-tools-on-jdk-25.md) | Tools on JDK 25, the client for strangers on 17 (**the tools are superseded by 0029**) | no shared code, a second per call, boilerplate | two baselines, by directory | needed |
+| [0029](0029-tools-in-kotlin.md) | The tools are Kotlin, in a build of their own | a second language, tests that start a process per case, a tool with no test | a build on the first run, and Gradle for `dev-setup` | earned |
+
+</details>
 
 0001 is the [format](0001-record-architecture-decisions.md).
 

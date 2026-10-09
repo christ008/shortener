@@ -2,7 +2,7 @@
 
 - Status: Superseded by [0029](0029-tools-in-kotlin.md), which replaces its Java compute tier; the `sh` tier for starting programs stands. Accepted 2026-10-06. The Java tier's baseline was refined by [0027](0027-tools-on-jdk-25.md). Supersedes the shell client of [0019](0019-no-secrets-in-git.md), as [0020](0020-dpop-client-in-java.md)
   began to
-- Evidence: the inventory in [OPERATING.md](../OPERATING.md#scripts), `0f4c18d`, `a412d3a`
+- Evidence: the inventory in [REFERENCE.md](../REFERENCE.md#scripts), `0f4c18d`, `a412d3a`
 
 ## Problem
 
