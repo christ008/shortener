@@ -33,8 +33,8 @@ class ProfilesTest {
     fun `production structures its logs, hides internals and samples 5 percent of traces`() = under("production") { env ->
         assertThat(env.getProperty("logging.structured.format.console")).isEqualTo("ecs")
         assertThat(env.getProperty("management.endpoint.health.show-details")).isEqualTo("never")
-        assertThat(env.getProperty("server.error.include-stacktrace")).isEqualTo("never")
-        assertThat(env.getProperty("server.error.include-message")).isEqualTo("never")
+        assertThat(env.getProperty("spring.web.error.include-stacktrace")).isEqualTo("never")
+        assertThat(env.getProperty("spring.web.error.include-message")).isEqualTo("never")
         assertThat(env.getProperty("management.tracing.sampling.probability")).isEqualTo("0.05")
         assertThat(env.getProperty("shortener.security.dpop.required")).isEqualTo("true")
     }
