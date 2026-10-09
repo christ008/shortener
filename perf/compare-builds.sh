@@ -19,7 +19,7 @@ OUT=${1:?usage: perf/compare-builds.sh [--scenario app|edge|full] OUT_DIR}
 cd "$(dirname "$0")/.."
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
 BUILDS=${BUILDS:-"stack-image oracle-O3-v3 lite-aot"}
-export RATES=${RATES:-"6000 8000 10000 12000 14000"} DURATION=${DURATION:-60s} COOLDOWN=${COOLDOWN:-15}
+export RATES="${RATES:-6000 8000 10000 12000 14000}" DURATION="${DURATION:-60s}" COOLDOWN="${COOLDOWN:-15}"
 
 ./gradlew bootJar -q
 for build in $BUILDS; do

@@ -115,16 +115,18 @@ cpus_of() { # a cpuset such as 0,1 or 2-5,8 as one CPU a word
   done
 }
 SHARED=$(for role in APP PG K6 $([ "$EDGE" = 1 ] && echo EDGE); do
-  eval "set=\$${role}_CPUSET"
-  [ "$set" != none ] || continue
-  for cpu in $(cpus_of "$set"); do
+  case $role in APP) cpuset=$APP_CPUSET;; PG) cpuset=$PG_CPUSET;; K6) cpuset=$K6_CPUSET;; EDGE) cpuset=$EDGE_CPUSET;; esac
+  [ "$cpuset" != none ] || continue
+  for cpu in $(cpus_of "$cpuset"); do
     core=$(cat "/sys/devices/system/cpu/cpu$cpu/topology/core_id" 2>/dev/null) || continue
     echo "$core $role"
   done
 done | sort -u | awk '{ roles[$1] = roles[$1] " " $2; n[$1]++ } END { for (c in n) if (n[c] > 1) print "core " c ":" roles[c] }' | sort | tr '\n' ';')
 [ -z "$SHARED" ] || say "WARNING: roles share a physical core ($SHARED): their threads compete, so the figures are lower than the hardware can do. Set APP_CPUSET, PG_CPUSET and K6_CPUSET"
 LOAD=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)
-awk -v average="$LOAD" 'BEGIN { exit !(average > 1.5) }' && say "WARNING: the machine is busy (load average $LOAD): close what you can, a browser or Docker Desktop's VM take CPU from the run" || true
+if awk -v average="$LOAD" 'BEGIN { exit !(average > 1.5) }'; then
+  say "WARNING: the machine is busy (load average $LOAD): close what you can, a browser or Docker Desktop's VM take CPU from the run"
+fi
 HIGHEST=$(awk '{ if ($2 > top) top = $2 } END { printf "%d", top }' "$OUT/runs.txt")
 if [ "$HIGHEST" -gt 5000 ]; then
   say "WARNING: $HIGHEST req/s is past what the docs call safe to run: overload can take down the network of a machine whose firewall inspects new connections (docs/INTERNALS.md#running-load-tests-safely)"

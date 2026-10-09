@@ -22,7 +22,7 @@ JAVA_HOME=$HOME_GRAALVM GRAALVM_HOME=$HOME_GRAALVM NATIVE_IMAGE_OPTIONS="-J-Xmx7
   ./gradlew nativeCompile -x test -q -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.paths="$HOME_GRAALVM"
 
 OUTPUT=build/native/nativeCompile
-[ -x "$OUTPUT/shortener" ] || { echo "no $OUTPUT/shortener: the build left $(ls "$OUTPUT" 2>/dev/null | tr '\n' ' ')" >&2; exit 1; }
+[ -x "$OUTPUT/shortener" ] || { echo "no $OUTPUT/shortener: the build left $(find "$OUTPUT" -maxdepth 1 -type f 2>/dev/null | tr '\n' ' ')" >&2; exit 1; }
 CONTEXT=$(mktemp -d)
 trap 'rm -rf "$CONTEXT"' EXIT
 # The executable and the shared libraries (libawt, libjava, ...) that the build puts beside it, which it looks for there.
