@@ -301,15 +301,7 @@
             "sqydpY5",
             "jPjDHmT",
             "ZwvaOiL"
-        ],
-        "dpopJwk": {
-            "x": "3yyBRBoUwO5jBmRZaa9ldMRNVDfNjxvKCdQY6p0ecNQ",
-            "y": "FKxAzdyHlj_1fKbnzLRp-Qj3fUJJQ_ZyJzwNYGzoZnc",
-            "crv": "P-256",
-            "d": "LnCQz0422RjnmlJPQ99nPFOk3Dz2Jnwo7Km6jVsDhtU",
-            "kty": "EC"
-        },
-        "token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiYXQrand0Iiwia2lkIiA6ICJWYUZfaDdIYjd6aUNUYlZTU1FJQ1RFcDB6WG1YVU9uSGFhM3ZyaU9pUERJIn0.eyJleHAiOjE3OTEwNzc1MzIsImlhdCI6MTc5MTA3NzIzMiwianRpIjoidHJydGNjOjE0NGIyMGQzLWViY2UtMDVkNC1lMmU1LTI5N2Y0MjZmMjk3OSIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODE4MC9yZWFsbXMvc2hvcnRlbmVyIiwiYXVkIjoic2hvcnRlbmVyLWFwaSIsInN1YiI6IjQ2NDZkNzYwLWQzODMtNDNkNy1hZDk1LTc4NWU3YzQ4YmU3YiIsInR5cCI6IkRQb1AiLCJhenAiOiJkZW1vLWNsaWVudCIsImNuZiI6eyJqa3QiOiJOaGZzS0NaMUdBNEs1TWY4dV8xMXZicXBLbU9SZVpibWEyVFhsUTJfLVg0Iiwia2Mtamt0LXR5cGUiOiJEUG9QIn0sInNjb3BlIjoic2hvcnRsaW5rczpkZWxldGUgc2hvcnRsaW5rczpyZWFkIHNob3J0bGlua3M6Y3JlYXRlIHNob3J0bGlua3M6Y2xhaW0ifQ.N5x01oC7DkQRivJVZS4RMzFGWqiOf3VaGYlJWMTfko3PNwHJYQff_qiZObsqY7EPrAZxd6OaZcjA9abpX_ZEcI3zm5QSVER1REYULgRR0bUm8Bhkm4F-GcH6uNCuZhzYLWZ-K5MutxQ-d1RubqdbVZrQei-x6c2gBDccXmyJy4mvUEu_4PrtME9ZEBnOZYYMJejcyY40EunBYqdiiDOm9N6HHnL2vxmNAd7S0jj9Hf_LEDYgwvMfslu6--AIxmPITnH5x39DCaVdfL6F2F7XR_UT6DOKQiotSYeaA6V-hT1BTPhUqYNRx3wSQFCyOAbLmrB3SYMPBABOquMWKToD1g"
+        ]
     },
     "root_group": {
         "name": "",

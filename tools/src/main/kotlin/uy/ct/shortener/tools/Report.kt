@@ -21,7 +21,11 @@ import java.util.Locale
  * Reads what the load tests and the profiling runs leave behind: a Markdown table comparing variants, a summary of the garbage
  * collections in an application log, and the class histogram of a heap dump.
  *
- *     tools/run Report summary RESULTS_DIR       the output of perf/bench.sh for several variants, one subdirectory each, as a table
+ *     tools/run Report summary RESULTS_DIR       the output of perf/bench.sh for several variants, one subdirectory each, as a table. Runs
+ *                                                of one rate that `REPEAT` made several times are one block: the median of each figure, the
+ *                                                range of throughput, failures and redirect p99, and the worst run for the pool
+ *     tools/run Report cpu RESULTS_DIR           for each run of each variant, the CPU the application (and the edge and the load generator, when the run recorded them) used
+ *                                                while it ran and the CPU time each served request cost, from docker-stats.txt
  *     tools/run Report gc APP_LOG                how often a native image collects, how long it pauses and whether the live heap
  *                                                grows (needs the log of a run with -XX:+PrintGC)
  *     tools/run Report hprof DUMP [TOP]          the classes of an HPROF heap dump by shallow size, with byte[] and char[] by size
@@ -37,6 +41,7 @@ object Report : Tool(
     "Report",
     """
     usage: tools/run Report summary RESULTS_DIR
+           tools/run Report cpu RESULTS_DIR
            tools/run Report gc APP_LOG
            tools/run Report hprof DUMP [TOP]
            tools/run Report profile OUT_DIR
@@ -51,6 +56,7 @@ object Report : Tool(
         if (arguments.isEmpty()) throw Usage("a command is needed")
         when (arguments[0]) {
             "summary" -> summary(arguments, context)
+            "cpu" -> cpu(arguments, context)
             "gc" -> GcSummary.print(arguments, context)
             "hprof" -> HeapHistogram.print(arguments, context)
             "profile" -> profile(arguments, context)
@@ -88,8 +94,6 @@ object Report : Tool(
         return value as? Map<String, Any?> ?: throw Failure("$file is not valid JSON: expected a JSON object")
     }
 
-    private fun ms(seconds: Any?): String = if (seconds is Number) d(seconds.toDouble() * 1000, 1) else "n/a"
-
     private fun peakMemory(file: Path): Double {
         val pattern = Regex("(\\d+(?:\\.\\d+)?)(MiB|GiB)\\s*/")
         var peak = 0.0
@@ -120,31 +124,33 @@ object Report : Tool(
         rows += row("Memory when idle", summaries.values.map { it["idle_mem"].toString() })
         rows += row("Peak memory under load (MiB)", variants.map { d(peakMemory(it.resolve("docker-stats.txt")), 0) })
 
-        for (firstRun in array(summaries.getValue(variants.first())["runs"])) {
-            val run = obj(firstRun)
-            val name = run["name"].toString()
-            rows += row("**${trimmed(run["rate"])} req/s for ${run["duration"]}**", List(variants.size) { "" })
+        for ((key, first) in groupsOf(summaries.getValue(variants.first()))) {
+            val repeats = array(summaries.getValue(variants.first())["runs"]).map { obj(it) }.count { runKey(it) == key }
+            rows += row("**${trimmed(first["rate"])} req/s for ${first["duration"]}${if (repeats > 1) ", median of $repeats runs" else ""}**", List(variants.size) { "" })
             val achieved = mutableListOf<String>()
             val failed = mutableListOf<String>()
             val redirect = mutableListOf<String>()
+            val redirectRange = mutableListOf<String>()
             val create = mutableListOf<String>()
             val seen = mutableListOf<String>()
             val pool = mutableListOf<String>()
             for (variant in variants) {
-                val own = array(summaries.getValue(variant)["runs"]).map { obj(it) }.firstOrNull { name == it["name"].toString() }
-                    ?: throw Failure("$variant has no run $name")
-                val server = obj(own["server"])
-                val file = variant.resolve("$name.k6.json")
-                achieved += d(k6(file, "http_reqs", "rate", context), 0)
-                failed += d(k6(file, "http_req_failed", "value", context) * 100, 2) + "%"
-                redirect += "${ms(server["redirect_p50"])} / ${ms(server["redirect_p95"])} / ${ms(server["redirect_p99"])}"
-                create += "${ms(server["create_p50"])} / ${ms(server["create_p99"])}"
-                seen += d(k6(file, "redirect_latency", "p(95)", context), 1)
-                pool += "${ms(server["hikari_acquire_max"])} / ${d(number(server["hikari_timeouts"]), 0)}"
+                val own = array(summaries.getValue(variant)["runs"]).map { obj(it) }.filter { runKey(it) == key }
+                if (own.isEmpty()) throw Failure("$variant has no run ${first["name"]}")
+                val files = own.map { variant.resolve("${it["name"]}.k6.json") }
+                val servers = own.map { obj(it["server"]) }
+                achieved += spread(files.map { k6(it, "http_reqs", "rate", context) }, 0, "")
+                failed += spread(files.map { k6(it, "http_req_failed", "value", context) * 100 }, 2, "%")
+                redirect += listOf("redirect_p50", "redirect_p95", "redirect_p99").joinToString(" / ") { medianMs(servers, it) }
+                redirectRange += rangeMs(servers, "redirect_p99")
+                create += listOf("create_p50", "create_p99").joinToString(" / ") { medianMs(servers, it) }
+                seen += d(median(files.map { k6(it, "redirect_latency", "p(95)", context) }), 1)
+                pool += "${worstMs(servers, "hikari_acquire_max")} / ${d(servers.maxOf { number(it["hikari_timeouts"]) }, 0)}"
             }
             rows += row("achieved req/s", achieved)
             rows += row("failed requests", failed)
             rows += row("redirect p50 / p95 / p99 (ms, server)", redirect)
+            if (repeats > 1) rows += row("redirect p99 over the runs, lowest to highest (ms)", redirectRange)
             rows += row("create p50 / p99 (ms, server)", create)
             rows += row("redirect p95 (ms, as k6 saw it)", seen)
             rows += row("pool acquire max (ms) / timeouts", pool)
@@ -152,11 +158,82 @@ object Report : Tool(
         for (row in rows) context.out.println("| ${row.first()} | ${row.drop(1).joinToString(" | ")} |")
     }
 
+    /** What a run offered: the same rate, duration and create share is the same run, however many times it was repeated. */
+    private fun runKey(run: Map<String, Any?>): String = "${trimmed(run["rate"])}|${run["duration"]}|${trimmed(run["create_share"])}"
+
+    private fun groupsOf(summary: Map<String, Any?>): Map<String, Map<String, Any?>> {
+        val groups = LinkedHashMap<String, Map<String, Any?>>()
+        for (run in array(summary["runs"]).map { obj(it) }) groups.putIfAbsent(runKey(run), run)
+        return groups
+    }
+
+    private fun median(values: List<Double>): Double {
+        val sorted = values.sorted()
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2
+    }
+
+    /** One value, as it is, or the median of several with the lowest and the highest in brackets. */
+    private fun spread(values: List<Double>, decimals: Int, unit: String): String =
+        if (values.size == 1) d(values.first(), decimals) + unit
+        else "${d(median(values), decimals)}$unit (${d(values.min(), decimals)}-${d(values.max(), decimals)}$unit)"
+
+    private fun seconds(servers: List<Map<String, Any?>>, field: String): List<Double> = servers.mapNotNull { (it[field] as? Number)?.toDouble() }
+
+    private fun medianMs(servers: List<Map<String, Any?>>, field: String): String =
+        seconds(servers, field).takeIf { it.isNotEmpty() }?.let { d(median(it) * 1000, 1) } ?: "n/a"
+
+    private fun worstMs(servers: List<Map<String, Any?>>, field: String): String =
+        seconds(servers, field).takeIf { it.isNotEmpty() }?.let { d(it.max() * 1000, 1) } ?: "n/a"
+
+    private fun rangeMs(servers: List<Map<String, Any?>>, field: String): String =
+        seconds(servers, field).takeIf { it.isNotEmpty() }?.let { "${d(it.min() * 1000, 1)}-${d(it.max() * 1000, 1)}" } ?: "n/a"
+
     private fun row(label: String, cells: List<String>): List<String> = listOf(label) + cells
 
     /** A number as a person writes it: 1500 and not 1500.0. */
     private fun trimmed(value: Any?): String =
         if (value is Number && value.toDouble() == Math.rint(value.toDouble())) value.toDouble().toLong().toString() else value.toString()
+
+    // ---- cpu ----------------------------------------------------------------------------------------------------------
+
+    private val STATS_LINE = Regex("^(\\d+)\\s+(\\d+(?:\\.\\d+)?)%")
+
+    /** The CPU readings of a `docker stats` sampler file, as (epoch second, percent of one CPU). */
+    private fun cpuSamples(file: Path): List<Pair<Long, Double>> =
+        Files.readAllLines(file).mapNotNull { line -> STATS_LINE.find(line)?.let { it.groupValues[1].toLong() to it.groupValues[2].toDouble() } }
+
+    private fun cpuCells(samples: List<Pair<Long, Double>>, start: Long, end: Long, served: Double): List<String> {
+        val inside = samples.filter { it.first in start..end }.map { it.second }
+        if (inside.isEmpty()) return listOf("n/a", "n/a")
+        val average = inside.average()
+        return listOf("${d(average, 0)} / ${d(inside.max(), 0)}", d(average / 100 * 1000 / maxOf(served, 1e-9), 3))
+    }
+
+    private fun cpu(arguments: List<String>, context: Context) {
+        if (arguments.size != 2) throw Usage("cpu takes a results directory")
+        val directory = context.path(arguments[1])
+        val variants = Files.list(directory).use { children ->
+            children.filter { Files.exists(it.resolve("summary.json")) && Files.exists(it.resolve("docker-stats.txt")) }.sorted().toList()
+        }
+        if (variants.isEmpty()) throw Failure("${arguments[1]} has no subdirectory with a summary.json and a docker-stats.txt")
+        context.out.println("| variant | run | served req/s | application CPU avg / max (% of one CPU) | application ms of CPU a request | edge CPU avg / max | edge ms of CPU a request | load generator CPU avg / max |")
+        context.out.println("|---|---|---|---|---|---|---|---|")
+        for (variant in variants) {
+            val application = cpuSamples(variant.resolve("docker-stats.txt"))
+            val edge = variant.resolve("docker-stats-edge.txt").takeIf { Files.exists(it) }?.let { cpuSamples(it) }
+            val generator = variant.resolve("docker-stats-k6.txt").takeIf { Files.exists(it) }?.let { cpuSamples(it) }
+            for (run in array(parse(variant.resolve("summary.json"), context)["runs"]).map { obj(it) }) {
+                val start = number(run["start"]).toLong()
+                val end = number(run["end"]).toLong()
+                val served = k6(variant.resolve("${run["name"]}.k6.json"), "http_reqs", "rate", context)
+                val own = cpuCells(application, start, end, served)
+                val front = if (edge == null) listOf("-", "-") else cpuCells(edge, start, end, served)
+                val load = if (generator == null) "-" else cpuCells(generator, start, end, served)[0]
+                context.out.println("| ${variant.fileName} | ${run["name"]} | ${d(served, 0)} | ${own[0]} | ${own[1]} | ${front[0]} | ${front[1]} | $load |")
+            }
+        }
+    }
 
     // ---- profile, server, json ----------------------------------------------------------------------------------------
 

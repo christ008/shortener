@@ -30,3 +30,9 @@ buffers, and a slightly slow server makes an open-model client open more of them
 - Coroutines or reactive: nothing to fan out, one blocking call per request. The problem was never scheduling.
 - Raising the limit: connection limits of 8192, 1000, 500 and 250 gave the same results at 5,000 requests a second, and
   only the lower ones survived overload.
+
+## Update, 2026-10-09
+
+Measured again on the current image, at 12,000 requests a second (1.5 times its ceiling of 8,000): without the limit (8192) the heap reached the container's 512 MiB, three
+`OutOfMemoryError`s were logged, 23.4% of the time went to GC (longest pause 2.8 s) and 16.6% of the requests failed; with 500, memory peaked at 271 MiB, GC took 2.6%
+(longest pause 107 ms) and 0.6% failed. The decision stands. See [Performance](../INTERNALS.md#overload-and-the-connection-limit).

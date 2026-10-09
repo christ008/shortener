@@ -4,6 +4,11 @@
 spring:
   main:
     banner-mode: "off"
+  web:
+    error:
+      include-message: never
+      include-stacktrace: never
+      include-exception: false
 
 logging:
   structured:
@@ -12,10 +17,7 @@ logging:
 
 server:
   error:
-    include-message: never
-    include-stacktrace: never
     include-binding-errors: never
-    include-exception: false
 
 management:
   endpoint:

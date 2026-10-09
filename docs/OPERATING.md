@@ -26,7 +26,7 @@ Reference:
 | Running and testing | Docker, JDK 25 (Gradle finds one, or use SDKMAN) |
 | `dev-setup`, `smoke`, `report` and the other [tools](#scripts) | a JDK 25 (a JRE runs them only once built), and the Gradle wrapper (builds them the first time) |
 | The native image | about 7 GB free memory, 3 minutes |
-| The load test | Docker (k6 runs in a container), spare cores |
+| The load test | Docker (k6 runs in a container), spare cores, `jq` |
 | The production stack on one machine | `openssl`, `keytool` |
 
 ## Develop
@@ -444,7 +444,7 @@ says why.
 | Stack hardening | `./gradlew test --tests '*ComposeStackTest'` | |
 | Alert rules | `promtool` in a container, see [OBSERVABILITY.md](OBSERVABILITY.md#alerts) | Docker |
 | Every endpoint, on the image | `perf/smoke.sh` | a running instance, the dev Keycloak |
-| Load | `perf/bench.sh` | Docker, spare cores |
+| Load | `perf/bench.sh` | Docker, spare cores, `jq` |
 
 The suite has unit tests (in-memory repository), integration tests (real Postgres, stand-in identity provider),
 architecture tests, and tests of the deployment files (stack, profiles, alert rules, release version).
@@ -457,8 +457,27 @@ perf/smoke.sh                   # http://localhost:8080, management on 8081
 
 Against the stack: give it the address, the certificate and the management port ([the rehearsal](#rehearse-production-on-one-machine)).
 
-**Load test.** `perf/bench.sh VARIANT IMAGE OUT_DIR` runs one image with 2 cores and 512 MB against Postgres and k6.
-`perf/run-all.sh` compares the JVM and the native image.
+**Load test.** `perf/bench.sh [--scenario app|edge|full] VARIANT IMAGE OUT_DIR [COMMAND...]` runs one image with 2 CPUs and 512 MiB against
+Postgres and k6 (`--help` lists the options):
+
+| Scenario | Around the application |
+|---|---|
+| `app` (default) | nothing: k6 goes to it over HTTP |
+| `edge` | the stack's edge (1 CPU, 128 MiB, TLS and HTTP/2) |
+| `full` | the edge, a CPU quota alone for the application, and Postgres at 2 CPUs and 1 GiB |
+
+```bash
+RATES="6000 8000 10000" REPEAT=3 perf/bench.sh --scenario full jvm shortener-bench:lite perf/results/jvm java -jar /app.jar
+BUILDS="stack-image oracle-O3-v3 lite-aot" perf/compare-builds.sh --scenario full perf/results/builds   # the same load on several builds
+tools/run Report summary perf/results      # the variants side by side; tools/run Report cpu says what a request cost
+```
+
+- `RATES` gives one run for each rate (`DURATION`, 60s by default), `REPEAT` repeats each. The images that `compare-builds.sh` needs come from `perf/builds/jvm.sh` and
+  `perf/builds/native.sh`.
+- Each role runs on physical cores of its own on a 6-core, 12-thread CPU; on another, set `APP_CPUSET`, `PG_CPUSET` and `K6_CPUSET` from `lscpu -e`. `RATE_LIMITS=on`
+  keeps the application's request limits, which a run lifts.
+- A run leaves `summary.json`, `metadata.json`, the k6 summaries, the containers' CPU and their logs. The summaries have the DPoP key and the token removed
+  (`perf/scrub-k6-summary.sh`, needs `jq`). How a result is read: [INTERNALS.md](INTERNALS.md#method).
 
 **Links the cache has not seen.** The default workload reads 300 links, so the redirect cache absorbs it. To read many:
 
@@ -471,7 +490,7 @@ DATASET_FILE=perf/data/codes-10M-seed1.txt perf/bench.sh native shortener:0.21.0
   with `DATASET_HOT_SHARE` (default 0.8) sends that share of the reads to the first `H` codes: a small `H` is a stampede on a
   few codes.
 - `perf/profile.sh` still truncates the table, and so does `perf/bench.sh` without `DATASET_FILE`.
-- Do not limit the memory of the Postgres container below the size of the data: the kernel killed its processes at 512 MB.
+- Postgres limited to 512 MB had its processes killed by the kernel; at 1 GiB, with 2 GB of data, it did not.
 
 > Stay at or below 5,000 requests a second. Overload runs can take down the network of a machine with an application
 > firewall that inspects new connections. See [INTERNALS.md](INTERNALS.md#running-load-tests-safely).
@@ -533,11 +552,13 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 | `DevSetup` | dev keys, realm, passwords, `.env` | Kotlin |
 | `Realms` | realm from a template and public keys | Kotlin |
 | `Smoke` | check every endpoint of a running instance | Kotlin |
-| `Report` | read GC logs, heap dumps and bench results; query Prometheus | Kotlin |
+| `Report` | read GC logs, heap dumps and bench results (`summary`, `cpu`); query Prometheus | Kotlin |
 | `Dataset` | distinct short codes, in parallel, for loads that the redirect cache does not absorb | Kotlin |
 | `ClientKeys`, `DpopCalls` | client keys, and DPoP sign-in and calls, for `DevSetup` and `Smoke` | Kotlin |
 | `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
-| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test, profile | sh |
+| `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test (scenarios `app`, `edge`, `full`), profile | sh |
+| `perf/compare-builds.sh`, `perf/builds/jvm.sh`, `perf/builds/native.sh` | run one load on several builds, and make the images of a JDK (with or without the AOT cache) and of a native image with a given GraalVM | sh |
+| `perf/scrub-k6-summary.sh` | remove the DPoP key and the token from a k6 summary | sh |
 | `perf/load-dataset.sh` | generate a dataset with `Dataset` and load it into Postgres | sh |
 | `perf/k6/mixed.js` | the load workload | k6 |
 
@@ -552,7 +573,7 @@ Gradle tasks (`./gradlew tasks --group tooling`):
 | `smoke` | `tools/run Smoke` | `-PbaseUrl=URL -Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
 | `postgresBackup` | `deploy/postgres/backup` | `-Pcommand=init\|full\|diff\|check\|info\|restore-test` |
-| `report` | `tools/run Report` | `-Preport=summary\|gc\|hprof\|profile\|json -Ptarget=PATH -Ptop=N` |
+| `report` | `tools/run Report` | `-Preport=summary\|cpu\|gc\|hprof\|profile\|json -Ptarget=PATH -Ptop=N` |
 
 The tasks run with the project's JDK 25 toolchain. `devSetup` takes the defaults because Gradle has no terminal: run the
 script to be asked. `tools/run` works by hand with any JDK 25. Tests: `./gradlew test` (with the application's) or

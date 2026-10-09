@@ -473,14 +473,6 @@
             "FFwCgw4",
             "Sy1fR1t",
             "g2KkVwa"
-        ],
-        "dpopJwk": {
-            "crv": "P-256",
-            "d": "Myg6TQDfuIT2HWr-zsywhcCP_UEJsKdsCwi9k2oWh64",
-            "kty": "EC",
-            "x": "YOmxGcbCCFXRz21OTWmn4j17Whv7eSRAS5qU6CalLxY",
-            "y": "0FOKJ3xCd-lGtOwZQ-OWCXJ29SeusirBJ1QdCkkCyug"
-        },
-        "token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiYXQrand0Iiwia2lkIiA6ICJSSHBsQ2FpNzlzS1JPbVFKc2dMaDQxR2ZGcV81OFpzUVZBT0FoOXp3NG9rIn0.eyJleHAiOjE3OTEyMzc1MjYsImlhdCI6MTc5MTIzNzIyNiwianRpIjoidHJydGNjOmZlZDE2MzY0LWU1YmMtYzJmNi05NzUxLTZjYzYyZGY5MDgzNiIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODE4MC9yZWFsbXMvc2hvcnRlbmVyIiwiYXVkIjoic2hvcnRlbmVyLWFwaSIsInN1YiI6IjA0ZDI1OTExLWRlNmQtNGRlZC04ZTRjLWRlNjhkZGI2MWEyYiIsInR5cCI6IkRQb1AiLCJhenAiOiJkZW1vLWNsaWVudCIsImNuZiI6eyJqa3QiOiJnamNGaFAzZ2s1MXVRa2lyX2tuRElERW8xNWFTbkRWTUZSMERhQkozYnNFIiwia2Mtamt0LXR5cGUiOiJEUG9QIn0sInNjb3BlIjoic2hvcnRsaW5rczpjcmVhdGUgc2hvcnRsaW5rczpkZWxldGUgc2hvcnRsaW5rczpjbGFpbSBzaG9ydGxpbmtzOnJlYWQiLCJvd25lciI6ImRlbW8tY2xpZW50In0.ilUFpxZA1HeB2OB7M-JD8dsgdJd0i5n2qOKXUSMETswK4VTHGRkV7cNn3N8_HsAqvlNXa-we065-lK77qMDLEbhRATj8le8RSShMPH2TCCZpZZN8PxTmG_-Vk-FwEF2f-krR1Q1ueQESKXtuFIkalD9482IIlxJVCPJvu-l-3R5-sUAd6mVPRquvYsWGlPBaYfAYiOstnNn3cw68eGaSfaTH-zXEeO1GsQlPTIBfA_Lue5ujS7MARPRhR4-9fNfKsPr1cxNpMS21yCR0lwZuUEVh5dbJW76eg8Xq-aGM-6vludv3TrEdGYR3Cp7FF41zT8vF5kD9xrju43LtJy2d3Q"
+        ]
     }
 }

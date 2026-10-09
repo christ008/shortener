@@ -338,8 +338,8 @@ The binary is the image: about 157 MB of a roughly 205 MB image (75 MB compresse
 - `-Os` (optimize for size) is on. It shrinks the binary to 125 MB (code area 48 MB).
 - Its cost, measured with `perf/bench.sh` at 1,500 and 5,000 req/s, two runs each, ordered baseline, `-Os`, `-Os`,
   baseline: same throughput, no failures, redirect p99 of 1.0 ms at 5,000 req/s in all four runs. It uses about 10% more
-  CPU for the same load (48% against 53% of the two cores at 5,000 req/s). Capacity beyond 5,000 req/s was not
-  measured, so expect about 10% less headroom. Results: `perf/results/2026-10-05-os`.
+  CPU for the same load (48% against 53% of the two cores at 5,000 req/s). Beyond 5,000 req/s it was not
+  measured then, so expect about 10% less headroom (the ceiling came later: see [Results](#results)). Results: `perf/results/2026-10-05-os`.
 - Dependencies are not the lever. Moving Spring Modulith to test scope saved 0.3 MB.
 - Largest contributors: `java.base` 17 MB, Tomcat 6 MB, kotlin-reflect 5 MB, 13,000 types registered for reflection.
 - UPX shrinks it further but costs startup time and memory sharing, which is the point of a native image.
@@ -662,92 +662,94 @@ release workflow produces a signature `deploy.sh` accepts. See [Limitations](#li
 ## Performance
 
 > [!IMPORTANT]
-> One laptop, one run per rate, with the database and the load generator on the same machine. Treat the numbers as shape, not
-> capacity.
+> One application instance with 2 CPUs on a desktop with 6 cores and 12 threads, which also ran the load generator, Postgres and the
+> edge, each on cores of its own. One run a point. Read the figures as a comparison between builds and the position of their knees, not as a
+> guarantee for another machine.
 
 ### Method
 
-- `perf/bench.sh` runs one build in a container with 2 CPUs (cores 0-1) and 512 MB. Postgres uses cores 2-5 and k6 cores
-  6-9.
-- k6 uses an arrival-rate executor, so slow responses do not slow the load: 99% redirects on a hot subset, 1% creates
-  signed with DPoP. The redirects go to 300 seeded links, 80% of them to the first 60 (`perf/k6/mixed.js`), so after the warm-up
-  nearly every redirect is a cache hit. With `DATASET_FILE` the reads go to a dataset of millions of links instead, see
-  [Links the cache has not seen](#links-the-cache-has-not-seen).
-- Each variant warms up 30 s, then runs 1,500, 5,000 and 10,000 requests a second. Server-side percentiles come from
-  Prometheus. `perf/run-all.sh` runs the variants.
+- **Scenarios.** `perf/bench.sh --scenario app|edge|full` runs one build against the compose Postgres and Keycloak under k6. `app` is the application alone;
+  `edge` puts the stack's edge in front of it (`deploy/edge/nginx.conf`, 1 CPU and 128 MiB, TLS and HTTP/2); `full` adds the stack's other limits (the
+  application on a CPU quota alone, Postgres at 2 CPUs and 1 GiB). `perf/compare-builds.sh` runs one load on several builds.
+- **Load.** k6 offers a rate and keeps offering it when the server slows down: redirects to 300 seeded links, nearly all cache hits, and 15
+  creates a second signed with DPoP (more would meet the replay cache of the proofs, see below). 30 s of warm-up at 2,000 req/s, then 60 s a rate.
+- **A rate is sustained** when at least 99% of the offered requests complete, fewer than 0.1% fail, and the redirect p95 as k6 saw it is within
+  25 ms. The **ceiling** is the highest sustained rate; the **knee** is the next one. The server's own p95 and p99 read 1.0 ms in every run, because the
+  queueing happens before the handler, so they are not used.
+- **What explains a ceiling** is the CPU time a request costs, from the CPU of the containers (`docker stats`) and the requests served: `tools/run Report cpu`.
+- **What invalidated runs** while this was built, and the script now guards against: roles sharing a physical core, a Docker daemon that is Docker
+  Desktop's (a virtual machine), one DPoP key for all clients, the edge opening a connection to the application for every request, lowering a
+  container's memory below its page cache, and a single source address meeting per-address protections.
 
 ### Results
 
-| Measure | JVM (Temurin 25) | native |
+The three builds that were compared, in the stack's scenario (`full`, the edge without its per-address limit, which one source address reaches before the application does):
+
+| | Native, Liberica NIK (`-Os`, the image of the stack) | Native, Oracle GraalVM (`-O3`, `x86-64-v3`) | JVM, Liberica Lite 25 (Parallel) |
+|---|--:|--:|--:|
+| **Ceiling**, `full` | 6,000 req/s | 10,000 | at least 12,000 |
+| Ceiling, the application alone | 8,000 | 10,000 | at least 14,000 |
+| CPU time a request, at 8,000 | 0.229 ms | 0.151 ms | 0.101 ms |
+| CPUs used of 2, at 8,000 | 1.80 | 1.20 | 0.79 |
+| Redirect p95 at 8,000, creates p99 | 27 ms, 527 ms | 1.2 ms, 40 ms | 0.5 ms, 6 ms |
+| Memory | peak 250 MiB | peak 246 MiB | sustains 8,000 req/s in 256 MiB |
+| Ready after `docker run` | 0.7 s | 0.6 s | 4.9 s |
+| p95 in the first 15 s at 5,000 req/s | 1.4 ms | 0.5 ms | 31 ms (2.5 ms with the AOT cache) |
+
+- **The cost of a request decides the ceiling.** The CPU use of the stack image falls once it passes its knee (1.80 CPUs of 2 at 8,000 req/s, 1.35 at 10,000, in the stack's scenario), so the
+  collapse is queueing and stalls, not a spent CPU; the cause was not found. It is not the garbage collector (3.4% of the time, longest pause 46 ms), memory, or the carriers of the virtual threads.
+- **Oracle GraalVM** with `-O3` (GraalNN), `-march=x86-64-v3` and glibc cut the cost of a request by a third and raised the ceiling by two thirds. The gain is the sum of the vendor,
+  `-O3`, `-march` and the libc, which were not separated.
+- **The JVM** (JIT warm) costs under half of the stack image per request. Its collector matters on 2 CPUs: Parallel was the best, G1 with `-XX:+UseCompactObjectHeaders`
+  equalled it, plain G1 and Serial (what the JVM picks on its own) were worse, and ZGC doubled the memory at rest. At 192 MiB the heap is too small and the collector
+  thrashes; from 256 MiB the load is sustained.
+- **The JVM pays at the start:** about 15 s of JIT, in which 1 to 3% of the requests at 5,000 req/s did not complete. The AOT cache of the JDK cuts that and the start
+  to 3.9 s, at up to 25% more CPU a request once warm.
+- **Through the edge.** Reusing the connections to the application (`upstream` with `keepalive`, now in `deploy/edge/nginx.conf`) took the edge from about 470 req/s,
+  where the ports ran out (then `502`), to 8,000 with 28% of its CPU. Its `limit_conn per_address 100` counts every HTTP/2 stream in flight and rejects a source
+  address that bursts past 100; it also kept the stack serving in overload.
+- **10M links the cache has not seen** (table 806 MB, indexes 1.2 GB, loaded by `COPY` in 622 s), behind the edge with Postgres at 2 CPUs and 1 GiB: nothing failed in
+  the application up to 2,000 req/s (the failures were the edge's per-address limit), and Postgres was not the limit. Postgres at 512 MB was killed by the kernel;
+  at 1 GiB it was not. 40,001 reads of 10 codes from an empty cache ran 21 queries: 10 at the start and 10 when the 30 s TTL expired.
+- **With the application's request limits on,** one address gets 5 req/s (300 a minute). Every figure here lifts them.
+- **The DPoP replay cache** (Spring Security's, in memory) holds 1,000 proofs per key for 30 s: a key sustains about 33 requests a second per instance, and a proof
+  replayed to the other replica is not seen as a replay.
+
+### Overload and the connection limit
+
+Tomcat accepts at most 500 connections and the edge at most 100 in flight per address. The reason is older than these measurements: before the redirect cache, at
+5,000 req/s, the native image ran out of heap. JFR, GC logs and a heap dump showed no leak but 3,000 requests held at once, one per k6 client, and 450 of 453 MB in
+Tomcat's per-connection buffers (about 150 KB each). A slightly slower server makes an open-model client open more connections, each costs heap, pauses grow (up to
+2.8 s) and it slows further. The cache removed the read that made the server slow; the limit bounds what is left.
+
+Re-measured at 12,000 req/s on the image of the stack, 1.5 times its ceiling:
+
+| | no limit (`max-connections` 8192) | `max-connections: 500` |
 |---|--:|--:|
-| ready after `docker run` | 5.4 s | 0.7 s |
-| memory at rest | 250 MiB | 210 MiB |
-| 1,500 req/s, redirect p99 | 1.0 ms | 4.6 ms |
-| 5,000 req/s served | 4,942 | 3,264 (1.6% failed) |
-| 5,000 req/s, redirect p99 | 2.4 ms | 3,018 ms |
-| 10,000 req/s | overload: 713 served | overload: 318 served |
+| peak memory | 512 MiB (the limit) | 271 MiB |
+| time in GC, longest pause | 23.4%, 2.8 s | 2.6%, 107 ms |
+| `OutOfMemoryError` | 3 | 0 |
+| completed of the offered, failed | 52%, 16.6% | 83%, 0.6% |
+| redirect p95 as k6 saw it | 434 ms | 64 ms |
 
-These predate the [redirect cache](#redirect-cache). With it:
+It trades some refused requests for flat memory and latency, and is protection and not capacity: the creates still queue for seconds at that load.
 
-- JVM: redirect p99 of 1.0 ms at 1,500 and 5,000 req/s, no failures, 32% of the two cores at 5,000. The ceiling was not
-  probed. Only those two rates were run, because saturation runs can take the development machine's network down.
-- Native: 4,936 req/s at 5,000, no failures, p99 1.0 ms, peak 142 MiB, where it failed before.
-- Results: `perf/results/2026-10-03-cache`.
+Tooling: `perf/profile.sh`, `tools/run Report` (`gc` and `hprof`), `perf/tune-connections.sh`.
 
-### Links the cache has not seen
+### What the measurements support
 
-`tools/run Dataset` makes distinct 7-character codes (a Feistel permutation of the 62^7 codes, in parallel: 10M in 0.14 s on 12
-cores), `perf/load-dataset.sh` loads them with `COPY`, and `perf/bench.sh` or `perf/k6/mixed.js` reads them with `DATASET_FILE`.
-Reads go to a random code of the file, so nearly every one misses the redirect cache.
+- A warm JVM costs about 45% of what the stack image does for the same load and sustains at least twice the rate. The Oracle native image narrows that and does not close it.
+- Memory no longer separates them: the JVM runs the same load in 256 MiB and the native images peak at about 250.
+- What the native images keep is the start (0.6 s against 4 to 5 s) and no warm-up. A replica of the JVM that rolls in should get its traffic after a warm-up or little by little.
+- The reasons for the native image in [ADR 0017](adr/0017-native-image-on-a-pinned-base.md), start and memory, weigh less with this evidence. What to run is the maintainers' decision.
 
-- **The data.** 10M links: table 806 MB, indexes 1.2 GB (primary key 280 MB), about 200 bytes a link with 40-character URLs. The
-  `COPY` took 622 s, 16,000 rows a second with all three indexes kept.
-- **1,000 req/s for 30 s, native image, Postgres unrestricted.** 999 served, none failed, 29,802 of the reads missed. Redirect
-  median 0.5 ms. p99 was 7 ms in one run and 49 ms in another with the same settings, which follows how much of the data the
-  operating system had cached. Each miss read about one table block and one index block that Postgres did not have.
-- **250 req/s with the database files evicted from the operating system's cache:** none failed, p99 1.7 ms. A random read of
-  the table file with `O_DIRECT` took about 120 µs here.
-- **A stampede on one code.** 40,001 reads of 10 codes, starting with an empty cache, ran 21 queries: 10 at the start, one
-  of the check that the dataset is loaded, and 10 when the 30 s TTL expired.
-- **Postgres limited to 512 MB** had its processes killed by the kernel (out of memory) twice, even at 250 req/s, so there is no
-  figure for it. Two runs at 250 req/s a few minutes after one of those restarts failed (3 to 6% errors, p99 of 60 s). Three
-  later runs with the same steps did not, and the cause is unknown.
-- **Limits.** One machine, one run each, Postgres and k6 beside the application, the native image only. The ceiling with misses
-  was not probed.
+### Not measured
 
-### Native image under overload
+- Which part of the Oracle build's gain is the vendor, `-O3`, `-march` or the libc; the native image with G1 or profile-guided optimization (Oracle GraalVM only, according to its
+  documentation).
+- The JVM above 16,000 req/s (the load generator is the limit there), on other CPU counts, and the JDK distributions against each other (Temurin and Liberica Lite gave similar results).
+- A warm-up before the traffic and a rolling update with it; two replicas behind the edge (the machine cannot isolate them); load beyond 60 s, a spike, a cold operating-system cache.
 
-The native image lost its heap at 5,000 requests a second. Profiled with JFR, GC logging and a heap dump:
-
-- **No leak.** Live heap stayed at 27-33 MB over four minutes at 1,500 req/s, with 4.6% of time in GC.
-- **Retention follows connections.** The dump at the `OutOfMemoryError` held 3,000 Tomcat requests, one per k6 client.
-  About 450 of 453 MB was Tomcat's per-connection buffers, roughly 150 KB each.
-- **A feedback loop.** A slightly slower server makes an open-model client open more connections, each costs heap, GC
-  pauses grow (up to 2.8 s), and it slows further until the heap is full. The JVM stays below that point.
-- **Collector.** Serial GC, young generation 10% of the heap. A 30% young generation did not help.
-- **Allocation.** 12.7% of sampled allocation is virtual-thread stack copies. Micrometer observation, including one per
-  Spring Security filter, is another visible share.
-
-Two changes closed it:
-
-- **The redirect cache** removes the read that made the native image slow, so clients do not pile up. Connection limits
-  of 8192, 1000, 500 and 250 gave the same results at 5,000 req/s.
-- **The connection limit** matters beyond capacity. At 12,000 req/s, about 2.4 times what two cores sustain:
-
-  | | no limit (8192) | `max-connections: 500` |
-  |---|--:|--:|
-  | peak memory | 514 MiB (the limit) | 208 MiB |
-  | time in GC, longest pause | 14.3%, 2.6 s | 3.9%, 60 ms |
-  | `OutOfMemoryError` | 3 | 0 |
-  | redirect p99 (server) | 4,144 ms | 1.0 ms |
-  | served, failed | 5,837 a second, 0.08% | 4,605 a second, 1.08% |
-
-  It trades about 1% failed requests for flat memory and latency. Creates still queue for seconds at that load, so a
-  limit is protection, not capacity.
-
-Spring Security's per-filter observations are off (`management.observations.enable.spring.security=false`); their effect on
-allocation was not measured. Tooling: `perf/profile.sh`, `tools/run Report` (`gc` and `hprof`),
-`perf/tune-connections.sh`.
 
 ### Running load tests safely
 
@@ -770,13 +772,12 @@ allocation was not measured. Tooling: `perf/profile.sh`, `tools/run Report` (`gc
   publishes or listens to events, and the table is not in the schema now. It stays in the history because an applied migration
   is not edited: Flyway checks its checksum. Anything that wants events again needs a migration that creates the table.
 - A link disabled on one instance can redirect on the others for up to the cache TTL (30 s).
-- Reads of links the cache has not seen were measured only up to 1,000 req/s over 10M links, one run each, on one machine
-  ([Links the cache has not seen](#links-the-cache-has-not-seen)). A miss is a primary-key read with a 5 s limit, and concurrent
-  misses for one code share one load. Where misses saturate Postgres is unknown.
+- Reads of links the cache has not seen were measured only up to 2,000 req/s over 10M links, on one machine ([Results](#results)). A miss
+  is a primary-key read with a 5 s limit, and concurrent misses for one code share one load. Where misses saturate Postgres is unknown.
 - The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
 - Rate limits and the DPoP replay cache are per instance.
-- Beyond capacity (about 5,800 req/s on two cores) the service sheds load, but creates still queue for seconds. nginx
-  caps connections per address but not in total, which Tomcat does at 500.
+- Beyond capacity (6,000 req/s for the native image of the stack on two cores, in the stack's scenario) the service sheds load, but creates still
+  queue for seconds. nginx caps connections per address but not in total, which Tomcat does at 500.
 - The stack has run on one node only, see [Deployment](#deployment).
 - The database connection is not forced to use TLS: the URL comes from the environment and the driver falls back to plain
   text. Production should use `sslmode=verify-full`.

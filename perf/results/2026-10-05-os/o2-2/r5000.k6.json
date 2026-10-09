@@ -172,14 +172,6 @@
         }
     },
     "setup_data": {
-        "dpopJwk": {
-            "y": "AduGMLoY7h9crUgRmHqszBu8E7f4jxhfSrALcTbACcE",
-            "crv": "P-256",
-            "d": "dbM2OoZqWoXtgK0nyiIcKbHeCkhTjqskrug4FLyyZVo",
-            "kty": "EC",
-            "x": "nZ-fys9dxg1sW2Votl4xxhES9rxXcuDmnZsPXyK9s64"
-        },
-        "token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiYXQrand0Iiwia2lkIiA6ICJSSHBsQ2FpNzlzS1JPbVFKc2dMaDQxR2ZGcV81OFpzUVZBT0FoOXp3NG9rIn0.eyJleHAiOjE3OTEyMzc3MTQsImlhdCI6MTc5MTIzNzQxNCwianRpIjoidHJydGNjOjI4NzBhM2U5LTFkYzMtNDZhYi0yNzYxLWZhOTQ1OGU3MDM3NSIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODE4MC9yZWFsbXMvc2hvcnRlbmVyIiwiYXVkIjoic2hvcnRlbmVyLWFwaSIsInN1YiI6IjA0ZDI1OTExLWRlNmQtNGRlZC04ZTRjLWRlNjhkZGI2MWEyYiIsInR5cCI6IkRQb1AiLCJhenAiOiJkZW1vLWNsaWVudCIsImNuZiI6eyJqa3QiOiJOZDlCZi1rME52YXBVclZGQWl0Q1FiNm1MRm50NTJESEl4cWN6cE1yRlhBIiwia2Mtamt0LXR5cGUiOiJEUG9QIn0sInNjb3BlIjoic2hvcnRsaW5rczpjcmVhdGUgc2hvcnRsaW5rczpkZWxldGUgc2hvcnRsaW5rczpjbGFpbSBzaG9ydGxpbmtzOnJlYWQiLCJvd25lciI6ImRlbW8tY2xpZW50In0.dq2VvR9HJYqw_QameUsnYTOY5UhX2XaE3jP0JFStR0vTYoF_2foUNdbZMGcoPi0CQqEEo0jXeBrLzT6paZyQ5FR9w9DxyiIb4Fa0EFXfFywEkikd8dSaQGTqERRqYQSsjdc08nTVxTMzkdi3EubhTjouukZhKMWUa9olGDB-nBrLZ8T8GZJBTu96JpqKtQ7jbFquBuK5im5xzVc_n8xkeC2UhkPHZa_3JnrC2fLS2RoHAlFCgfUlKAg5bq0rpwR98hzqxkGO6RaiUZ8121wYb3Gly-z9Vyi477dBgGi0fMlGLS_Uyp3FcUFgeafXx-I3Z6RnaETqS2FrtNR_CfE_Lw",
         "codes": [
             "h2wpaew",
             "DgenuOo",
