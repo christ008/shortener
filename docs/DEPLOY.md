@@ -49,8 +49,8 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
 4. **Deploy.**
 
    ```bash
-   deploy/stack/deploy.sh 0.21.0
-   OBSERVABILITY=1 deploy/stack/deploy.sh 0.21.0     # with Prometheus and the Postgres exporter
+   deploy/stack/deploy.sh 0.21.1
+   OBSERVABILITY=1 deploy/stack/deploy.sh 0.21.1     # with Prometheus and the Postgres exporter
    ```
 
    Everything starts at once. The application restarts until the migration job finishes (seconds).
