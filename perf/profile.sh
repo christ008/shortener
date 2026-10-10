@@ -6,7 +6,7 @@
 # `tools/run Report hprof`.
 # The k6 summary is cleaned of the DPoP key and the token by perf/scrub-k6-summary.sh (needs jq).
 # Needs the compose Postgres and Keycloak. The JVM image takes JFR and heap dump options as arguments, for example:
-#   perf/profile.sh jvm-5000 shortener:0.21.1 5000 60s 0.003 3000 -XX:+PrintGC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/out/oom.hprof
+#   perf/profile.sh jvm-5000 shortener:0.22.0 5000 60s 0.003 3000 -XX:+PrintGC -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/out/oom.hprof
 set -u
 NAME=$1; IMAGE=$2; RATE=$3; DUR=$4; SHARE=$5; MAXVUS=$6; shift 6
 ROOT=$(cd "$(dirname "$0")/.." && pwd)

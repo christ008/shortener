@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "uy.ct"
-version = "0.21.1"
+version = "0.22.0"
 description = "shortener"
 
 java {
@@ -214,10 +214,8 @@ if (native) {
 }
 
 /**
- * A JVM image from buildpacks (ADR 0036). The builder and the run image are pinned by digest, which pins the buildpacks the
- * builder carries; `health-checker` adds `/workspace/health-check`. `syft` 2.41.0 replaces the builder's 2.42.1, which
- * downloads an amd64 binary on arm64 (paketo-buildpacks/syft#479): drop that line when it is fixed. The flags are explained
- * in INTERNALS.md#image.
+ * A JVM image from buildpacks (ADR 0036). The builder and the run image are pinned by digest; `health-checker` adds
+ * `/workspace/health-check`. The flags are explained in INTERNALS.md#image.
  */
 tasks.bootBuildImage {
     imageName = "shortener:${project.version}"
