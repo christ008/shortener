@@ -141,12 +141,69 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 
 ## Identity provider and OAuth 2.1
 
-`deploy/keycloak/shortener-realm.template.json` defines the scopes, the audience mapper and four clients (`demo`, `other`,
-`admin`, `no-scope`): confidential, service-account only, implicit and password grants off. It holds placeholders where
-the keys and the web users' passwords go. `deploy/keycloak/dev-setup` makes the keys with the client's `keygen` and fills them in,
-which writes the realm Keycloak imports. Nothing secret is committed, so each developer has their own keys. Against the OAuth 2.1 draft
-that covers tokens only in the header, no deprecated grants, five-minute tokens, sender-constrained tokens and
-asymmetric client authentication. The draft is not final, so this is alignment, not conformance.
+Keycloak is the reference identity provider, and any issuer of the same tokens works. The realms are templates under `deploy/keycloak/`
+and hold only public keys and placeholders, so nothing secret is committed:
+
+- `shortener-realm.template.json`, the development realm: the scopes, the audience mapper, four confidential clients with a
+  service account (`demo-client`, `other-client`, `admin-client`, `no-scope-client`) and `shortener-ui`, a public client for the
+  [web UI](adr/0030-web-ui-as-a-static-spa.md), which is not built. `dev-setup` makes the keys with the client's `keygen` and fills them in.
+- `shortener-realm.production.template.json`, written by `./gradlew productionRealm`: TLS required for external requests, brute-force
+  protection, no registration, no users, and two clients (`demo-client`, `admin-client`).
+
+The checklist is against [draft-ietf-oauth-v2-1-16](https://datatracker.ietf.org/doc/draft-ietf-oauth-v2-1/) (September 2026). The
+draft is not final, so this is alignment, not conformance. `[x]` is met and says what holds it. `[ ]` is not met, or a deviation, and
+says why.
+
+### The resource server: this application
+
+- [x] A token travels only in the `Authorization` header. One in the query string or a form body is ignored (§5.1, §7.1.3.7).
+  `SecurityIntegrationTest`.
+- [x] A token is checked before anything is served: signature, issuer, expiry, JOSE type `at+jwt`, the audience `shortener-api`, and the
+  scope of the operation, so a token meant for another service is refused (§5.2, §7.1.4). `SecurityIntegrationTest`, `TestIdp`
+  (a wrong key, issuer, audience, an expired token), `AuthorizationIntegrationTest`.
+- [x] A request with no token or a bad one gets `401` with `WWW-Authenticate`, and an `error` only when a token was presented. A valid
+  token without the scope gets `403` with `insufficient_scope` (§5.3.1, §5.3.2). `SecurityIntegrationTest`.
+- [ ] The challenge names `Bearer` (§5.3.1). With DPoP required it names `DPoP` and its algorithms instead (RFC 9449), because a Bearer
+  token is refused. A missing or invalid proof is also a `401` (`invalid_request`, `invalid_dpop_proof`), where §5.3.2 suggests `400`
+  for `invalid_request`.
+- [x] Access tokens are sender-constrained, with DPoP and server nonces (§1.4.3). [ADR 0006](adr/0006-require-dpop-bound-tokens.md),
+  [0032](adr/0032-dpop-nonces.md), `DpopIntegrationTest`, `DpopNonceIntegrationTest`.
+- [x] Tokens are short-lived: five minutes (§7.1.3.5). `accessTokenLifespan` in both realms.
+- [x] Tokens are audience-restricted and minimal (§7.1.3.6, §7.1.4): the `shortener-api` mapper, and scopes per client, so `no-scope-client`
+  is refused and `other-client` cannot choose a code.
+- [x] No cookie carries a token: the chain is stateless (§7.1.3.4). `SecurityConfiguration`.
+- [x] Every URL is TLS (§1.5, §7.1.3.3): the edge terminates it and redirects HTTP to HTTPS ([Edge](INTERNALS.md#edge)).
+- [x] A token stays confidential behind the TLS-terminating edge (§7.14): both overlay networks are encrypted
+  ([ADR 0021](adr/0021-encrypt-internal-traffic.md)). Mutual TLS between services is proposed and not built ([ADR 0022](adr/0022-mtls-between-services.md)).
+
+### The clients
+
+- [x] The client credentials grant is for confidential clients that authenticate (§4.2, §3.2.1): every service-account client is
+  confidential and signs a `private_key_jwt` assertion with ES256 (`client-jwt`). `RealmsTest` for production.
+- [x] No implicit grant and no password grant (§1.8): `implicitFlowEnabled` and `directAccessGrantsEnabled` are `false` on every client.
+  `RealmsTest` checks the password grant and the browser flow of the production realm.
+- [x] The token endpoint is called with `POST`, with credentials in the body and never in the URL (§3.2, §2.4.1). `DpopClient.java`,
+  `DpopClientTest`.
+- [x] The browser client uses the authorization code grant with PKCE and `S256` (§4.1.1): `shortener-ui` sets
+  `pkce.code.challenge.method`, and the reference client's `login` sends `code_challenge_method=S256`. `DpopClientTest`.
+- [x] A public client's refresh token is rotated (§4.3.1): `revokeRefreshToken` is on with no reuse. `DpopClientTest` refreshes one.
+- [ ] Redirect URIs are exact (§2.3.1): `shortener-ui` in the development realm registers `http://localhost:3000/app/*` and two more
+  with a wildcard path. They must be exact before the UI is built. The production realm has no such client.
+
+### The authorization server: what the realm sets
+
+- [x] TLS is required: `sslRequired` is `external` in the production realm (`RealmsTest`). The development realm sets `none`, for `localhost` only.
+- [x] No self-registration and no users in the production realm, and brute-force protection is on. `RealmsTest`.
+- Left to Keycloak and not tested here: authorization codes that expire in minutes and work once (§4.1.2, §4.1.3), refusing a public
+  client's request without a `code_challenge` (§4.1.2.1), `Cache-Control: no-store` on token responses (§3.2.3), credentials that
+  cannot be guessed (§7.7), and the check that a redirect URI matches.
+
+### Not applicable yet
+
+- The CSRF and mix-up rules for a browser client (§2.3.3, §2.3.4), CORS at the authorization endpoint (§3.1) and third-party scripts on
+  the redirect page (§2.3.6) wait for the UI ([ADR 0030](adr/0030-web-ui-as-a-static-spa.md)).
+- Open redirectors (§7.13.1) concern a client's own redirect URI. The short link redirect is the product, and what it may point to is
+  limited by the target policy ([ADR 0015](adr/0015-target-host-policy.md), [0023](adr/0023-production-must-decide-its-targets.md)).
 
 ## Beyond the application
 
