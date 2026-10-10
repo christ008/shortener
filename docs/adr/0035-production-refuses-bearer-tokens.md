@@ -16,8 +16,9 @@ close, and it would be a setting nobody notices.
 ## Decision
 
 - Under the `production` profile the application does not start with `dpop.required` off. The check runs when the filter chain is built,
-  at run time, as the other production checks do ([0023](0023-production-must-decide-its-targets.md), [0032](0032-dpop-nonces.md)): the native image is built
-  under `production`, and a condition would be fixed in it for every deployment.
+  at run time, as the other production checks do ([0023](0023-production-must-decide-its-targets.md), [0032](0032-dpop-nonces.md)): the native build of
+  [0017](0017-native-image-on-a-pinned-base.md) is made under `production` and a condition would be fixed in it for every deployment. The JVM image of
+  [0036](0036-jvm-image-for-arm64.md) has no such limit, and the check is the same in both.
 - The message names the setting and the variable to unset.
 - Every other profile may turn it off, which is what the `test` profile does and what a developer may do on a laptop.
 - `ComposeStackTest` fails if the stack sets the variable to anything but `true` on the application or the migration job.

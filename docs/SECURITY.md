@@ -24,7 +24,7 @@ Stateless and deny by default, in this order: IP rate limit, authentication, cli
 flowchart LR
     request(["Request"]) --> ip["Limit by IP"]
     ip -->|over the limit| tooMany1["429"]
-    ip --> authenticate["Authenticate<br/>DPoP, bearer only if not required"]
+    ip --> authenticate["Authenticate<br/>DPoP token and proof; Bearer refused"]
     authenticate -->|"bad token or proof"| unauthorized["401"]
     authenticate --> client["Limit by client"]
     client -->|over the limit| tooMany2["429"]
@@ -126,8 +126,8 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 
 ## Rate limiting
 
-- Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): one per IP before authentication, one per client after
-  it. The capacities are [tunables](REFERENCE.md#tunables).
+- Token buckets in memory (Bucket4j): one per IP before authentication, one per client after it. The capacities are
+  [tunables](REFERENCE.md#tunables).
 - State is per instance, so the effective limit is the limit times the replicas. A global limit needs a shared store.
 - Buckets live in a size-bounded Caffeine cache and expire once idle for a full refill period, so a flood of distinct keys
   cannot exhaust memory.
@@ -141,12 +141,23 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 
 ## Identity provider and OAuth 2.1
 
-`deploy/keycloak/shortener-realm.template.json` defines the scopes, the audience mapper and four clients (`demo`, `other`,
-`admin`, `no-scope`): confidential, service-account only, implicit and password grants off. It holds placeholders where
-the keys and the web users' passwords go. `deploy/keycloak/dev-setup` makes the keys with the client's `keygen` and fills them in,
-which writes the realm Keycloak imports. Nothing secret is committed, so each developer has their own keys. Against the OAuth 2.1 draft
-that covers tokens only in the header, no deprecated grants, five-minute tokens, sender-constrained tokens and
-asymmetric client authentication. The draft is not final, so this is alignment, not conformance.
+Keycloak is the reference identity provider, and any issuer of the same tokens works. `deploy/keycloak/` holds two realm templates with
+placeholders for the keys, so nothing secret is committed: the development realm (four confidential service-account clients, and
+`shortener-ui`, a public client for the unbuilt [web UI](adr/0030-web-ui-as-a-static-spa.md)) and the production realm
+(`./gradlew productionRealm`: TLS required, no users, two clients).
+
+The service is close to [draft-ietf-oauth-v2-1-16](https://datatracker.ietf.org/doc/draft-ietf-oauth-v2-1/): tokens only in the header,
+no implicit or password grant, PKCE with `S256`, rotated refresh tokens, five-minute audience-restricted tokens, and tokens bound to the
+client's key. The draft is not final, so this is alignment, not conformance. What is missing:
+
+- [ ] **The challenge names `DPoP`, not `Bearer`** (§5.3.1), because Bearer tokens are refused, and a missing or invalid proof is a `401`
+  where §5.3.2 suggests `400` for `invalid_request`. A deliberate deviation (RFC 9449).
+- [ ] **Redirect URIs are not exact** (§2.3.1): `shortener-ui` in the development realm registers wildcard paths (`http://localhost:3000/app/*`).
+  The production realm has no such client. Fix before the UI is built.
+- [ ] **Mutual TLS between services** (§7.14) is proposed, not built ([ADR 0022](adr/0022-mtls-between-services.md)). The overlay networks are encrypted.
+- [ ] **Not tested here, left to Keycloak:** single-use authorization codes, `Cache-Control: no-store` on token responses, and refusing a public
+  client's request without a `code_challenge`.
+- [ ] **A browser client's CSRF, mix-up and CORS rules** (§2.3.3, §2.3.4, §3.1) wait for the UI.
 
 ## Beyond the application
 

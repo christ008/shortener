@@ -347,7 +347,7 @@ tools/run Report summary perf/results      # the variants side by side; tools/ru
 
 ```bash
 perf/load-dataset.sh 10M        # 10M distinct codes into short_link (about 10 minutes, 2 GB), kept in perf/data/
-DATASET_FILE=perf/data/codes-10M-seed1.txt perf/bench.sh native shortener:0.21.0 perf/results/dataset
+DATASET_FILE=perf/data/codes-10M-seed1.txt perf/bench.sh jvm shortener:0.22.0 perf/results/dataset
 ```
 
 - With `DATASET_FILE` the bench does not truncate `short_link`, and k6 reads codes of the file by position. `DATASET_HOT=H`

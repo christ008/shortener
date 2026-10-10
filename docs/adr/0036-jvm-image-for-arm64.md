@@ -1,4 +1,4 @@
-# 0036. A JVM image from buildpacks, built on arm64
+# 0036. A JVM image from buildpacks, on Liberica Lite, built on arm64
 
 - Status: Accepted, 2026-10-09
 - Supersedes [0017](0017-native-image-on-a-pinned-base.md)

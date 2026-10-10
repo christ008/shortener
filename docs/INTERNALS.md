@@ -31,7 +31,7 @@ How the service works: a request from end to end, the database, the cache, the i
 
 **Create** (`POST /api/short-links`)
 
-1. Rate limit by IP, authenticate (DPoP, and bearer only where DPoP is not required), rate limit by client.
+1. Rate limit by IP, authenticate (DPoP; a Bearer token is refused), rate limit by client.
 2. The controller validates the body and calls `shorten` (`POST`) or `claim` (`PUT`, the code from the path).
 3. Method security checks the scope (`create`, plus `claim` for a custom code) and that the owner argument is the caller.
 4. The service validates the URL again as a domain rule, then allocates a code:
@@ -182,8 +182,8 @@ Migrations run in a one-shot job, the `migrate` service of the stack:
   for it, so a failed migration leaves the old version serving.
 - The previous version keeps serving against the new schema during a rollout, so migrations must be compatible with it:
   add, then switch, then remove in a later release.
-- The application container still runs Flyway on start, as `shortener_app`, and finds nothing to apply. It cannot be
-  switched off: a native image decides at build time which beans exist. If the schema is behind, the role cannot change
+- The application container still runs Flyway on start, as `shortener_app`, and finds nothing to apply. It is left on
+  ([ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md)): if the schema is behind, the role cannot change
   it and the container fails to start (tested on an empty database: exit 1, `permission denied for schema public`).
 - A database that predates the roles: run `bootstrap.sql`, which hands the existing tables to the migrator, then point
   the Secrets at the new roles.
@@ -245,7 +245,7 @@ tree, including the outage case, is in [Request flows](#request-flows).
   - Cost: a link disabled elsewhere just before an outage keeps redirecting here until its copy expires. That is why the
     window is short. It cannot be shorter than the TTL.
   - Each redirect served this way increments `shortlink_redirect_cache_stale_total`, which should be zero.
-  - Drilled on the native binary with Postgres stopped: a link read earlier kept redirecting, an unread code got `503`
+  - Drilled on the native binary, as it then was, with Postgres stopped: a link read earlier kept redirecting, an unread code got `503`
     with `Retry-After`, readiness and liveness stayed up, and the instance recovered when Postgres returned. With the
     window at zero the same link answered `503`.
 
@@ -506,11 +506,11 @@ provider's. It is not worth it for a demo ([CLOUD.md](CLOUD.md)).
 
 ### Verified
 
-On Docker 29.8, a single-node swarm and plain Compose, with the native image (the image is a JVM since [ADR 0036](adr/0036-jvm-image-for-arm64.md): its smoke test and its hardening were run, the stack on a swarm was not):
+On Docker 29.8, a single-node swarm and plain Compose, with the native image of 0.21.1. The image has been a JVM since [ADR 0036](adr/0036-jvm-image-for-arm64.md): its smoke test and its hardening were run, the stack on a swarm was not.
 
 - the whole stack through the TLS edge, with the 21-check smoke test (`perf/smoke.sh`), on both;
 - the migration job as the migrator role from a file secret, and the application refusing to change the schema;
-- Prometheus discovering both tasks and loading the five alert rules, and the exporter reporting `pg_up`;
+- Prometheus discovering both tasks and loading the alert rules, and the exporter reporting `pg_up`;
 - a rolling update under load.
 
 Checked again on 2026-10-07 on a single-node swarm, after the image updates of Dependabot (nginx 1.31.5, Keycloak 26.8.0,
@@ -535,13 +535,14 @@ tag the commit `v<version>` and push the tag. The `Release` workflow (`.github/w
 - scans it, and fails on a fixable high or critical vulnerability;
 - pushes that image to `ghcr.io/christ008/shortener`, signs it by digest with the workflow's own identity (no key to
   manage), and attaches an SPDX bill of materials. The job summary prints the digest and the `cosign verify` command.
+
 Notes:
 
 - Only arm64 is built, the platform of the target ([ADR 0036](adr/0036-jvm-image-for-arm64.md)).
 - The package is private after the first release. Make it public in the repository's package settings, or give the
   hosts that pull it a registry login.
 - Dependabot proposes updates weekly to the actions, Gradle (the application and `tools/`), the Dockerfiles and the compose
-  files. Pin the actions to commit hashes once the workflow is stable.
+  files. The third-party actions are pinned to commits and `actions/*` to tags.
 - `deploy/stack/deploy.sh` verifies the signature of a version (`cosign verify`, against the identity of this workflow for that
   tag) before it deploys, so a deployment from a registry needs `cosign` on the manager.
 
@@ -615,7 +616,7 @@ All 380 ran and passed (`./gradlew test`, which runs the tools' tests too).
   1. **`ShortCode.RESERVED` replaced by an empty set.**
      - Why it mattered: the two tests of reserved codes take their codes from that set, so with none they pass without checking
        anything, and nothing said which codes are kept.
-     - Test: `the reserved codes are the three that would shadow a route of the application`.
+     - Test: `the reserved codes are the four that would shadow a route of the application`.
   2. **The check of the target in the constructor of `ShortLink` removed.**
      - Why it mattered: `requireValidTargetUrl` was tested alone, but no test showed that a link cannot be built with a target
        that is not absolute http or https.
@@ -660,6 +661,7 @@ What each control of the documents rests on, so that a claim can be followed to 
 - Limits: `IpRateLimitIntegrationTest` and `ClientRateLimitIntegrationTest`.
 - Outage: `StorageUnavailableIntegrationTest`. The repository test uses hand-written fakes of the pool.
 - Contract: `OpenApiContractTest`.
+
 ## Performance
 
 > [!IMPORTANT]
@@ -686,7 +688,7 @@ What each control of the documents rests on, so that a claim can be followed to 
 
 The three builds that were compared, in the stack's scenario (`full`, the edge without its per-address limit, which one source address reaches before the application does):
 
-| | Native, Liberica NIK (`-Os`, the image of the stack) | Native, Oracle GraalVM (`-O3`, `x86-64-v3`) | JVM, Liberica Lite 25 (Parallel) |
+| | Native, Liberica NIK (`-Os`, the stack's image until 0.21.1) | Native, Oracle GraalVM (`-O3`, `x86-64-v3`) | JVM, Liberica Lite 25 (Parallel) |
 |---|--:|--:|--:|
 | **Ceiling**, `full` | 6,000 req/s | 10,000 | at least 12,000 |
 | Ceiling, the application alone | 8,000 | 10,000 | at least 14,000 |
@@ -697,11 +699,11 @@ The three builds that were compared, in the stack's scenario (`full`, the edge w
 | Ready after `docker run` | 0.7 s | 0.6 s | 4.9 s |
 | p95 in the first 15 s at 5,000 req/s | 1.4 ms | 0.5 ms | 31 ms (2.5 ms with the AOT cache) |
 
-- **The cost of a request decides the ceiling.** The CPU use of the stack image falls once it passes its knee (1.80 CPUs of 2 at 8,000 req/s, 1.35 at 10,000, in the stack's scenario), so the
+- **The cost of a request decides the ceiling.** The CPU use of the Liberica native image falls once it passes its knee (1.80 CPUs of 2 at 8,000 req/s, 1.35 at 10,000, in the stack's scenario), so the
   collapse is queueing and stalls, not a spent CPU; the cause was not found. It is not the garbage collector (3.4% of the time, longest pause 46 ms), memory, or the carriers of the virtual threads.
 - **Oracle GraalVM** with `-O3` (GraalNN), `-march=x86-64-v3` and glibc cut the cost of a request by a third and raised the ceiling by two thirds. The gain is the sum of the vendor,
   `-O3`, `-march` and the libc, which were not separated.
-- **The JVM** (JIT warm) costs under half of the stack image per request. Its collector matters on 2 CPUs: Parallel was the best, G1 with `-XX:+UseCompactObjectHeaders`
+- **The JVM** (JIT warm) costs under half of the Liberica native image per request. Its collector matters on 2 CPUs: Parallel was the best, G1 with `-XX:+UseCompactObjectHeaders`
   equalled it, plain G1 and Serial (what the JVM picks on its own) were worse, and ZGC doubled the memory at rest. At 192 MiB the heap is too small and the collector
   thrashes; from 256 MiB the load is sustained.
 - **The JVM pays at the start:** about 15 s of JIT, in which 1 to 3% of the requests at 5,000 req/s did not complete. The AOT cache of the JDK cuts that and the start
@@ -723,7 +725,7 @@ Tomcat accepts at most 500 connections and the edge at most 100 in flight per ad
 Tomcat's per-connection buffers (about 150 KB each). A slightly slower server makes an open-model client open more connections, each costs heap, pauses grow (up to
 2.8 s) and it slows further. The cache removed the read that made the server slow; the limit bounds what is left.
 
-Re-measured at 12,000 req/s on the image of the stack, 1.5 times its ceiling:
+Re-measured at 12,000 req/s on the Liberica native image, 1.5 times its ceiling of 8,000 (the application alone):
 
 | | no limit (`max-connections` 8192) | `max-connections: 500` |
 |---|--:|--:|
@@ -739,10 +741,10 @@ Tooling: `perf/profile.sh`, `tools/run Report` (`gc` and `hprof`), `perf/tune-co
 
 ### What the measurements support
 
-- A warm JVM costs about 45% of what the stack image does for the same load and sustains at least twice the rate. The Oracle native image narrows that and does not close it.
+- A warm JVM costs about 45% of what the Liberica native image does for the same load and sustains at least twice the rate. The Oracle native image narrows that and does not close it.
 - Memory no longer separates them: the JVM runs the same load in 256 MiB and the native images peak at about 250.
 - What the native images keep is the start (0.6 s against 4 to 5 s) and no warm-up. A replica of the JVM that rolls in should get its traffic after a warm-up or little by little.
-- The reasons for the native image in [ADR 0017](adr/0017-native-image-on-a-pinned-base.md), start and memory, weigh less with this evidence. What to run is the maintainers' decision.
+- The reasons for the native image in [ADR 0017](adr/0017-native-image-on-a-pinned-base.md), start and memory, weigh less with this evidence, and [ADR 0036](adr/0036-jvm-image-for-arm64.md) chose the JVM.
 
 ### Not measured
 
@@ -772,7 +774,7 @@ The one list of what is not shown and what is known to fall short. Other documen
 
 - It has not served real traffic. What is said about its behaviour under load comes from a synthetic workload on one machine
   (see [Performance](#performance)).
-- The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
+- `deploy.sh` has not been shown to verify a signature that the release workflow made.
 - The stack has run on one node only: not overlay encryption between nodes, the host-mode edge on several nodes, or where
   Postgres lands ([Verified](#verified)).
 - Not tried: real certificates and their issuance (ACME), pulling the image from a registry, and any failure of the database
@@ -784,7 +786,7 @@ The one list of what is not shown and what is known to fall short. Other documen
 
 - A link disabled on one instance can redirect on the others for up to the cache TTL.
 - Rate limits and the DPoP replay cache are per instance.
-- Beyond capacity (6,000 req/s for the native image and at least 12,000 for a JVM, on two cores of a desktop in the stack's scenario, none measured on Ampere) the service sheds load, but creates still
+- Beyond capacity (at least 12,000 req/s for the JVM image and 6,000 for the native image it replaced, on two cores of a desktop in the stack's scenario, none measured on Ampere) the service sheds load, but creates still
   queue for seconds. nginx caps connections per address but not in total, which Tomcat does at 500.
 - The database connection is not forced to use TLS: the URL comes from the environment and the driver falls back to plain
   text. Production should use `sslmode=verify-full`.

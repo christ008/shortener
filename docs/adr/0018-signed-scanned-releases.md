@@ -1,6 +1,6 @@
 # 0018. A release is tested, scanned, signed and accompanied by its bill of materials
 
-- Status: Accepted, 2026-10-05. The workflow has not run yet
+- Status: Accepted, 2026-10-05. It has released v0.20.0 and v0.21.1
 - Evidence: `32452bb`, `.github/workflows/release.yml`, `ReleaseVersionTest`
 
 ## Problem
@@ -22,11 +22,10 @@ access. The operator needs to know that the image is the one the tests ran on, b
 ## Consequences
 
 - Good: a signature says which workflow made the image, and a digest cannot be moved.
-- Cost: the first release will find what has not been exercised. It builds only arm64 ([0036](0036-jvm-image-for-arm64.md)), and the package is private until
-  made public.
-- Gaps, listed in [THREAT_MODEL.md](../THREAT_MODEL.md): nothing at deploy time verifies the signature, Dependabot does
-  not watch Gradle or the container images, the actions are pinned by tag and not by commit, and the scan ignores
-  vulnerabilities with no fix.
+- Cost: the first releases found what had not been exercised, such as an image that did not start under `production` in the smoke test (0.21.1). It builds only
+  arm64 ([0036](0036-jvm-image-for-arm64.md)), and the package is private until made public.
+- Gaps, listed in [THREAT_MODEL.md](../THREAT_MODEL.md): `deploy.sh` verifies the signature of the tag and not of the digest it
+  then deploys, the `actions/*` actions are pinned by tag and not by commit, and the scan ignores vulnerabilities with no fix.
 
 ## Rejected
 

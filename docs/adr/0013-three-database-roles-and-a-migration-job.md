@@ -34,4 +34,5 @@ every link, and a rewritten target turns every short link into a phishing link.
 ## Rejected
 
 - One role: simplest, and the one that makes a SQL injection fatal.
-- Flyway switched off in the application image: a native image decides its beans at build time, so it cannot be.
+- Flyway switched off in the application image: the native image decided its beans at build time, so it could not be ([0017](0017-native-image-on-a-pinned-base.md)).
+  The JVM image of [0036](0036-jvm-image-for-arm64.md) could, and it stays on because the application then fails to start on a schema that is behind.
