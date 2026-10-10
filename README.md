@@ -6,7 +6,7 @@
 
 - **A stolen token is useless.** Each request is signed by the client's own key, and clients see only their own links.
 - **A link can't be hijacked.** A short code is never reused, and in production the app has no permission to change one.
-- **Fast.** Redirects come from memory, and a task is ready in about four seconds.
+- **Fast.** Redirects come from memory.
 - **Ready to run.** One command deploys it with TLS, metrics and alerts, after checking the release's signature.
 - **Every choice explained.** A threat model, a short record per decision with its cost, and a test behind each guarantee.
 
