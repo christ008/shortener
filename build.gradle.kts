@@ -214,15 +214,21 @@ if (native) {
 }
 
 /**
- * A JVM image from the builder's own buildpacks (ADR 0036). The builder and the run image are pinned by digest, which pins the
- * buildpacks they carry; `health-checker` adds `/workspace/health-check`. The flags are explained in INTERNALS.md#image.
+ * A JVM image from buildpacks (ADR 0036). The builder and the run image are pinned by digest, which pins the buildpacks the
+ * builder carries; `health-checker` adds `/workspace/health-check`. `syft` 2.41.0 replaces the builder's 2.42.1, which
+ * downloads an amd64 binary on arm64 (paketo-buildpacks/syft#479): drop that line when it is fixed. The flags are explained
+ * in INTERNALS.md#image.
  */
 tasks.bootBuildImage {
     imageName = "shortener:${project.version}"
     builder = "bellsoft/buildpacks.builder:glibc@sha256:c7a8d5fcc863a7e5c36a6691d7ccd174cd4acd701a7338867e1bb7a61389de92"
     runImage = "bellsoft/buildpacks.hardened-run:glibc@sha256:81f455eb612bb818b37d3c02087fde31cd07a776334ed686f98906448b2eff42"
     buildpacks = listOf(
-        "urn:cnb:builder:bellsoft/buildpacks/java",
+        "urn:cnb:builder:bellsoft/buildpacks/liberica",
+        "docker://paketobuildpacks/syft:2.41.0",
+        "urn:cnb:builder:paketo-buildpacks/executable-jar",
+        "urn:cnb:builder:paketo-buildpacks/spring-boot",
+        "urn:cnb:builder:paketo-buildpacks/environment-variables",
         "docker://paketobuildpacks/health-checker:2.14.0",
     )
     environment = mapOf(
