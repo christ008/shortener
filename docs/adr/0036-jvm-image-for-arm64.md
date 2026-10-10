@@ -13,10 +13,11 @@ build host with 7 GB free, and on the same load cost about twice the CPU a reque
 
 ## Decision
 
-- The image is still built by `./gradlew bootBuildImage`, now with the builder's own buildpacks (`bellsoft/buildpacks/java`) and without the native-image step.
+- The image is still built by `./gradlew bootBuildImage`, now with the builder's own buildpacks and without the native-image step. `syft` is pinned to 2.41.0,
+  because the builder's 2.42.1 downloads an amd64 binary on arm64 and stops the build with `exec format error` ([paketo-buildpacks/syft#479](https://github.com/paketo-buildpacks/syft/issues/479), open).
   It runs on a Liberica JRE Lite 25, on BellSoft's Alpaquita glibc builder and run image, the libc that was measured.
 - The builder and run image are pinned by digest, because BellSoft publishes rolling tags only. The digest pins the buildpacks the builder carries.
-  Only `health-checker` is added, by version. The list of buildpacks that [0017](0017-native-image-on-a-pinned-base.md) pinned one by one is gone.
+  `health-checker` and that `syft` are added, by version, and the list names the builder's buildpacks instead of the composite. The list of buildpacks that [0017](0017-native-image-on-a-pinned-base.md) pinned one by one is gone.
 - The GraalVM plugin is applied only with `-Pnative`. Applied, it makes `bootJar` run Spring AOT and mark the jar `Spring-Boot-Native-Processed`,
   which the `spring-boot` buildpack reads as a request for a native image (the detector fails without a native builder). The jar of the image is a
   plain Spring Boot jar, and `perf/builds/native.sh` passes `-Pnative`.

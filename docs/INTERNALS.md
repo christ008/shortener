@@ -302,7 +302,8 @@ Oracle's Ampere instances, which are arm64.
 - **Platform.** The builder and run image have amd64 and arm64, and the image takes the platform of the Docker daemon that builds it. The Release workflow builds on an arm64
   runner and fails if the image is not arm64, so what the smoke test runs is what runs on the target. On an amd64 machine the same command gives an amd64 image.
 - **Pinned.** The builder and the run image are pinned by digest in `build.gradle.kts`, because BellSoft publishes only rolling `musl` and `glibc` tags. The digest pins the buildpacks the
-  builder carries, which `bootBuildImage` uses in the builder's own order (`bellsoft/buildpacks/java`). Only `health-checker` is added, by version. Update by looking up a new digest.
+  builder carries, which `bootBuildImage` names in the builder's own order. Two are added by version: `health-checker`, and `syft` 2.41.0 in place of the builder's 2.42.1, which downloads an amd64 binary
+  on arm64 and stops the build with `exec format error` ([syft#479](https://github.com/paketo-buildpacks/syft/issues/479); remove the pin when it is fixed). Update by looking up a new digest.
 - **JVM.** Liberica JRE Lite 25 from the builder. `JAVA_TOOL_OPTIONS` carries `-XX:+UseG1GC -XX:+UseCompactObjectHeaders -XX:ReservedCodeCacheSize=64M`, added by the
   builder's `environment-variables` buildpack (`BPE_APPEND_...`, so an operator's own options are added to them, not instead). G1 with compact object headers equalled Parallel on 2 CPUs, and the
   JVM's own choice (Serial, on 512 MiB) was worse ([Performance](#performance)).
