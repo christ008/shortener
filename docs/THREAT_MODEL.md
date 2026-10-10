@@ -5,7 +5,7 @@ are described in [SECURITY.md](SECURITY.md) and the [ADRs](adr/README.md).
 
 > [!IMPORTANT]
 > **Status: a review of the code and the stack, first made at 0.20.0 by reading them and kept current since (the findings
-> carry the dates of their fixes, the last on 2026-10-06, at 0.21.0).** Nothing was tested against a running public instance
+> carry the dates of their fixes).** Nothing was tested against a running public instance
 > and there was no penetration test. A control with a test names it. A claim inferred from configuration says so.
 
 - [Scope and assumptions](#scope-and-assumptions)
@@ -184,7 +184,7 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 |:-:|---|---|---|
 | S | A forged release | the tag must equal the version, the image is signed with the workflow's identity, and `deploy.sh` runs `cosign verify` against that identity before it deploys | the check is by tag and the digest is resolved afterwards, and the workflow has not run yet ([F-06](#findings)) |
 | T | A poisoned dependency or image | tests, a scan that fails on a fixable high or critical finding, an SBOM, pinned buildpacks and base image | [F-05](#findings) |
-| R | Which build runs | the digest is resolved at deploy, the SBOM and signature are attached | the workflow has not run yet |
+| R | Which build runs | the digest is resolved at deploy, the SBOM and signature are attached | `deploy.sh` has not been shown to verify a signature the workflow made |
 | I | Secrets in the repository | generated dev keys, `.env` and `secrets/` ignored by Git ([ADR 0019](adr/0019-no-secrets-in-git.md)) | the old dev keys are in the history |
 | E | The workflow acting beyond its need | read-only by default, `packages: write` and `id-token: write` only in the release job | third-party actions pinned by commit, `actions/*` by tag |
 | E | `deploy.sh` running something it should not | it refuses a name in `.env` that is not a plain variable name before it `eval`s the line (`DeployScriptTest`) | the values are still the operator's ([F-11](#findings)) |

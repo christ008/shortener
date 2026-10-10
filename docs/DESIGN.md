@@ -11,7 +11,7 @@ alternatives in the [ADRs](adr/README.md).
 
 ## Invariants
 
-Twelve statements the design must keep true, and what holds each one. A test is a result; a decision or a file is a design. Where an
+Thirteen statements the design must keep true, and what holds each one. A test is a result; a decision or a file is a design. Where an
 invariant has a limit, the limit is part of it.
 
 ### Short codes
@@ -38,7 +38,7 @@ invariant has a limit, the limit is part of it.
 
 | # | Invariant | Held by |
 |---|---|---|
-| 1 | An invalid production security configuration stops the start | in `production` the application refuses: no decision on target hosts, DPoP off, no shared nonce secret, or a DPoP filter missing from the chain. `TargetUrlPolicyDecisionTest`, `DpopNoncesConfigurationTest`, `DpopRequiredInProductionTest`. **Not covered:** the identity provider's addresses. The image keeps `localhost` defaults because a native image needs them when it is built (`ProfilesTest`), and the stack requires `ISSUER_URI` and `JWKS_URI` itself |
+| 1 | An invalid production security configuration stops the start | in `production` the application refuses: no decision on target hosts, DPoP off, no shared nonce secret, or a DPoP filter missing from the chain. `TargetUrlPolicyDecisionTest`, `DpopNoncesConfigurationTest`, `DpopRequiredInProductionTest`. **Not covered:** the identity provider's addresses. The image keeps `localhost` defaults because the native build needs them when it is made (`ProfilesTest`), and the stack requires `ISSUER_URI` and `JWKS_URI` itself |
 | 2 | Migrations run apart from the application | the migration job holds the only credentials that can alter the schema, migrates and exits. The application's role could not migrate if it tried. `ComposeStackTest`, `MigrateOnlyRunnerTest`. [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md) |
 | 3 | Readiness and liveness are different questions | readiness leaves the database out, so an outage does not take the instances out of rotation, and liveness stays up. The container health check asks readiness. `StorageUnavailableIntegrationTest`, `ComposeStackTest`. [ADR 0012](adr/0012-readiness-excludes-the-database.md) |
 

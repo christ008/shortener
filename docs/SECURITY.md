@@ -126,8 +126,8 @@ security meta-annotations (`@MayCreate`, `@MayClaim`, `@MayRead`, `@MayList`, `@
 
 ## Rate limiting
 
-- Token buckets in memory (Bucket4j over a size-bounded Caffeine cache): one per IP before authentication, one per client after
-  it. The capacities are [tunables](REFERENCE.md#tunables).
+- Token buckets in memory (Bucket4j): one per IP before authentication, one per client after it. The capacities are
+  [tunables](REFERENCE.md#tunables).
 - State is per instance, so the effective limit is the limit times the replicas. A global limit needs a shared store.
 - Buckets live in a size-bounded Caffeine cache and expire once idle for a full refill period, so a flood of distinct keys
   cannot exhaust memory.
