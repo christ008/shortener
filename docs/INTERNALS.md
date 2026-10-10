@@ -772,7 +772,7 @@ The one list of what is not shown and what is known to fall short. Other documen
 
 - It has not served real traffic. What is said about its behaviour under load comes from a synthetic workload on one machine
   (see [Performance](#performance)).
-- The release workflow has not run, so no signature exists yet for `deploy.sh` to verify.
+- `deploy.sh` has not been shown to verify a signature that the release workflow made.
 - The stack has run on one node only: not overlay encryption between nodes, the host-mode edge on several nodes, or where
   Postgres lands ([Verified](#verified)).
 - Not tried: real certificates and their issuance (ACME), pulling the image from a registry, and any failure of the database

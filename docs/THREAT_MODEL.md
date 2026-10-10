@@ -186,7 +186,7 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 | T | A poisoned dependency or image | tests, a scan that fails on a fixable high or critical finding, an SBOM, pinned buildpacks and base image | [F-05](#findings) |
 | R | Which build runs | the digest is resolved at deploy, the SBOM and signature are attached | the workflow has not run yet |
 | I | Secrets in the repository | generated dev keys, `.env` and `secrets/` ignored by Git ([ADR 0019](adr/0019-no-secrets-in-git.md)) | the old dev keys are in the history |
-| E | The workflow acting beyond its need | read-only by default, `packages: write` and `id-token: write` only in the release job | actions pinned by tag, not commit |
+| E | The workflow acting beyond its need | read-only by default, `packages: write` and `id-token: write` only in the release job | third-party actions pinned by commit, `actions/*` by tag |
 | E | `deploy.sh` running something it should not | it refuses a name in `.env` that is not a plain variable name before it `eval`s the line (`DeployScriptTest`) | the values are still the operator's ([F-11](#findings)) |
 
 ### E7. The management port and telemetry
@@ -288,14 +288,14 @@ to do. The fixed ones are collapsed at the end.
 ### F-05. Dependencies and images are not fully pinned or verified
 
 - **Rating:** Medium, **partly fixed** 2026-10-06
-- **Finding:** Dependabot now watches Gradle (the application and `tools/`), the Dockerfiles and the compose files, besides the actions. Still open: no Gradle dependency verification. Third-party images are pinned by tag, not digest. The actions are pinned by tag. The scan runs only on release and ignores findings with no fix
+- **Finding:** Dependabot watches Gradle (the application and `tools/`), the Dockerfiles and the compose files, besides the actions. Still open: no Gradle dependency verification. Third-party images are pinned by tag, not digest. The third-party actions are pinned by commit and `actions/*` by tag. The scan runs only on release and ignores findings with no fix
 - **Why it matters:** a vulnerable or swapped dependency reaches production between releases
 - **Recommendation:** `gradle/verification-metadata.xml`, scan on pull requests, pin by digest once stable
 
 ### F-06. The signature is checked by tag, and none has been produced yet
 
 - **Rating:** Medium, **mostly fixed** 2026-10-06
-- **Finding:** `deploy.sh` runs `cosign verify` for the tag, with the workflow's identity, and deploys nothing when it fails (`DeployScriptTest`). Still open: it has never verified a real signature because the release workflow has not run (*known*), and it checks the tag while `docker stack deploy` resolves the digest a moment later
+- **Finding:** `deploy.sh` runs `cosign verify` for the tag, with the workflow's identity, and deploys nothing when it fails (`DeployScriptTest`). Still open: it has not been shown to verify a signature the release workflow made (v0.21.1 is signed) (*known*), and it checks the tag while `docker stack deploy` resolves the digest a moment later
 - **Why it matters:** a signature nobody has produced protects nothing, and a tag moved in that moment would pass
 - **Recommendation:** tag a release and verify it from a manager. Deploy by the digest that was verified
 

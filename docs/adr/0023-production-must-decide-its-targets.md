@@ -15,8 +15,8 @@ open redirector, and nothing said so. A secure default that an operator must rem
 - `allow-any=true` is the explicit choice for a private instance of trusted clients. Setting it together with a list is
   refused in every profile.
 - Other profiles keep the old behavior, so development and the tests need nothing.
-- The check runs when the bean is created, not as a condition: the native image is built under `production`, and a
-  condition would be fixed in the image for every deployment.
+- The check runs when the bean is created, not as a condition: the native build of [0017](0017-native-image-on-a-pinned-base.md) is made under `production` and
+  a condition would be fixed in it for every deployment. The JVM image of [0036](0036-jvm-image-for-arm64.md) has no such limit, and the check is the same in both.
 - The stack passes `ALLOWED_TARGET_HOSTS` and `ALLOW_ANY_TARGET` through. The rehearsal on one machine sets `allow-any`.
 
 ## Consequences
