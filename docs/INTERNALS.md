@@ -31,7 +31,7 @@ How the service works: a request from end to end, the database, the cache, the i
 
 **Create** (`POST /api/short-links`)
 
-1. Rate limit by IP, authenticate (DPoP, and bearer only where DPoP is not required), rate limit by client.
+1. Rate limit by IP, authenticate (DPoP; a Bearer token is refused), rate limit by client.
 2. The controller validates the body and calls `shorten` (`POST`) or `claim` (`PUT`, the code from the path).
 3. Method security checks the scope (`create`, plus `claim` for a custom code) and that the owner argument is the caller.
 4. The service validates the URL again as a domain rule, then allocates a code:

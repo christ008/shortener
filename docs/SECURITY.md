@@ -24,7 +24,7 @@ Stateless and deny by default, in this order: IP rate limit, authentication, cli
 flowchart LR
     request(["Request"]) --> ip["Limit by IP"]
     ip -->|over the limit| tooMany1["429"]
-    ip --> authenticate["Authenticate<br/>DPoP, bearer only if not required"]
+    ip --> authenticate["Authenticate<br/>DPoP token and proof; Bearer refused"]
     authenticate -->|"bad token or proof"| unauthorized["401"]
     authenticate --> client["Limit by client"]
     client -->|over the limit| tooMany2["429"]
