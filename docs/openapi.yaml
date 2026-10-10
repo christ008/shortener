@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Shortener API
-  version: 0.21.1
+  version: 0.22.0
   summary: Create, list and disable short links, and follow them.
   description: |
     Every operation under `/api` needs an access token from the identity provider, and tokens are **bound to the
