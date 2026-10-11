@@ -17,6 +17,8 @@ import java.util.concurrent.TimeUnit
  * - Unless `VERIFY_SIGNATURE=never`, the image of the version is checked with `cosign verify` against the identity of the
  *   release workflow for that tag, and a failed check, a missing `cosign` or an image outside ghcr.io deploys nothing.
  * - The check comes before the first `docker stack deploy`.
+ * - The certificate secrets are named after their contents (`TLS_HASH`), so that a renewed certificate is a new secret, and `ACME=1`
+ *   adds the overlay that serves the challenges.
  */
 class DeployScriptTest {
 
@@ -127,5 +129,31 @@ class DeployScriptTest {
         val skipped = deploy("SHORTENER_IMAGE" to "shortener", "VERIFY_SIGNATURE" to "never")
         assertThat(skipped.exit).isZero()
         assertThat(calls).noneMatch { it.startsWith("cosign") }
+    }
+
+    @Test
+    fun `names the certificate secrets after their contents, so that a renewed certificate replaces them`() {
+        stub("docker", "echo \"docker \$* TLS_HASH=\$TLS_HASH\" >>\"$work/calls.log\"")
+        val secrets = Files.createDirectory(work.resolve("secrets"))
+        Files.writeString(secrets.resolve("tls_cert"), "first certificate")
+        Files.writeString(secrets.resolve("tls_key"), "key")
+        deploy("VERIFY_SIGNATURE" to "never")
+        val first = calls.first { it.contains("stack deploy") }.substringAfter("TLS_HASH=")
+
+        Files.writeString(secrets.resolve("tls_cert"), "renewed certificate")
+        deploy("VERIFY_SIGNATURE" to "never")
+        val second = calls.last { it.contains("stack deploy") }.substringAfter("TLS_HASH=")
+
+        assertThat(first).matches("[0-9a-f]{12}")
+        assertThat(second).matches("[0-9a-f]{12}").isNotEqualTo(first)
+    }
+
+    @Test
+    fun `adds the overlay that serves the challenges of the certificate authority only when asked`() {
+        deploy("VERIFY_SIGNATURE" to "never")
+        assertThat(calls.first { it.contains("stack deploy") }).doesNotContain("compose.acme.yaml")
+
+        deploy("VERIFY_SIGNATURE" to "never", "ACME" to "1")
+        assertThat(calls.last { it.contains("stack deploy") }).contains("-c deploy/stack/overlays/compose.acme.yaml")
     }
 }

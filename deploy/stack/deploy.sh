@@ -9,7 +9,7 @@
 # Settings, all optional:
 #   COMPOSE_FILES   files to deploy, default "deploy/stack/compose.prod.yaml". The overlays in deploy/stack/overlays/ are added with
 #                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
-#                   POSTGRES_HA=1 (compose.postgres-ha.yaml)
+#                   POSTGRES_HA=1 (compose.postgres-ha.yaml) and ACME=1 (compose.acme.yaml, for deploy/stack/certificate.sh)
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
 #   VERIFY_SIGNATURE  `always` (default) runs `cosign verify` on the image for VERSION, which must have been signed by the
 #                   release workflow of its repository on ghcr.io, and deploys nothing when it fails. `never` skips it, for
@@ -57,6 +57,7 @@ files=${COMPOSE_FILES:-deploy/stack/compose.prod.yaml}
 [ -z "${OBSERVABILITY:-}" ] || files="$files deploy/stack/overlays/compose.observability.yaml"
 [ -z "${KEYCLOAK:-}" ] || files="$files deploy/stack/overlays/compose.keycloak.yaml"
 [ -z "${POSTGRES_HA:-}" ] || files="$files deploy/stack/overlays/compose.postgres-ha.yaml"
+[ -z "${ACME:-}" ] || files="$files deploy/stack/overlays/compose.acme.yaml"
 args=""
 for f in $files; do args="$args -c $f"; done
 
@@ -68,7 +69,9 @@ if [ -n "${KEYCLOAK:-}" ]; then
   EDGE_KEYCLOAK_CONF_HASH=$(sha256sum deploy/edge/keycloak.conf | cut -c1-12)
   export KEYCLOAK_REALM_HASH EDGE_KEYCLOAK_CONF_HASH
 fi
-export NGINX_CONF_HASH PROMETHEUS_CONF_HASH
+# The certificate secrets are named after their contents, so renewing one replaces it.
+TLS_HASH=$(cat "${SECRETS_DIR:-secrets}/tls_cert" "${SECRETS_DIR:-secrets}/tls_key" 2>/dev/null | sha256sum | cut -c1-12)
+export NGINX_CONF_HASH PROMETHEUS_CONF_HASH TLS_HASH
 
 deploy() {
   # shellcheck disable=SC2086

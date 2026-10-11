@@ -34,6 +34,9 @@ class ToolingTasksTest {
     fun `the scripts that do not have a task are the ones that run inside the stack or are not ours`() {
         val withoutTask = setOf(
             "deploy/stack/deploy.sh", // run on a manager, by hand, with the version as its argument
+            "deploy/stack/certificate.sh", // run as root on the node that runs the edge, and by certbot's renewal hook
+            "deploy/aws/launch.sh", // creates the VM with the AWS CLI, from any machine, by hand
+            "deploy/aws/bootstrap.sh", // runs on the new VM
             "deploy/keycloak/entrypoint.sh", // inside the Keycloak image
             "deploy/postgres/entrypoint.sh", "deploy/postgres/replica-entrypoint.sh", "deploy/postgres/restore-test.sh", // inside the Postgres image
             "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", "deploy/postgres/replication.sh", // inside Postgres

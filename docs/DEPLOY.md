@@ -9,6 +9,7 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
 - [First deploy](#first-deploy)
 - [Update, roll back](#update-roll-back)
 - [Operate](#operate)
+- [Certificate](#certificate)
 - [Keycloak](#keycloak)
 - [Backups and a replica](#backups-and-a-replica)
 - [Without Swarm](#without-swarm)
@@ -18,7 +19,7 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
 
 - Docker 25 or later on each host. Swarm for more than one.
 - The image `ghcr.io/christ008/shortener:<version>`, published by the Release workflow on a `v*` tag. It is arm64 ([ADR 0036](adr/0036-jvm-image-for-arm64.md)), so the hosts are
-  arm64 (Oracle's Ampere instances); on an amd64 host build it there with `./gradlew bootBuildImage` and set `SHORTENER_IMAGE`. A private package needs
+  arm64 (AWS Graviton, Oracle's Ampere); on an amd64 host build it there with `./gradlew bootBuildImage` and set `SHORTENER_IMAGE`. A private package needs
   `docker login ghcr.io` on the manager. `deploy.sh` passes `--with-registry-auth`.
 - `cosign` on the manager. `deploy.sh` verifies the image's signature before it deploys anything, and `VERIFY_SIGNATURE=never`
   skips that (the [one-machine rehearsal](OPERATING.md#rehearse-production-on-one-machine) does, because its image is built locally).
@@ -87,6 +88,28 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
   ```
 - **Backups:** none unless you add the [backups and replica overlay](#backups-and-a-replica), or use a managed database.
 - **Disk:** the database is on the node's local volume `shortener_postgres-data`.
+
+## Certificate
+
+`deploy/stack/certificate.sh` issues the edge's certificate with Let's Encrypt and keeps it renewed ([CLOUD.md](CLOUD.md)). It needs `certbot`, root,
+DNS for the host name pointing at this node, and port 80 open. The challenge is HTTP-01, answered by the edge, so there are no wildcard names.
+
+1. `sudo deploy/stack/certificate.sh placeholder <host>` writes a self-signed `tls_cert` and `tls_key` so that the edge can start, and makes the
+   challenge directory (`ACME_DIR`, default `/srv/shortener/acme`).
+2. `ACME=1 deploy/stack/deploy.sh <version>` adds `deploy/stack/overlays/compose.acme.yaml`, which mounts that directory in the edge. Put `ACME=1` (and
+   `KEYCLOAK=1` and the other flags) in `.env`: the renewal deploys again and reads them from there.
+3. `sudo deploy/stack/certificate.sh issue <host> <email>` runs `certbot certonly --webroot`, copies the files into `secrets/` and deploys. Try it first with
+   `STAGING=1`: the staging service has generous limits and no client trusts its certificates.
+
+Renewal is certbot's own timer (`systemctl list-timers certbot.timer`), about thirty days before the expiry. `issue` installs the hook
+`/etc/letsencrypt/renewal-hooks/deploy/shortener`, which runs `certificate.sh install`: it copies the new files and runs `deploy.sh` with the running version. A secret
+is immutable, so `deploy.sh` names the two certificate secrets after a hash of their contents (`TLS_HASH`), and the edge is replaced by a new task with the new secrets,
+which takes a few seconds on one node. Old secrets stay until `docker secret rm`; list them with `docker secret ls`. Test the renewal without waiting: `sudo certbot renew --dry-run`.
+
+Tried on 2026-10-11 on a `t4g.small` in `us-east-2`, with `STAGING=1`: `issue` got a certificate through the edge, `install` rotated the secrets
+(`tls_cert_<hash>`, mounted at `/run/secrets/tls_cert` as before) and the edge served the new certificate, and `certbot renew --dry-run` passed. The stack ran
+with the application running (the signed image of 0.22.1), and the real service and a renewal 30 days on were not tried. `issue HOST -` registers without an email,
+for a trial: with a real certificate give one, because that is where Let's Encrypt writes before an expiry.
 
 ## Keycloak
 
