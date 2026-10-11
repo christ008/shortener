@@ -315,6 +315,9 @@ Oracle's Ampere instances, which are arm64.
 - **Profile.** `SPRING_PROFILES_ACTIVE` defaults to `production` in the image, and the stack sets it too. Under a JVM the profile and the properties are read when the container starts.
 - **Health check.** `/workspace/health-check` (Tiny Health Checker), with `THC_PORT=8081` and `THC_PATH=/actuator/health/readiness`. Readiness does not include the database
   ([ADR 0012](adr/0012-readiness-excludes-the-database.md)).
+- **Start.** The stack gives a task 60 s (`start_period`) before failures of the check count. Ready after about 4 seconds on a desktop, but two tasks starting together on a
+  2 vCPU `t4g.small` took 17 to 29 seconds, and with the 15 s it had before Swarm killed them (exit 143) and started them again. A task that is ready earlier is healthy at once, so the
+  longer period costs nothing on a fast host; it delays only the detection of a task that hangs without exiting.
 - **Runtime.** Ready after about 4 seconds, about 240 MiB resident after the smoke test, about 400 MB uncompressed. Runs as uid 1000 and is healthy under `--read-only`,
   `--cap-drop ALL` and `no-new-privileges` with a 16 MiB `/tmp`.
 - **Warm-up.** About the first 15 seconds are slow while the JIT learns (see [Results](#results)). Nothing holds a task back from the edge until it is warm.

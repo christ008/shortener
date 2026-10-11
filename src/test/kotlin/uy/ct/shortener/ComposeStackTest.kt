@@ -351,4 +351,11 @@ class ComposeStackTest {
         val tomcat = load("src/main/resources/application.yaml").map("server").map("tomcat")
         assertThat(defaults["SERVER_TOMCAT_MAXCONNECTIONS"]).isEqualTo(tomcat["max-connections"].toString())
     }
+
+    @Test
+    fun `the application's health check waits for a cold start on a small host before its failures count`() {
+        val healthcheck = services.getValue("shortener").map("healthcheck")
+
+        assertThat((healthcheck["start_period"] as String).removeSuffix("s").toInt()).describedAs("start_period in seconds").isGreaterThanOrEqualTo(45)
+    }
 }
