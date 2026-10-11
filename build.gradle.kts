@@ -35,6 +35,12 @@ apply(from = "gradle/tooling.gradle.kts")
 extra["springModulithVersion"] = "2.1.1"
 extra["testcontainersVersion"] = "2.0.5"
 
+/**
+ * Jackson ahead of the Spring Boot release: 3.1.6 has four fixed high-severity advisories (GHSA-p6pp-m3f8-5c89, GHSA-7hhh-6rmp-j9qf,
+ * GHSA-cxp5-3px4-pw24, GHSA-wv8q-qhhj-9h54) that the Release workflow's scan refuses. Remove this when Spring Boot manages 3.1.7 or later.
+ */
+extra["jackson-bom.version"] = "3.1.7"
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-opentelemetry")
