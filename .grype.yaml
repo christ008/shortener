@@ -1,10 +1,52 @@
-# Read by the Release workflow's scan (anchore/scan-action runs grype from the repository root).
+# Read by the Release workflow's scan and by the Image workflow's (anchore/scan-action runs grype from the repository root).
+#
+# Go advisories in two programs that the buildpack machinery puts in every image and that run once, when the container starts, before the
+# application, and neither listens for connections nor reads network input:
+#   - /layers/bellsoft_buildpacks_liberica/helper/helper: the Liberica buildpack's helper, which sets the JVM's options (Go 1.27.1, x/net 0.59.0).
+#   - /cnb/lifecycle/launcher: the Cloud Native Buildpacks launcher, which starts the process (Go 1.26.8). It comes from the builder's lifecycle.
+# The advisories are in net/http (HTTP/1 and HTTP/2 servers and clients), crypto/tls and MIME parsing, and one in os.Root on Windows. Both programs
+# were found in the image of 0.22.1 by grype 0.110.0, on 2026-10-11.
+# The builder pinned in build.gradle.kts is BellSoft's latest (same digest, checked 2026-10-11) and carries them, so there is no fixed builder to move to.
+# One entry for each advisory and file, not for the files: a new advisory in either of them still stops the Release.
+# Remove the entries when there is a builder with Go 1.27.2 or later in the helper and Go 1.26.9 or later in the lifecycle.
 ignore:
-  # Go 1.27.1's net/http: connection desynchronization after a 2xx CONNECT response. It is in the helper of BellSoft's Liberica buildpack
-  # (/layers/bellsoft_buildpacks_liberica/helper/helper), which sets the JVM's options at start and does not serve HTTP. The builder pinned in
-  # build.gradle.kts is BellSoft's latest (checked 2026-10-11) and carries it, so there is no fixed builder to move to. Remove this when there is one.
+  - vulnerability: GO-2026-6603
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6604
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6605
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6607
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6608
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6609
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6610
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6611
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6612
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
   - vulnerability: GO-2026-6613
-    package:
-      type: go-module
-      name: stdlib
-      location: /layers/bellsoft_buildpacks_liberica/helper/**
+    package: {type: go-module, location: /layers/bellsoft_buildpacks_liberica/helper/helper}
+  - vulnerability: GO-2026-6603
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6604
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6605
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6607
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6608
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6609
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6610
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6611
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6612
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
+  - vulnerability: GO-2026-6613
+    package: {type: go-module, location: /cnb/lifecycle/launcher}
