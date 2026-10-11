@@ -101,6 +101,9 @@ DNS for the host name pointing at this node, and port 80 open. The challenge is 
 3. `sudo deploy/stack/certificate.sh issue <host> <email>` runs `certbot certonly --webroot`, copies the files into `secrets/` and deploys. Try it first with
    `STAGING=1`: the staging service has generous limits and no client trusts its certificates.
 
+Going from `STAGING=1` to the real service (or back) is one more `issue`: certbot keeps any certificate that is not due for renewal, whoever issued it, so the script
+sees that the existing one came from the other service and issues anyway. Over a certificate from the same service it does not, to stay inside the limits of Let's Encrypt.
+
 Renewal is certbot's own timer (`systemctl list-timers certbot.timer`), about thirty days before the expiry. `issue` installs the hook
 `/etc/letsencrypt/renewal-hooks/deploy/shortener`, which runs `certificate.sh install`: it copies the new files and runs `deploy.sh` with the running version. A secret
 is immutable, so `deploy.sh` names the two certificate secrets after a hash of their contents (`TLS_HASH`), and the edge is replaced by a new task with the new secrets,

@@ -12,7 +12,8 @@
 #   2. ACME=1 deploy/stack/deploy.sh VERSION, which mounts the challenge directory in the edge
 #   3. issue, once DNS for HOST points at this node and port 80 is open
 #
-# `issue` uses HTTP-01 through the edge on port 80 (`certbot --webroot`), so no wildcard names. Certbot's own timer renews the
+# `issue` over a certificate that came from the other service (staging, then real) replaces it; over one from the same service, certbot keeps it
+# until it is due for renewal. `issue` uses HTTP-01 through the edge on port 80 (`certbot --webroot`), so no wildcard names. Certbot's own timer renews the
 # certificate about thirty days before it expires and runs the hook that `issue` installs, which calls `install`. A secret is
 # immutable, so `install` writes the new files and deploys again: the secrets are named after their contents (TLS_HASH) and the edge
 # is replaced, which takes a few seconds on one node. The deploy reads the overlay flags (ACME, KEYCLOAK, ...) from .env, so keep them
@@ -54,8 +55,17 @@ case "$command" in
       || { echo "the edge of stack $stack is not running: deploy it with ACME=1 first" >&2; exit 1; }
     docker service inspect --format '{{range .Spec.TaskTemplate.ContainerSpec.Mounts}}{{.Target}} {{end}}' "${stack}_edge" \
       | grep -q /var/www/acme || { echo "the edge does not mount the challenge directory: deploy it with ACME=1" >&2; exit 1; }
-    # shellcheck disable=SC2046
-    certbot certonly --webroot -w "$acme" -d "$host" --agree-tos --non-interactive \
+    # Certbot keeps a certificate that is not due for renewal, whoever issued it, so a staging one would stay in place of a real one (and the
+    # reverse). When the service asked for differs from the one the existing certificate came from, issue anyway.
+    renewal=/etc/letsencrypt/renewal/$host.conf
+    force=
+    if [ -f "$renewal" ]; then
+      staged=
+      ! grep -q '^server *=.*staging' "$renewal" || staged=1
+      [ "$staged" = "${STAGING:+1}" ] || force=--force-renewal
+    fi
+    # shellcheck disable=SC2046,SC2086
+    certbot certonly --webroot -w "$acme" -d "$host" --agree-tos --non-interactive $force \
       $([ "$email" != - ] && echo "--email $email" || echo --register-unsafely-without-email) \
       $([ -z "${STAGING:-}" ] || echo --test-cert)
     mkdir -p "$(dirname "$hook")"
