@@ -15,6 +15,7 @@
 #   SWAP_GB               swap file, default 2 (4 GB of memory is tight for the whole stack); 0 makes none
 #   COSIGN_VERSION        default 2.5.0
 #   OVERLAYS              overlay flags written to .env, default "ACME=1 KEYCLOAK=1 POSTGRES_HA=1". Keep ACME: certificate.sh needs it
+#   KEYCLOAK_MEMORY       Keycloak's memory limit when it is in OVERLAYS, default 768M, with KEYCLOAK_HEAP_PERCENT 50 (docs/CLOUD.md#shape has the measure)
 #
 # Swarm listens on the loopback only, and the security group opens 22, 80 and 443.
 set -eu
@@ -98,7 +99,7 @@ JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs
 ALLOWED_TARGET_HOSTS=$ALLOWED_TARGET_HOSTS
 EOF
   for flag in $overlays; do echo "$flag" >>.env; done
-  case " $overlays " in *" KEYCLOAK=1 "*) printf '%s\n' KEYCLOAK_IMAGE=shortener-keycloak KEYCLOAK_VERSION=26.8.0 KEYCLOAK_DB_URL=jdbc:postgresql://postgres:5432/keycloak >>.env ;; esac
+  case " $overlays " in *" KEYCLOAK=1 "*) printf '%s\n' KEYCLOAK_IMAGE=shortener-keycloak KEYCLOAK_VERSION=26.8.0 KEYCLOAK_DB_URL=jdbc:postgresql://postgres:5432/keycloak "KEYCLOAK_MEMORY=${KEYCLOAK_MEMORY:-768M}" KEYCLOAK_HEAP_PERCENT=50 >>.env ;; esac
   case " $overlays " in *" POSTGRES_HA=1 "*) printf '%s\n' POSTGRES_IMAGE=shortener-postgres POSTGRES_VERSION=18.6 >>.env ;; esac
 fi
 

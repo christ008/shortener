@@ -10,7 +10,7 @@ else
   password=${SHORTENER_REPLICATOR_PASSWORD:?SHORTENER_REPLICATOR_PASSWORD or SHORTENER_REPLICATOR_PASSWORD_FILE must be set}
 fi
 
-psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -v password="$password" <<'SQL'
+psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d postgres -v password="$password" <<'SQL'
 SELECT 'CREATE ROLE shortener_replicator LOGIN REPLICATION NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS CONNECTION LIMIT 3'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'shortener_replicator') \gexec
 ALTER ROLE shortener_replicator PASSWORD :'password';
