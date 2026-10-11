@@ -108,7 +108,7 @@ which takes a few seconds on one node. Old secrets stay until `docker secret rm`
 
 Tried on 2026-10-11 on a `t4g.small` in `us-east-2`, with `STAGING=1`: `issue` got a certificate through the edge, `install` rotated the secrets
 (`tls_cert_<hash>`, mounted at `/run/secrets/tls_cert` as before) and the edge served the new certificate, and `certbot renew --dry-run` passed. The stack ran
-without the application (its image was not published), and the real service and a renewal 30 days on were not tried. `issue HOST -` registers without an email,
+with the application running (the signed image of 0.22.1), and the real service and a renewal 30 days on were not tried. `issue HOST -` registers without an email,
 for a trial: with a real certificate give one, because that is where Let's Encrypt writes before an expiry.
 
 ## Keycloak

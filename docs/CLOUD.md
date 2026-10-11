@@ -60,8 +60,14 @@ Built: the Keycloak overlay, the edge route for `/realms`, the production realm
 Run once, on 2026-10-11: `deploy/aws/launch.sh` (the VM, its security group and Elastic IP), `deploy/aws/bootstrap.sh` (Docker, cosign, certbot, Swarm,
 secrets, `.env`) and `deploy/stack/certificate.sh` with the ACME overlay, on a `t4g.small`, up to a staging certificate served by the edge. The free
 plan refuses a `t4g.medium` (`RunInstances` says the type is not eligible); `ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`
-lists what it accepts: `t4g`, `t3` and `t8i` `micro` and `small`, and the x86 `c7i-flex.large` and `m7i-flex.large`. Not run: the application, Keycloak, the
-backups and a real certificate, because no image of the JVM build is published (the Release of v0.22.0 failed its vulnerability scan).
+lists what it accepts: `t4g`, `t3` and `t8i` `micro` and `small`, and the x86 `c7i-flex.large` and `m7i-flex.large`.
+
+The same day the stack ran with the signed image of 0.22.1 (`deploy.sh` verified the signature; v0.22.0 was never published, because its Release failed the
+vulnerability scan). Both tasks of the application ran in production mode, `shortener.codes` answered `404` for an unknown code, `401` with `WWW-Authenticate: DPoP` to
+a create without a token, and a redirect from HTTP to HTTPS. Two tasks starting together on the 2 vCPUs took 27 and 29 seconds, which the health check's start period then
+allowed 15 s plus three failures of 5 s; Swarm killed them once and the second start passed. **Not run:** Keycloak (it does not fit in 2 GB), so no token and no link
+could be created; the backups; a real certificate.
+
 
 Not built:
 
