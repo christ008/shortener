@@ -73,8 +73,13 @@ allowed 15 s plus three failures of 5 s; Swarm killed them once and the second s
 
 Later the same day, with the real certificate of Let's Encrypt installed, Keycloak ran too (768M, above): the realm of `./gradlew productionRealm` was imported, the discovery
 document came out at `https://shortener.codes/realms/shortener/...` with the application's issuer, `demo-client` got a DPoP token, `POST /api/short-links` answered `201`
-and the short URL redirected (`302`). The master realm and the administration console are not served by the edge. **Not run:** the backups and the replica, Prometheus, a renewal
-of the certificate 30 days on, and the second client's view of the first one's link.
+and the short URL redirected (`302`). The master realm and the administration console are not served by the edge.
+
+Isolation between clients, tried with a second client made for the test (a copy of `demo-client` with its own key and `owner`; deleted afterwards, with its link disabled): it got
+`404` for the first client's link, an empty list, `404` to disabling it and `403` (`insufficient_scope`) to claiming its code, the same answer as for a code that does not exist
+(apart from the code), and the first client's link stayed enabled and went on redirecting. The reverse held too (`404` to read or disable the second client's link), each client saw
+only its own in the list, and the same target URL got a different code for each. Each could read and disable its own. `admin-client`, whose scope reads and disables any link, was
+not used. **Not run:** the backups and the replica, Prometheus, and a renewal of the certificate 30 days on.
 
 
 Not built:
