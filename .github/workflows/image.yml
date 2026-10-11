@@ -1,6 +1,7 @@
 name: Image
 
-# Builds the image and smoke-tests it on an arm64 runner, as the Release workflow does before it publishes, without publishing.
+# Builds the image, smoke-tests it and scans it on an arm64 runner, as the Release workflow does before it publishes, without publishing.
+# The scan does not fail the run: it prints what the Release's scan would refuse (high or above, with a fix), so that a finding shows before a tag.
 on:
   workflow_dispatch:
 
@@ -32,6 +33,22 @@ jobs:
         run: perf/start-image.sh "shortener:$VERSION"
       - name: Smoke test every endpoint
         run: perf/smoke.sh
+      - name: Scan the image for known vulnerabilities
+        id: scan
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7
+        with:
+          image: shortener:${{ env.VERSION }}
+          fail-build: false
+          severity-cutoff: high
+          only-fixed: true
+          output-format: json
+          output-file: grype-report.json
+      - name: Print the findings the Release would refuse
+        run: |
+          jq -r '.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")
+            | "\(.vulnerability.severity) \(.vulnerability.id) \(.artifact.name) \(.artifact.version) \(.artifact.locations | map(.path) | join(","))"' grype-report.json | sort -u
+          echo "refused: $(jq '[.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")] | length' grype-report.json)"
+          echo "ignored by .grype.yaml or by the fix state: $(jq '.ignoredMatches | length' grype-report.json)"
       - name: Show the application log when something fails
         if: failure()
         run: docker logs app
