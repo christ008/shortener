@@ -150,6 +150,13 @@ the `shortener` realm and its static files only. The master realm and the consol
    ```
 5. **Deploy:** `KEYCLOAK=1 deploy/stack/deploy.sh <version>`. Keycloak is ready after about a minute.
 
+Memory. The overlay limits Keycloak to `KEYCLOAK_MEMORY` (default `1G`) and lets the heap take `KEYCLOAK_HEAP_PERCENT` (default `65`) of it. Keycloak's
+documentation ([containers](https://www.keycloak.org/server/containers), [sizing](https://www.keycloak.org/high-availability/single-cluster/concepts-memory-and-cpu-sizing))
+sizes a pod at 1250 MB with 10,000 cached sessions, about 300 MB of it outside the heap; says a limit of at least 750 MB is what gives the heap the old
+maximum of 512 MB, and recommends 2 GB for a small production deployment. A small host with a realm of a few clients and no users needs much less than that sizing,
+but how much less is not in the documentation: set `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50` (a 384 MB heap, about 300 MB outside it) and read the use
+with `docker stats` before going lower. The first start, which imports the realm and migrates the database, is the peak, and the caches fill again after every restart.
+
 Notes:
 
 - **The realm is imported once**, at the first start. To change it afterwards use `kcadm.sh` from the node:
