@@ -103,7 +103,9 @@ Switches of `deploy/stack/deploy.sh`, which may also be in `.env`:
 
 | Variable | Effect |
 |---|---|
-| `OBSERVABILITY=1`, `KEYCLOAK=1`, `POSTGRES_HA=1` | add the overlay in `deploy/stack/overlays/` |
+| `OBSERVABILITY=1`, `KEYCLOAK=1`, `POSTGRES_HA=1`, `ACME=1` | add the overlay in `deploy/stack/overlays/`. `ACME=1` is for [certificate.sh](DEPLOY.md#certificate) |
+| `TLS_HASH` | set by the script: a hash of `tls_cert` and `tls_key`, in the names of the two secrets, so a renewed certificate is a new secret |
+| `ACME_DIR` | with `ACME=1`, the directory of the challenges on the node, default `/srv/shortener/acme` |
 | `COMPOSE_FILES` | the files to deploy, default `deploy/stack/compose.prod.yaml`. The rehearsal adds `deploy/stack/local/compose.local.yaml` |
 | `RESOLVE_IMAGE` | `always` (default) asks the registry for the digest, `never` uses what the node has |
 | `VERIFY_SIGNATURE` | `always` (default) runs `cosign verify` first, `never` skips it (the rehearsal) |

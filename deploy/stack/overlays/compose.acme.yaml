@@ -1,0 +1,10 @@
+# Lets the edge answer the HTTP-01 challenges of Let's Encrypt on port 80. Add it with a second file:
+#   ACME=1 deploy/stack/deploy.sh <version>
+#
+# - Directory: ACME_DIR on the node (default /srv/shortener/acme), mounted read only at /var/www/acme. `certbot --webroot` writes
+#   the challenge files there and the edge serves them (deploy/edge/nginx.conf). Swarm does not create it: deploy/stack/certificate.sh does.
+# - Renewal: deploy/stack/certificate.sh (docs/DEPLOY.md#certificate).
+services:
+  edge:
+    volumes:
+      - {type: bind, source: '${ACME_DIR:-/srv/shortener/acme}', target: /var/www/acme, read_only: true}

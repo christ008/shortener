@@ -443,8 +443,10 @@ The exceptions, and what Swarm does differently:
 
 ### Edge
 
-- Certificates are files (`tls_cert`, `tls_key` secrets). Issuing and renewing them is outside the stack. nginx has an
-  ACME module (HTTP-01 and TLS-ALPN-01, no wildcards), which is the way to automate it.
+- Certificates are files (`tls_cert`, `tls_key` secrets), issued and renewed by `certbot` on the node, outside the containers
+  ([DEPLOY.md](DEPLOY.md#certificate)). The edge answers HTTP-01 challenges from a mounted directory, and a renewal is a new secret named after
+  its contents and a deploy that replaces the edge: the secrets are immutable, and the alternative, a bind-mounted directory and `nginx -s reload`,
+  would take the certificate out of the memory-only mounts. nginx has an ACME module (HTTP-01 and TLS-ALPN-01, no wildcards) that would replace certbot.
 - Replaces the forwarded headers rather than appending, because the application builds the DPoP proof's URL from them
   and trusts them only from private addresses. It also sends the port of the client's `Host` header as `X-Forwarded-Port`:
   the stack may publish the edge on a port other than 443, a proof names that port, and without the header Tomcat assumes 443.

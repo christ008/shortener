@@ -219,10 +219,14 @@ configs:
 
 # Files under ${SECRETS_DIR} (default ./secrets, ignored by Git). deploy/stack/local/prepare.sh makes throwaway ones.
 # Mode 0444: Swarm mounts them in memory at /run/secrets with the file's mode. Immutable: rotate under a new name.
+# The certificate and key carry a hash of their contents in the name (deploy.sh sets TLS_HASH), so a renewed certificate is a new
+# secret and a deploy replaces the edge's. They still mount at /run/secrets/tls_cert and tls_key.
 secrets:
   tls_cert:
+    name: 'tls_cert_${TLS_HASH:-0}'
     file: '${SECRETS_DIR:-../../secrets}/tls_cert'
   tls_key:
+    name: 'tls_key_${TLS_HASH:-0}'
     file: '${SECRETS_DIR:-../../secrets}/tls_key'
   db_postgres_password:
     file: '${SECRETS_DIR:-../../secrets}/db_postgres_password'
