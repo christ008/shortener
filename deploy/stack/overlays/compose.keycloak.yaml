@@ -8,6 +8,9 @@
 #   points it elsewhere, such as the promoted replica (docs/DEPLOY.md#losing-the-primary).
 # - Edge: forwards the shortener realm and its static files only (deploy/edge/keycloak.conf). Administer from the node
 #   (docs/DEPLOY.md).
+# - Memory: KEYCLOAK_MEMORY (default 1G) is the container's limit and KEYCLOAK_HEAP_PERCENT (default 65) the share of it the heap may take.
+#   Keycloak's documentation sizes a pod at 1250 MB with 10,000 cached sessions, about 300 MB of it outside the heap, and says a limit of
+#   750 MB is the least that gives the heap the old maximum of 512 MB; docs/DEPLOY.md#keycloak has what a small host can do.
 # - Realm: imported at the first start only. Made by `tools/run Realms production` (./gradlew productionRealm).
 # - Keys: read over the stack's network (JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs).
 #   ISSUER_URI is the public ${PUBLIC_URL}/realms/shortener.
@@ -32,7 +35,7 @@ services:
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: xforwarded
       KC_LOG_CONSOLE_OUTPUT: json
-      JAVA_OPTS_KC_HEAP: '-XX:MaxRAMPercentage=65'
+      JAVA_OPTS_KC_HEAP: '-XX:MaxRAMPercentage=${KEYCLOAK_HEAP_PERCENT:-65}'
     secrets: [db_keycloak_password, keycloak_admin_password]
     configs:
       - {source: keycloak-realm, target: /opt/keycloak/data/import/shortener-realm.json, mode: 0444}
@@ -51,7 +54,7 @@ services:
     deploy:
       replicas: 1
       resources:
-        limits: {cpus: '1', memory: 1G}
+        limits: {cpus: '1', memory: '${KEYCLOAK_MEMORY:-1G}'}
       restart_policy: {condition: any, delay: 5s}
       update_config: {order: stop-first, failure_action: rollback}
 
