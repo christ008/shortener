@@ -41,7 +41,8 @@ jobs:
           fail-build: false
           severity-cutoff: high
           only-fixed: true
-          json: grype-report.json
+          output-format: json
+          output-file: grype-report.json
       - name: Print the findings the Release would refuse
         run: |
           jq -r '.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")
