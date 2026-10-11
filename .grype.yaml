@@ -1,0 +1,10 @@
+# Read by the Release workflow's scan (anchore/scan-action runs grype from the repository root).
+ignore:
+  # Go 1.27.1's net/http: connection desynchronization after a 2xx CONNECT response. It is in the helper of BellSoft's Liberica buildpack
+  # (/layers/bellsoft_buildpacks_liberica/helper/helper), which sets the JVM's options at start and does not serve HTTP. The builder pinned in
+  # build.gradle.kts is BellSoft's latest (checked 2026-10-11) and carries it, so there is no fixed builder to move to. Remove this when there is one.
+  - vulnerability: GO-2026-6613
+    package:
+      type: go-module
+      name: stdlib
+      location: /layers/bellsoft_buildpacks_liberica/helper/**
