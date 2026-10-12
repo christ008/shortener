@@ -209,6 +209,9 @@ Notes:
    container and prints how many links the copy has and when the newest was created. Compare them with the database. It checks
    only the shortener's database: Keycloak's is in the same backup, and nothing counts what it holds.
 
+Backups without the replica: leave the node without the `shortener.postgres-replica` label (step 3). `postgres-replica` then stays pending, `0/1`, and takes no memory; the
+backups, the archiving and `restore-test` work as above. A 2 GB host has no room for a second Postgres.
+
 Limits:
 
 - The repository is a volume on the primary's node. It restores to within five minutes and does not survive losing the node.

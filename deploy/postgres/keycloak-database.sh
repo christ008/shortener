@@ -5,6 +5,7 @@
 #
 # It can be run again, and on an existing database, as the superuser:
 #   docker exec <postgres container> sh /docker-entrypoint-initdb.d/30-keycloak-database.sh
+# (POSTGRES_USER is set by the image's entrypoint when this runs at initialisation, and `docker exec` does not have it: the superuser defaults to postgres.)
 # shortener_app cannot connect to this database, and this role cannot connect to the shortener one.
 set -eu
 
@@ -14,7 +15,7 @@ else
   password=${SHORTENER_KEYCLOAK_PASSWORD:?SHORTENER_KEYCLOAK_PASSWORD or SHORTENER_KEYCLOAK_PASSWORD_FILE must be set}
 fi
 
-psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -v password="$password" <<'SQL'
+psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d postgres -v password="$password" <<'SQL'
 SELECT 'CREATE ROLE keycloak LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'keycloak') \gexec
 ALTER ROLE keycloak PASSWORD :'password';

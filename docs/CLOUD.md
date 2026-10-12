@@ -39,7 +39,11 @@ flowchart LR
 - **Identity:** Keycloak with the production realm, behind the edge under `/realms/shortener` ([DEPLOY.md](DEPLOY.md#keycloak)).
 - **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, to a repository off the VM.
 - **Image:** `ghcr.io/christ008/shortener:<version>`, arm64 only ([ADR 0036](adr/0036-jvm-image-for-arm64.md)). Graviton is arm64, and 20% cheaper than the x86 instance of the same size. An amd64 host builds its own with `./gradlew bootBuildImage`.
-- **Memory:** the limits of the stack add up to about 3.5 GB with Keycloak and the backups overlay, and Prometheus (`OBSERVABILITY=1`) does not fit in 4 GB. `bootstrap.sh` adds a 2 GB swap file. Use a `t4g.large` (8 GB) for Prometheus.
+- **Memory:** the limits of the stack add up to about 3.5 GB with Keycloak at its default 1 GB and the backups overlay. Measured on a 2 GB `t4g.small` with Keycloak at
+  `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50`, two application tasks, Postgres and the edge: the host used about 1.5 GB with 340 MiB available and 233 MiB of swap,
+  steady; Keycloak peaked at 541 MiB (463 MiB of it anonymous memory) over its first start and a token request, with no swap and no memory events. **512 MiB would not do**:
+  Keycloak's own documentation puts the least that gives its heap the old 512 MB maximum at 750 MB. Prometheus (`OBSERVABILITY=1`) and the backups overlay were not tried
+  there and are unlikely to fit; use a `t4g.large` (8 GB) for them. `bootstrap.sh` adds a 2 GB swap file and writes the two Keycloak settings.
 - **Not measured on Graviton or Ampere:** the figures in [Performance](INTERNALS.md#performance) are from an x86-64 desktop. A `t4g` has burstable CPU: a long load test spends its credits.
 
 ## To decide
@@ -65,8 +69,24 @@ lists what it accepts: `t4g`, `t3` and `t8i` `micro` and `small`, and the x86 `c
 The same day the stack ran with the signed image of 0.22.1 (`deploy.sh` verified the signature; v0.22.0 was never published, because its Release failed the
 vulnerability scan). Both tasks of the application ran in production mode, `shortener.codes` answered `404` for an unknown code, `401` with `WWW-Authenticate: DPoP` to
 a create without a token, and a redirect from HTTP to HTTPS. Two tasks starting together on the 2 vCPUs took 27 and 29 seconds, which the health check's start period then
-allowed 15 s plus three failures of 5 s; Swarm killed them once and the second start passed. **Not run:** Keycloak (it does not fit in 2 GB), so no token and no link
-could be created; the backups; a real certificate.
+allowed 15 s plus three failures of 5 s; Swarm killed them once and the second start passed (the period is 60 s now).
+
+Later the same day, with the real certificate of Let's Encrypt installed, Keycloak ran too (768M, above): the realm of `./gradlew productionRealm` was imported, the discovery
+document came out at `https://shortener.codes/realms/shortener/...` with the application's issuer, `demo-client` got a DPoP token, `POST /api/short-links` answered `201`
+and the short URL redirected (`302`). The master realm and the administration console are not served by the edge.
+
+Isolation between clients, tried with a second client made for the test (a copy of `demo-client` with its own key and `owner`; deleted afterwards, with its link disabled): it got
+`404` for the first client's link, an empty list, `404` to disabling it and `403` (`insufficient_scope`) to claiming its code, the same answer as for a code that does not exist
+(apart from the code), and the first client's link stayed enabled and went on redirecting. The reverse held too (`404` to read or disable the second client's link), each client saw
+only its own in the list, and the same target URL got a different code for each. Each could read and disable its own. `admin-client`, whose scope reads and disables any link, was
+not used.
+
+Backups with pgBackRest, without the replica, on the same VM: `POSTGRES_HA=1` with the image built from `deploy/postgres` and the node left **without** the `shortener.postgres-replica`
+label, so that `postgres-replica` stays pending (`0/1`, no memory). Postgres restarted once (the redirect went on answering `302` while it was down, which the redirect cache explains) and archives WAL. `backup init`
+took a full backup of the 44 MB database into 4.9 MB, `backup check` passed, and `backup restore-test` restored it into a throwaway container with the same links as the live
+database. A link created **after** that backup was also in a restore once the WAL segment was switched, so the archive is replayed. The repository is a volume on the same disk, so it does
+not survive losing the VM; there is no schedule yet (the crontab of [DEPLOY.md](DEPLOY.md#backups-and-a-replica)). **Not run:** the replica, Prometheus, a renewal of the certificate
+30 days on, and a restore into the real database.
 
 
 Not built:
