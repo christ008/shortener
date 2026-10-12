@@ -610,7 +610,9 @@ components:
     Unauthorized:
       description: |
         No credentials, a bad token, no proof or a bad one, the `Bearer` scheme, or a proof without the current nonce. `WWW-Authenticate`
-        names the `DPoP` scheme and the error (`invalid_token`, `invalid_dpop_proof` or `use_dpop_nonce`).
+        names the `DPoP` scheme and the error (`invalid_token`, `invalid_dpop_proof`, `use_dpop_nonce` or `insufficient_user_authentication`).
+        With `insufficient_user_authentication` the token has the administrator scope without the second factor it needs, and `acr_values` has the
+        authentication level to sign the person in with (RFC 9470).
         With `use_dpop_nonce`, `DPoP-Nonce` has the nonce for the proof of the repeated request.
       headers:
         WWW-Authenticate:

@@ -302,7 +302,7 @@ flowchart LR
   exception resolver, so the body has the same shape as every other error and follows the client's `Accept`.
 - A `401` challenge names `DPoP` with the accepted algorithms, and `Bearer` as well unless DPoP is required. The error
   is `invalid_token` (bad token or wrong scheme), `invalid_dpop_proof` (no proof, more than one, or a wrong one) or `use_dpop_nonce`
-  (the proof lacks the current nonce, and `DPoP-Nonce` has it). A request that presents its token in more than one way, such as two `Authorization` headers, is a
+  (the proof lacks the current nonce, and `DPoP-Nonce` has it), or `insufficient_user_authentication` (a token with the administrator scope and no second factor, and `acr_values` has what would do, [ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)). A request that presents its token in more than one way, such as two `Authorization` headers, is a
   `400` with `invalid_request` (RFC 9449 section 7.2), refused before the filters that read the header ([ADR 0040](adr/0040-status-codes-of-the-dpop-errors.md)).
 
 ## Observability

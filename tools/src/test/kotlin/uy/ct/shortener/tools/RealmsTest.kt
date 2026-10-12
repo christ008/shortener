@@ -73,6 +73,30 @@ class RealmsTest {
             .filter { it["subType"] == subType }.associateBy { it["name"] as String }
 
     @Test
+    fun `the step-up fragment is a flow that asks for a one-time code at level 2, with every flow and configuration it names, and no name for a level`() {
+        val fragment = parse(repositoryRoot.resolve("deploy/keycloak/realm-step-up.json"))
+
+        @Suppress("UNCHECKED_CAST")
+        val flows = (fragment["authenticationFlows"] as List<Map<String, Any?>>).associateBy { it["alias"] as String }
+        @Suppress("UNCHECKED_CAST")
+        val configs = (fragment["authenticatorConfig"] as List<Map<String, Any?>>).associateBy { it["alias"] as String }
+        @Suppress("UNCHECKED_CAST")
+        val executions = flows.values.flatMap { it["authenticationExecutions"] as List<Map<String, Any?>> }
+
+        assertThat(fragment["browserFlow"]).isEqualTo("browser-loa")
+        assertThat(flows.keys).contains("browser-loa")
+        assertThat(executions.mapNotNull { it["flowAlias"] as String? }).describedAs("every sub-flow it names exists").allSatisfy { assertThat(flows).containsKey(it) }
+        assertThat(executions.mapNotNull { it["authenticatorConfig"] as String? }).describedAs("every configuration it names exists").allSatisfy { assertThat(configs).containsKey(it) }
+        @Suppress("UNCHECKED_CAST")
+        val levels = configs.mapValues { (it.value["config"] as Map<String, String>)["loa-condition-level"] }
+        assertThat(levels).containsEntry("loa1", "1").containsEntry("loa2", "2")
+        val level2 = flows.getValue("browser-loa level 2")
+        @Suppress("UNCHECKED_CAST")
+        assertThat((level2["authenticationExecutions"] as List<Map<String, Any?>>).map { it["authenticator"] }).contains("auth-otp-form")
+        assertThat(fragment).describedAs("levels stay numbers: a name such as pwd would label a client that signs in with a key").doesNotContainKey("attributes")
+    }
+
+    @Test
     fun `a client that registers itself gets create, read and delete, owns what it makes and cannot choose what it is given`() {
         val realm = directory.resolve("realm.json")
         run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString())

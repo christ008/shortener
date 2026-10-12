@@ -203,6 +203,17 @@ Names are lower case: Keycloak keeps them so.
 `kcadm.sh` cannot answer a one-time code, so with a user that has the app it cannot sign in with a password: use the console (reached as above) for what the notes list as `kcadm.sh`.
 Tried on Keycloak 26.8.0 (2026-10-12): a password alone asks for the code, a wrong code is refused, the right one signs in, and `retire` disables the bootstrap administrator and refuses before the app is set up.
 
+### Administrators in the API
+
+The administrator scope (`shortlinks:admin`) reads and disables every client's links, and the API does not take a token with it on trust ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)):
+
+- **A service account** (`admin-client`) authenticates with a key and has no second factor to show. It must be listed in `ADMIN_SERVICE_CLIENTS` (default `admin-client`), and a client listed there must not be able to sign a person in.
+- **A person** needs a token whose `acr` claim is a level of 2 or more (`shortener.security.admin.min-level`). Otherwise the API answers `401` with `error="insufficient_user_authentication"` and `acr_values="2"` (RFC 9470), and a client signs the person in again with that `acr_values`.
+
+Keycloak's own flows do not write it: a person who gave a one-time code and one who did not both get `acr: 1`. The realm that gives people the scope (the UI's) must take
+the flow of `deploy/keycloak/realm-step-up.json` (its `authenticationFlows`, `authenticatorConfig` and `browserFlow`) and its client must send `acr_values=2`, or have it as its default. Tried on
+Keycloak 26.8.0: a person who asks for level 2 and has a code configured is asked for it and gets `acr: 2`; one who does not ask gets `1`, as a service account does (the flow gives the levels no names: a name such as `pwd` would label a client that signs in with a key); one with no code configured is made to set it up first.
+
 ### Registering a client
 
 A client is a key. Nobody registers without an invitation, and an invitation is made by an administrator in the console: Clients, Initial access token, Create, with a count of 1 and

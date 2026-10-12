@@ -104,7 +104,7 @@ class ClickStatsIntegrationTest {
     @Test
     fun `an administrator reads any link's clicks`() {
         val alice = client()
-        val admin = client()
+        val admin = "admin-client"
         val code = createLink(alice)
 
         stats(code, admin, scopes = "shortlinks:admin").expectStatus().isOk()

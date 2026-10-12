@@ -19,6 +19,8 @@ import org.springframework.web.servlet.HandlerExceptionResolver
  * - Each failure is built as a [SecurityProblem] and handed to MVC's exception resolver.
  * - A `401` carries the challenge, with `error` set to `invalid_token` or `invalid_dpop_proof` when a token or proof was
  *   rejected, or to `use_dpop_nonce` when the proof lacks the current nonce, which is not counted as a failed authentication. A `403` carries `error="insufficient_scope"`.
+ * - A token that lacks the second factor the administrator scope needs is a `401` with `error="insufficient_user_authentication"` and the `acr_values` that
+ *   would do (RFC 9470), so that a client can sign the person in again.
  * - A `400` is a request that presents its access token in more than one way, such as two `Authorization` headers (`invalid_request`, RFC 9449 section 7.2): the challenge is
  *   the same, with that error.
  * - The challenge names `DPoP` with the accepted proof algorithms (RFC 9449), and `Bearer` as well unless [dpopRequired] or
@@ -41,6 +43,7 @@ class SecurityProblemResponder(
             events?.unauthenticated(request, error ?: if (AuthScheme.of(request) == AuthScheme.NONE) "missing_credentials" else "invalid_credentials")
         }
         val malformed = error == OAuth2ErrorCodes.INVALID_REQUEST
+        val stepUp = authException as? InsufficientUserAuthenticationException
         respond(
             request, response,
             SecurityProblem(
@@ -48,9 +51,10 @@ class SecurityProblemResponder(
                 when {
                     nonceNeeded -> "The DPoP proof needs the current nonce, sent in the DPoP-Nonce header"
                     malformed -> "The access token must be presented once, in the Authorization header"
+                    stepUp != null -> "The administrator scope needs a sign-in with a second factor"
                     else -> "A valid access token is required"
                 },
-                challenge(AuthScheme.of(request), error),
+                challenge(AuthScheme.of(request), error, stepUp?.acrValues.orEmpty()),
             ),
         )
     }
@@ -78,8 +82,9 @@ class SecurityProblemResponder(
         resolver.resolveException(request, response, null, problem)
     }
 
-    private fun challenge(used: AuthScheme, error: String?): HttpHeaders {
-        val errorParam = error?.let { """, error="$it"""" }.orEmpty()
+    private fun challenge(used: AuthScheme, error: String?, acrValues: List<String> = emptyList()): HttpHeaders {
+        val errorParam = error?.let { """, error="$it"""" }.orEmpty() +
+            if (acrValues.isEmpty()) "" else """, acr_values="${acrValues.joinToString(" ")}""""
         val dpop = """DPoP realm="shortener"$errorParam, algs="$DPOP_ALGORITHMS""""
         val bearer = """Bearer realm="shortener"$errorParam"""
         val challenges = when (used) {

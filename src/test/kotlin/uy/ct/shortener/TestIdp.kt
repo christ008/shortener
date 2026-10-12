@@ -83,6 +83,7 @@ object TestIdp {
         owner: String? = client,
         authorizedParty: String? = client,
         claimType: String? = null,
+        acr: String? = null,
     ): String {
         val now = Instant.now()
         val claims = JWTClaimsSet.Builder()
@@ -97,6 +98,7 @@ object TestIdp {
                 scope?.let { claim("scope", it) }
                 jkt?.let { claim("cnf", mapOf("jkt" to it)) }
                 claimType?.let { claim("typ", it) }
+                acr?.let { claim("acr", it) }
             }
             .build()
         return SignedJWT(JWSHeader.Builder(JWSAlgorithm.RS256).type(type?.let(::JOSEObjectType)).keyID(key.keyID).build(), claims)

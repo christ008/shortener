@@ -11,6 +11,8 @@ management:
 
 shortener:
   security:
+    admin:
+      exempt-clients: admin-client
     dpop:
       required: false
       nonce:

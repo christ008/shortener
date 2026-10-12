@@ -75,6 +75,7 @@ Optional, shown with the defaults they have when unset. Each reaches the `shorte
 |---|---|---|---|
 | `RATE_LIMIT_PER_IP` | `300` | requests a minute per address, per instance. Everyone behind one NAT shares it | `SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY` |
 | `RATE_LIMIT_PER_CLIENT` | `60` | requests a minute per authenticated client, per instance | `..._RATELIMIT_PERCLIENT_CAPACITY` |
+| `ADMIN_SERVICE_CLIENTS` | `admin-client` | service accounts that may hold the administrator scope without a second factor. A person who holds it must show an `acr` of level 2 or more ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)) | `SHORTENER_SECURITY_ADMIN_EXEMPTCLIENTS` |
 | `MAX_CONNECTIONS` | `500` | connections accepted before refusing, about 150 KB of heap each | `SERVER_TOMCAT_MAXCONNECTIONS` |
 | `REDIRECT_CACHE_ENABLED` | `true` | `false` makes every redirect read the database | `SHORTENER_SHORTLINK_REDIRECTCACHE_ENABLED` |
 | `REDIRECT_CACHE_TTL` | `30s` | how long an entry lives, and so how long another instance follows a link after it was disabled | `..._REDIRECTCACHE_TTL` |

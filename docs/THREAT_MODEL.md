@@ -384,7 +384,7 @@ Decided. Revisit the reason, not the decision, when it stops being true.
 | Rate limits and the proof replay cache are per instance | no shared store to run. The limit is multiplied by the replicas ([ADR 0008](adr/0008-rate-limits-per-instance-in-memory.md)) |
 | `410` tells a visitor that a code once existed | the contract says a disabled link keeps its code taken, and links are public |
 | The DPoP proof does not cover the body | DPoP does not define it, and TLS protects the body in transit |
-| Administrators need no second factor | the only administrator is a service account with a key and a DPoP-bound token, and the realm has no users. The console is not on the edge. Revisit before any user holds `shortlinks:admin` ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)) |
+| Administrators need no second factor | the only administrator is a service account with a key and a DPoP-bound token, and the realm has no users. The console is not on the edge. A person who holds `shortlinks:admin` needs an `acr` of level 2 or more, which the API checks (built, with no such person yet); the realm half is the UI's ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)) |
 | Management metrics have no login | the port is never proxied and only stack containers reach it |
 | The application role can disable any link | disabling is its job, and nothing in it can delete or re-point one |
 | Swarm ignores `no-new-privileges` | the images have no setuid binaries, and Postgres has no capabilities to escalate with |

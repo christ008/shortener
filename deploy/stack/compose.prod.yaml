@@ -90,6 +90,8 @@ services:
       # Tunables. The defaults are the application's own (ComposeStackTest holds them equal).
       SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY: '${RATE_LIMIT_PER_IP:-300}'
       SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY: '${RATE_LIMIT_PER_CLIENT:-60}'
+      # The administrator scope is held by a person with a second factor (the `acr` claim), and by these service accounts, which have none to show.
+      SHORTENER_SECURITY_ADMIN_EXEMPTCLIENTS: '${ADMIN_SERVICE_CLIENTS:-admin-client}'
       SERVER_TOMCAT_MAXCONNECTIONS: '${MAX_CONNECTIONS:-500}'
       # Forwarded headers are honoured from the edge's network alone: not from the other services, which share the data network.
       SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES: *ingress-subnet

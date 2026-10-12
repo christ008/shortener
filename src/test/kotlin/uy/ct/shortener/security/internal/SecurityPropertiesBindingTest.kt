@@ -8,6 +8,7 @@ import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OA
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.StandardEnvironment
+import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
 import org.springframework.core.env.SystemEnvironmentPropertySource
 
 /**
@@ -81,6 +82,21 @@ class SecurityPropertiesBindingTest {
         assertThat(defaults.accessTokenClaimTypes).containsExactly("Bearer", "DPoP")
         assertThat(relaxed.dpop.required).isFalse
         assertThat(relaxed.accessTokenType).isEmpty()
+    }
+
+    @Test
+    fun `asks the administrator for a second factor, with the scope the links module names, and exempts no client by default`() {
+        val defaults = bindSecurity()
+        val set = bindSecurity("SHORTENER_SECURITY_ADMIN_EXEMPTCLIENTS" to "admin-client,ops-client", "SHORTENER_SECURITY_ADMIN_ACRVALUES" to "mfa,hwk", "SHORTENER_SECURITY_ADMIN_MINLEVEL" to "3")
+
+        assertThat(defaults.admin.scope).describedAs("the scope the links module checks")
+            .isEqualTo(Binder.get(StandardEnvironment()).bindOrCreate("shortener.shortlink.scopes", ShortLinkScopes::class.java).admin)
+        assertThat(defaults.admin.minLevel).isEqualTo(2)
+        assertThat(defaults.admin.acrValues).describedAs("no names unless the realm gives them").isEmpty()
+        assertThat(defaults.admin.exemptClients).isEmpty()
+        assertThat(set.admin.exemptClients).containsExactly("admin-client", "ops-client")
+        assertThat(set.admin.acrValues).containsExactly("mfa", "hwk")
+        assertThat(set.admin.minLevel).isEqualTo(3)
     }
 
     @Test

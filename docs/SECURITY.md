@@ -45,6 +45,8 @@ flowchart LR
   ([ADR 0039](adr/0039-clients-register-themselves-with-an-invitation.md)). No call to the identity provider per request.
 - Issuer-agnostic: any provider that issues these tokens works. Keycloak is the reference.
 - The claim named by `shortener.security.client-id-claim` (`owner` in the shipped config, `azp` by default) is the client id and is stored as the creator of every link.
+- A token with the administrator scope is accepted for a person only when its `acr` claim is a level of 2 or more, which a one-time code reaches, and for a service account only if the operator listed it
+  ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)). Otherwise `401` `insufficient_user_authentication` with the `acr_values` that would do (RFC 9470).
 - Only the `Authorization` header carries a token. A token in a query string or form body is ignored (tested).
 
 ## DPoP (RFC 9449)

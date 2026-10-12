@@ -173,7 +173,7 @@ class AuthorizationIntegrationTest {
     @Test
     fun `an administrator reads, lists and disables any client's links`() {
         val alice = client()
-        val admin = client()
+        val admin = "admin-client"
         val code = codeOf(create(alice))
         val adminScope = "shortlinks:admin"
 
@@ -186,7 +186,7 @@ class AuthorizationIntegrationTest {
 
     @Test
     fun `an administrator needs no other scope but cannot create links with it alone`() {
-        val admin = client()
+        val admin = "admin-client"
 
         create(admin, scopes = "shortlinks:admin").expectStatus().isForbidden()
     }

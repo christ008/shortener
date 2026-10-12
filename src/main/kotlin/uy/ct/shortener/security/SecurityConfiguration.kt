@@ -27,6 +27,7 @@ import org.springframework.security.web.authentication.AuthenticationFilter
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy
 import org.springframework.web.servlet.HandlerExceptionResolver
 import uy.ct.shortener.security.internal.AccessTokenTypeValidator
+import uy.ct.shortener.security.internal.AdminAssurance
 import uy.ct.shortener.security.internal.CaffeineRuntimeHints
 import uy.ct.shortener.security.internal.ClientJwtAuthenticationConverter
 import uy.ct.shortener.security.internal.DpopNonceAuthenticationConverter
@@ -88,7 +89,7 @@ class SecurityConfiguration {
             .exceptionHandling { it.authenticationEntryPoint(responder).accessDeniedHandler(responder) }
             .oauth2ResourceServer { resourceServer ->
                 resourceServer
-                    .jwt { it.jwtAuthenticationConverter(ClientJwtAuthenticationConverter(properties.clientIdClaim)) }
+                    .jwt { it.jwtAuthenticationConverter(ClientJwtAuthenticationConverter(properties.clientIdClaim, adminAssurance(properties))) }
                     .dPoP {
                         it.authenticationConverter(DpopNonceAuthenticationConverter(DPoPAuthenticationConverter(), nonces))
                         it.authenticationFailureHandler { request, response, failure -> responder.commence(request, response, failure) }
@@ -177,6 +178,9 @@ class SecurityConfiguration {
     private companion object {
         val DPOP_ALGORITHMS = listOf("RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512")
     }
+
+    private fun adminAssurance(properties: SecurityProperties) =
+        AdminAssurance(properties.admin.scope, properties.admin.minLevel, properties.admin.acrValues, properties.admin.exemptClients.toSet())
 
     private fun authenticatedClient(): RateLimitKey =
         SecurityContextHolder.getContext().authentication
