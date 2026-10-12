@@ -301,8 +301,9 @@ flowchart LR
   `SecurityProblem` (also an `ErrorResponseException`, with `WWW-Authenticate` or `Retry-After`) and hands it to MVC's
   exception resolver, so the body has the same shape as every other error and follows the client's `Accept`.
 - A `401` challenge names `DPoP` with the accepted algorithms, and `Bearer` as well unless DPoP is required. The error
-  is `invalid_token` (bad token or wrong scheme), `invalid_request` (missing proof), `invalid_dpop_proof` or `use_dpop_nonce`
-  (the proof lacks the current nonce, and `DPoP-Nonce` has it).
+  is `invalid_token` (bad token or wrong scheme), `invalid_dpop_proof` (no proof, more than one, or a wrong one) or `use_dpop_nonce`
+  (the proof lacks the current nonce, and `DPoP-Nonce` has it). A request that presents its token in more than one way, such as two `Authorization` headers, is a
+  `400` with `invalid_request` (RFC 9449 section 7.2), refused before the filters that read the header ([ADR 0040](adr/0040-status-codes-of-the-dpop-errors.md)).
 
 ## Observability
 
@@ -437,10 +438,12 @@ Services:
 ```mermaid
 flowchart LR
     client(["Client"]) -->|"443, host mode"| edge
-    subgraph edgeNet["edge network"]
+    subgraph edgeNet["edge network, the edge alone"]
         edge["edge<br/>nginx"]
     end
-    edge --> app["shortener<br/>2 tasks, on both networks"]
+    edge -->|"ingress network, no route out"| app["shortener<br/>2 tasks"]
+    edge -.->|"idp-front network, no route out"| keycloak["keycloak<br/>(overlay)"]
+    app -.->|"egress network"| out(["outside the stack"])
     subgraph dataNet["data network, no route out"]
         db[("postgres")]
         migrate["migrate job"] --> db
@@ -450,14 +453,66 @@ flowchart LR
     app --> db
     prometheus -.->|"scrapes 8081"| app
     prometheus -.->|scrapes| exporter
-    app -.->|"fetches signing keys"| idp(["identity provider"])
+    keycloak -.-> db
+    app -.->|"fetches signing keys"| keycloak
+    app -.->|"or from one outside"| out
 ```
+
+### Networks
+
+Five networks, and a service is on each one it needs and no other ([ADR 0038](adr/0038-segment-the-stack-networks.md)). A dashed network has a route out; a solid one has none.
+
+```mermaid
+flowchart LR
+    internet(["Internet"]) -->|"80 and 443, host mode"| edge["edge<br/>nginx"]
+    outside(["Outside the stack:<br/>an identity provider, traces"])
+
+    edgeNet{{"network edge<br/>the edge alone"}}
+    ingress{{"network ingress<br/>10.253.1.0/24<br/>encrypted"}}
+    idpFront{{"network idp-front<br/>encrypted<br/>(Keycloak overlay)"}}
+    data{{"network data<br/>encrypted"}}
+    egress{{"network egress<br/>the application alone"}}
+
+    edge --- edgeNet
+    edge --- ingress --- shortener["shortener<br/>2 tasks"]
+    edge --- idpFront --- keycloak["keycloak<br/>(overlay)"]
+    shortener --- data
+    keycloak --- data
+    data --- postgres[("postgres")]
+    data --- migrate["migrate job"]
+    data --- prometheus["prometheus<br/>(overlay)"]
+    data --- exporter["postgres-exporter<br/>(overlay)"]
+    data --- replica[("postgres-replica<br/>(overlay)")]
+    shortener --- egress -.- outside
+
+    classDef open stroke-dasharray: 6 4
+    class edgeNet,egress open
+```
+
+| From | To | Over | What |
+|---|---|---|---|
+| edge | shortener `8080` | ingress | HTTP with the client's address, scheme, host and port in `X-Forwarded-*`, which the application trusts from this network's subnet alone |
+| edge | keycloak `8080` | idp-front | the `shortener` realm, the token endpoint and the registration of clients |
+| shortener | keycloak `8080` | data | the signing keys of the tokens (`JWKS_URI`) |
+| shortener, migrate, keycloak | postgres `5432` | data | SQL, as three different roles, and Keycloak's own database |
+| prometheus | shortener `8081`, exporter `9187` | data | metrics; the management port is not on any network the edge shares |
+| shortener | the identity provider, a trace collector | egress | only without Keycloak in the stack, or with traces sent out |
+
+The edge shares exactly one network with each service it proxies to, because Docker's DNS answers with the addresses of one shared network, and the
+application trusts only the `ingress` subnet. Nothing but the edge publishes a port. Keycloak has no route out. Docker has no network policy: inside a network every member
+can call every other (Keycloak can reach the application's ports on `data`, and the application does not believe it), which is what [ADR 0022](adr/0022-mtls-between-services.md) would change.
 
 ### Hardening
 
 Every service runs with a read-only root filesystem, no capabilities, a non-root user, memory and CPU limits, rotated logs and
-secrets as files, and only the edge publishes a port. `ComposeStackTest` holds each service to that. The `data` network has no
-route out, and both networks are encrypted across nodes on Swarm.
+secrets as files, and only the edge publishes a port. `ComposeStackTest` holds each service to that. Only the edge's own network and
+the application's `egress` have a route out, and the networks between services are encrypted across nodes on Swarm
+([ADR 0038](adr/0038-segment-the-stack-networks.md)).
+
+- **The edge shares exactly one network with each service it proxies to.** Docker's DNS answers with one shared network's
+  addresses, and the application trusts forwarded headers only from the `ingress` subnet (`10.253.1.0/24`, one value in
+  `compose.prod.yaml` for the network and for `SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES`). A second shared network would make the edge
+  arrive from an address that is not trusted, and the client's address and scheme would be lost.
 
 The exceptions, and what Swarm does differently:
 
@@ -477,8 +532,13 @@ The exceptions, and what Swarm does differently:
   its contents and a deploy that replaces the edge: the secrets are immutable, and the alternative, a bind-mounted directory and `nginx -s reload`,
   would take the certificate out of the memory-only mounts. nginx has an ACME module (HTTP-01 and TLS-ALPN-01, no wildcards) that would replace certbot.
 - Replaces the forwarded headers rather than appending, because the application builds the DPoP proof's URL from them
-  and trusts them only from private addresses. It also sends the port of the client's `Host` header as `X-Forwarded-Port`:
-  the stack may publish the edge on a port other than 443, a proof names that port, and without the header Tomcat assumes 443.
+  and trusts them only from private addresses. `X-Forwarded-Host` carries the host without its port, which is what Tomcat's
+  `RemoteIpValve` reads, and `X-Forwarded-Port` the port of the client's `Host` header: the stack may publish the edge on a port
+  other than 443, a proof names that port, and without the header Tomcat assumes 443.
+- Empties the forwarding headers the application does not read (`Forwarded`, `X-Forwarded-Prefix`, `-Ssl`, `-Server`, `-By`,
+  `X-Real-IP`). Tomcat ignores them today, but Spring's own filter, the other `server.forward-headers-strategy`, reads `Forwarded`
+  first in older defaults and the prefix changes every generated URL, so a client's value must never arrive (`ComposeStackTest`,
+  `DpopIntegrationTest`).
 - Caps bodies at 16 KiB, sets header, body and proxy timeouts, and caps connections per address. Never proxies the
   management port.
 - Resolves `shortener` every 5 s, so tasks that come and go are followed without a reload.
@@ -519,8 +579,8 @@ sequenceDiagram
 
 ### What this gives up against Kubernetes
 
-- No egress filtering by destination. The `data` network has no route out, and the `edge` network, which the application
-  needs to reach the identity provider, has all of it.
+- No egress filtering by destination. Every network but the edge's and the application's `egress` has no route out, and `egress`,
+  which the application needs for an identity provider outside the stack, has all of it.
 - No autoscaling. Replicas are set by hand.
 - No `preStop` hook, so the guarantee is health gating plus short DNS caching plus a retry for repeatable requests.
 - `no-new-privileges` is not applied.
@@ -537,7 +597,7 @@ provider's. It is not worth it for a demo ([CLOUD.md](CLOUD.md)).
 
 ### Verified
 
-On Docker 29.8, a single-node swarm and plain Compose, with the native image of 0.21.1. The image has been a JVM since [ADR 0036](adr/0036-jvm-image-for-arm64.md): its smoke test and its hardening were run, the stack on a swarm was not.
+On Docker 29.8, a single-node swarm and plain Compose, with the native image of 0.21.1. The image has been a JVM since [ADR 0036](adr/0036-jvm-image-for-arm64.md): its smoke test and its hardening were run, and the networks of [ADR 0038](adr/0038-segment-the-stack-networks.md) on a single-node swarm with the JVM image of 0.22.0 (2026-10-12): the smoke test through the edge, two tasks resolved from the edge over `ingress` alone, the Keycloak overlay with no route out, and a forged `X-Forwarded-Host` honoured from the edge and ignored from Keycloak.
 
 - the whole stack through the TLS edge, with the 21-check smoke test (`perf/smoke.sh`), on both;
 - the migration job as the migrator role from a file secret, and the application refusing to change the schema;

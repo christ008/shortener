@@ -4,6 +4,7 @@ import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
+import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.SignedJWT
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -76,6 +77,7 @@ class DpopClientTest {
 
     private val received = CopyOnWriteArrayList<Request>()
     private val tokenRequests = CopyOnWriteArrayList<TokenRequest>()
+    private val registrations = CopyOnWriteArrayList<Request>()
     private lateinit var server: HttpServer
 
     /** What the stand-in answers to the client's own token request: 200, or a status that makes it refuse. */
@@ -130,6 +132,15 @@ class DpopClientTest {
                 } else {
                     reply(exchange, clientTokenStatus, """{"error":"invalid_client"}""")
                 }
+            }
+        }
+        server.createContext("/realms/shortener/clients-registrations/openid-connect") { exchange ->
+            val body = String(exchange.requestBody.readAllBytes())
+            registrations += Request(exchange.requestMethod, exchange.requestURI.toString(), headersOf(exchange), body)
+            if (headersOf(exchange)["authorization"] == "Bearer good-invitation") {
+                reply(exchange, 201, """{"client_id":"registered-1234","client_name":"ana"}""")
+            } else {
+                reply(exchange, 401, """{"error":"invalid_token","error_description":"No remaining count on initial access token"}""")
             }
         }
         server.createContext("/realms/shortener/protocol/openid-connect/auth") { exchange ->
@@ -402,6 +413,53 @@ class DpopClientTest {
         assertThat(used.exitCode).describedAs(used.stderr).isZero()
         val assertion = SignedJWT.parse(tokenRequests.single().form.getValue("client_assertion"))
         assertThat(assertion.verify(ECDSAVerifier(public))).describedAs("signed by the key that keygen made").isTrue()
+    }
+
+    @Test
+    fun `registers a client with the invitation it was given, sending its name and the public half of a key it keeps, and nothing else`() {
+        val keyPath = directory.resolve("ana.jwk.json")
+
+        val output = run("register", "ana", "good-invitation", keyPath.toString())
+
+        assertThat(output.exitCode).describedAs(output.stderr).isZero()
+        assertThat(output.stdout.first()).isEqualTo("registered: registered-1234")
+        val request = registrations.single()
+        assertThat(request.method).isEqualTo("POST")
+        assertThat(request.headers["authorization"]).isEqualTo("Bearer good-invitation")
+        val sent = JSONObjectUtils.parse(request.body)
+        assertThat(sent.keys).describedAs("the identity provider decides the rest: scopes, owner, token type")
+            .containsExactlyInAnyOrder("client_name", "token_endpoint_auth_method", "token_endpoint_auth_signing_alg", "grant_types", "jwks")
+        assertThat(sent["token_endpoint_auth_method"]).isEqualTo("private_key_jwt")
+        val kept = ECKey.parse(Files.readString(keyPath))
+        @Suppress("UNCHECKED_CAST")
+        val published = ECKey.parse(((sent["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>).single())
+        assertThat(kept.isPrivate).isTrue
+        assertThat(published.isPrivate).describedAs("only the public half is sent").isFalse
+        assertThat(published.computeThumbprint()).isEqualTo(kept.computeThumbprint())
+        assertThat(Files.getPosixFilePermissions(keyPath).map { it.toString() }).containsExactlyInAnyOrder("OWNER_READ", "OWNER_WRITE")
+    }
+
+    @Test
+    fun `leaves no key file behind when the invitation is refused, and says why in a line`() {
+        val keyPath = directory.resolve("ana.jwk.json")
+
+        val output = run("register", "ana", "spent-invitation", keyPath.toString())
+
+        assertThat(output.exitCode).isEqualTo(1)
+        assertThat(output.stderr).contains("the registration was refused (401)").contains("No remaining count")
+        assertThat(keyPath).doesNotExist()
+    }
+
+    @Test
+    fun `does not overwrite a key file, and does not ask the identity provider before it knows it can keep the key`() {
+        val keyPath = directory.resolve("ana.jwk.json").also { Files.writeString(it, "precious") }
+
+        val output = run("register", "ana", "good-invitation", keyPath.toString())
+
+        assertThat(output.exitCode).isEqualTo(1)
+        assertThat(output.stderr).contains("exists already")
+        assertThat(Files.readString(keyPath)).isEqualTo("precious")
+        assertThat(registrations).isEmpty()
     }
 
     @Test

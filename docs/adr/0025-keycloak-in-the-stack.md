@@ -42,8 +42,7 @@ tokens, could not run without building the provider first, and the provider is t
   ([0005](0005-oauth2-resource-server-with-scopes.md)).
 - Cost: the realm is changed with `kcadm.sh` after the first start, not by editing the file.
 - Not done: the image is built where the operator builds it, not by the release workflow, so it is not scanned, signed or
-  accompanied by a bill of materials ([0018](0018-signed-scanned-releases.md)). Keycloak is on the `edge` network, which has a way
-  out. No web client or web users yet.
+  accompanied by a bill of materials ([0018](0018-signed-scanned-releases.md)). Keycloak has no route out since [0038](0038-segment-the-stack-networks.md): it is on `idp-front` and `data`, both internal. No web client or web users yet.
 - Its database is in the stack's Postgres, so the backups and the replica of [0028](0028-postgres-backups-and-a-replica.md)
   cover it with the shortener's when that overlay is on. Without it, neither database is backed up.
 

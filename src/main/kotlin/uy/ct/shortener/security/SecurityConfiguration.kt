@@ -26,6 +26,7 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.AuthenticationFilter
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy
 import org.springframework.web.servlet.HandlerExceptionResolver
+import uy.ct.shortener.security.internal.AccessTokenTypeValidator
 import uy.ct.shortener.security.internal.CaffeineRuntimeHints
 import uy.ct.shortener.security.internal.ClientJwtAuthenticationConverter
 import uy.ct.shortener.security.internal.DpopNonceAuthenticationConverter
@@ -39,6 +40,7 @@ import uy.ct.shortener.security.internal.SecurityEvents
 import uy.ct.shortener.security.internal.SecurityProblemResponder
 import uy.ct.shortener.security.internal.SecurityProperties
 import uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver
+import uy.ct.shortener.security.internal.SingleAuthorizationFilter
 
 /**
  * The security filter chain: an OAuth2 resource server, stateless, deny by default.
@@ -116,6 +118,7 @@ class SecurityConfiguration {
             // The IP limit and the nonce check run before authentication. The client limit runs after it, when the client is known.
             .addFilterBefore(ipLimit, BearerTokenAuthenticationFilter::class.java)
             .addFilterBefore(DpopNonceFilter(nonces), BearerTokenAuthenticationFilter::class.java)
+            .addFilterBefore(SingleAuthorizationFilter(responder), BearerTokenAuthenticationFilter::class.java)
             .addFilterAfter(clientLimit, BearerTokenAuthenticationFilter::class.java)
         LoggerFactory.getLogger(SecurityConfiguration::class.java).info(
             "Security configured: dpop.required={}, rate limit per ip={} and per client={} a minute, access tokens of type '{}'",
@@ -156,8 +159,19 @@ class SecurityConfiguration {
         if (properties.accessTokenType.isBlank()) {
             JwtTypeValidator.jwt()
         } else {
-            // RFC 9068 allows the type with or without the `application/` prefix.
-            JwtTypeValidator(properties.accessTokenType, "application/${properties.accessTokenType}")
+            AccessTokenTypeValidator(properties.accessTokenType, properties.accessTokenClaimTypes.toSet())
+        }
+
+    /**
+     * Spring Security adds a validator that admits only the header `JWT` unless one of the validators it is given is a
+     * [JwtTypeValidator], so this one admits the headers [accessTokenType] may accept and [accessTokenType] decides.
+     */
+    @Bean
+    fun accessTokenHeaderTypes(properties: SecurityProperties): JwtTypeValidator =
+        if (properties.accessTokenType.isBlank() || properties.accessTokenClaimTypes.isEmpty()) {
+            JwtTypeValidator.jwt()
+        } else {
+            JwtTypeValidator("JWT", properties.accessTokenType, "application/${properties.accessTokenType}")
         }
 
     private companion object {

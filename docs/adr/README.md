@@ -53,6 +53,9 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0035](0035-production-refuses-bearer-tokens.md) | Production does not start if it would accept bearer tokens | an environment variable that turns off the control that makes a stolen token useless | the flag cannot be used in production | needed when exposed |
 | [0036](0036-jvm-image-for-arm64.md) | A JVM image from buildpacks, on Liberica Lite, built on arm64 | a free-tier target that is Ampere, and a CPU bill that is twice a JVM's | a JIT warm-up, a larger image, nothing measured on Ampere yet | earned |
 | [0037](0037-click-analytics-counted-off-the-hot-path.md) | Clicks counted in aggregate, in memory, flushed in batches (**proposed**) | an owner cannot tell whether a link is followed, and a write per click would cost the redirect | approximate counts, a migration, a role and a job | not built |
+| [0038](0038-segment-the-stack-networks.md) | Five networks: the edge alone, the edge with the application, with Keycloak, the data, and the application's way out | Keycloak could reach the internet, and the application trusted every private address | five networks to keep straight, no network policy inside one | earned |
+| [0039](0039-clients-register-themselves-with-an-invitation.md) | Clients register themselves with an invitation, and the identity provider decides all but the key | the operator made each client by hand | a UUID as owner, a type check that reads a claim | earned |
+| [0040](0040-status-codes-of-the-dpop-errors.md) | A DPoP error has the status RFC 6750 and RFC 9449 give it: `401` for a token or a proof, `400` for a request with two ways of presenting the token | every failure was a `401`, even `invalid_request` | a client that read `invalid_request` for a missing proof sees `invalid_dpop_proof` | earned |
 
 <details>
 <summary>Conventions and tooling: common practice, recorded so the history is complete</summary>

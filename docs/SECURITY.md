@@ -41,7 +41,8 @@ flowchart LR
 ## Tokens
 
 - JWTs from Keycloak, validated locally against its JWKS: signature, issuer, audience (`shortener-api`), expiry and the
-  JOSE type `at+jwt` (RFC 9068). No call to the identity provider per request.
+  JOSE type `at+jwt` (RFC 9068), or the header `JWT` with the `typ` claim of an access token (`Bearer`, `DPoP`), which a client that registered itself gets
+  ([ADR 0039](adr/0039-clients-register-themselves-with-an-invitation.md)). No call to the identity provider per request.
 - Issuer-agnostic: any provider that issues these tokens works. Keycloak is the reference.
 - The claim named by `shortener.security.client-id-claim` (`owner` in the shipped config, `azp` by default) is the client id and is stored as the creator of every link.
 - Only the `Authorization` header carries a token. A token in a query string or form body is ignored (tested).
@@ -150,8 +151,8 @@ The service is close to [draft-ietf-oauth-v2-1-16](https://datatracker.ietf.org/
 no implicit or password grant, PKCE with `S256`, rotated refresh tokens, five-minute audience-restricted tokens, and tokens bound to the
 client's key. The draft is not final, so this is alignment, not conformance. What is missing:
 
-- [ ] **The challenge names `DPoP`, not `Bearer`** (§5.3.1), because Bearer tokens are refused, and a missing or invalid proof is a `401`
-  where §5.3.2 suggests `400` for `invalid_request`. A deliberate deviation (RFC 9449).
+- [ ] **The challenge names `DPoP`, not `Bearer`** (§5.3.1), because Bearer tokens are refused. The statuses are RFC 6750's and RFC 9449's
+  ([ADR 0040](adr/0040-status-codes-of-the-dpop-errors.md)): a missing or invalid proof is a `401` (`invalid_dpop_proof`), and `400` is only for a request that presents its token in more than one way.
 - [ ] **Redirect URIs are not exact** (§2.3.1): `shortener-ui` in the development realm registers wildcard paths (`http://localhost:3000/app/*`).
   The production realm has no such client. Fix before the UI is built.
 - [ ] **Mutual TLS between services** (§7.14) is proposed, not built ([ADR 0022](adr/0022-mtls-between-services.md)). The overlay networks are encrypted.

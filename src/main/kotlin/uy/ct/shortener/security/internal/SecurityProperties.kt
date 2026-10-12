@@ -19,6 +19,8 @@ import java.time.Duration
  *   next. [Nonce.secret] must be the same on every instance, and in `production` it is required; elsewhere a blank one is a random
  *   secret for each process.
  * - [accessTokenType]: the JOSE type access tokens must carry (RFC 9068). Blank skips the check.
+ * - [accessTokenClaimTypes]: the values of the `typ` claim that make a token with the header `JWT` an access token, `Bearer` and
+ *   `DPoP` as Keycloak writes them. Empty accepts the header alone. A client that registers itself gets no `at+jwt` header.
  */
 @ConfigurationProperties("shortener.security")
 data class SecurityProperties(
@@ -26,6 +28,7 @@ data class SecurityProperties(
     val rateLimit: RateLimit = RateLimit(),
     val dpop: Dpop = Dpop(),
     val accessTokenType: String = "at+jwt",
+    val accessTokenClaimTypes: List<String> = listOf("Bearer", "DPoP"),
 ) {
 
     data class Dpop(val required: Boolean = true, val nonce: Nonce = Nonce())

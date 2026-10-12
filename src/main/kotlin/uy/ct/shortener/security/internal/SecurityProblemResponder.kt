@@ -14,11 +14,13 @@ import org.springframework.security.web.access.AccessDeniedHandler
 import org.springframework.web.servlet.HandlerExceptionResolver
 
 /**
- * Answers the failures of the security filter chain (`401`, `403`, `429`) as problem details.
+ * Answers the failures of the security filter chain (`400`, `401`, `403`, `429`) as problem details, with the status RFC 6750 and RFC 9449 give each error.
  *
  * - Each failure is built as a [SecurityProblem] and handed to MVC's exception resolver.
  * - A `401` carries the challenge, with `error` set to `invalid_token` or `invalid_dpop_proof` when a token or proof was
  *   rejected, or to `use_dpop_nonce` when the proof lacks the current nonce, which is not counted as a failed authentication. A `403` carries `error="insufficient_scope"`.
+ * - A `400` is a request that presents its access token in more than one way, such as two `Authorization` headers (`invalid_request`, RFC 9449 section 7.2): the challenge is
+ *   the same, with that error.
  * - The challenge names `DPoP` with the accepted proof algorithms (RFC 9449), and `Bearer` as well unless [dpopRequired] or
  *   the request already used one scheme.
  * - A `429` carries `Retry-After`.
@@ -38,11 +40,16 @@ class SecurityProblemResponder(
         } else {
             events?.unauthenticated(request, error ?: if (AuthScheme.of(request) == AuthScheme.NONE) "missing_credentials" else "invalid_credentials")
         }
+        val malformed = error == OAuth2ErrorCodes.INVALID_REQUEST
         respond(
             request, response,
             SecurityProblem(
-                HttpStatus.UNAUTHORIZED,
-                if (nonceNeeded) "The DPoP proof needs the current nonce, sent in the DPoP-Nonce header" else "A valid access token is required",
+                if (malformed) HttpStatus.BAD_REQUEST else HttpStatus.UNAUTHORIZED,
+                when {
+                    nonceNeeded -> "The DPoP proof needs the current nonce, sent in the DPoP-Nonce header"
+                    malformed -> "The access token must be presented once, in the Authorization header"
+                    else -> "A valid access token is required"
+                },
                 challenge(AuthScheme.of(request), error),
             ),
         )

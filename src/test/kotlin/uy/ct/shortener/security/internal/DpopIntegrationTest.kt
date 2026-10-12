@@ -101,8 +101,31 @@ class DpopIntegrationTest {
     }
 
     @Test
-    fun `refuses a request without a proof`() {
-        assertRejected(call(authorization = "DPoP ${client.token()}"), "invalid_request")
+    fun `refuses a request without a proof, or with two, as an invalid proof with a 401 under RFC 9449 section 7 1`() {
+        val token = client.token()
+        assertRejected(call(authorization = "DPoP $token"), "invalid_dpop_proof")
+
+        val twice = HttpHeaders().apply {
+            set(HttpHeaders.AUTHORIZATION, "DPoP $token")
+            add("DPoP", client.proof("GET", url, token))
+            add("DPoP", client.proof("GET", url, token))
+        }
+        assertRejected(rest.request(HttpMethod.GET, url, twice), "invalid_dpop_proof")
+    }
+
+    @Test
+    fun `refuses a request that presents its token in more than one way with a 400 that says so under RFC 9449 section 7 2`() {
+        val token = client.token()
+        val headers = HttpHeaders().apply {
+            add(HttpHeaders.AUTHORIZATION, "Bearer $token")
+            add(HttpHeaders.AUTHORIZATION, "DPoP $token")
+            set("DPoP", client.proof("GET", url, token))
+        }
+
+        rest.request(HttpMethod.GET, url, headers).expectStatus().isEqualTo(HttpStatus.BAD_REQUEST)
+            .expectHeader().values(HttpHeaders.WWW_AUTHENTICATE) { challenges ->
+                assertThat(challenges).singleElement().satisfies({ assertThat(it).startsWith("DPoP realm=\"shortener\"").contains("error=\"invalid_request\"") })
+            }
     }
 
     @Test
@@ -120,7 +143,7 @@ class DpopIntegrationTest {
             val token = client.token()
             val headers = buildMap {
                 put(HttpHeaders.HOST, host)
-                put("X-Forwarded-Host", host)
+                put("X-Forwarded-Host", host.substringBefore(':'))
                 put("X-Forwarded-Proto", "https")
                 forwardedPort?.let { put("X-Forwarded-Port", it) }
             }
@@ -130,6 +153,23 @@ class DpopIntegrationTest {
         behindEdge("edge.example:9443", "9443", "https://edge.example:9443/api/short-links").expectStatus().isOk()
         behindEdge("edge.example", "443", "https://edge.example/api/short-links").expectStatus().isOk()
         assertRejected(behindEdge("edge.example:9443", null, "https://edge.example:9443/api/short-links"), "invalid_dpop_proof")
+    }
+
+    @Test
+    fun `forwarding headers other than the X-Forwarded ones the edge sets are not read, so a client cannot move the proof's URL with them`() {
+        val token = client.token()
+        val headers = mapOf(
+            HttpHeaders.HOST to "edge.example",
+            "X-Forwarded-Host" to "edge.example",
+            "X-Forwarded-Proto" to "https",
+            "X-Forwarded-Port" to "443",
+            "Forwarded" to "host=evil.example:8443;proto=http",
+            "X-Forwarded-Prefix" to "/evil",
+            "X-Forwarded-Ssl" to "off",
+        )
+
+        call(authorization = "DPoP $token", proof = client.proof("GET", "https://edge.example/api/short-links", token), forwarded = headers)
+            .expectStatus().isOk()
     }
 
     @Test
@@ -160,6 +200,18 @@ class DpopIntegrationTest {
         val token = TestIdp.token(type = "JWT", jkt = client.thumbprint)
 
         assertRejected(call(authorization = "DPoP $token", proof = client.proof("GET", url, token)), "invalid_token")
+    }
+
+    @Test
+    fun `accepts a token with the header JWT that Keycloak marks as an access token, as a client that registered itself gets, and refuses the other kinds`() {
+        fun attempt(claimType: String?): RestTestClient.ResponseSpec {
+            val token = TestIdp.token(type = "JWT", claimType = claimType, jkt = client.thumbprint)
+            return call(authorization = "DPoP $token", proof = client.proof("GET", url, token))
+        }
+
+        attempt("DPoP").expectStatus().isOk()
+        attempt("Bearer").expectStatus().isOk()
+        listOf("ID", "Refresh", "Offline", null).forEach { assertRejected(attempt(it), "invalid_token") }
     }
 
     @Test

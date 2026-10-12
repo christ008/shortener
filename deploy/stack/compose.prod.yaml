@@ -28,6 +28,12 @@ x-hardened: &hardened
   init: true
   logging: *logging
 
+# The network the edge reaches the application on. The application takes the client's address and the scheme from the edge's forwarded
+# headers only when the connection comes from here (SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES below), so the subnet is fixed and this one
+# value is both. It is internal: no route to or from the host, so it cannot clash with the host's or a VPN's addresses, only with another
+# Docker network of the same subnet, and Docker refuses to create that.
+x-ingress-subnet: &ingress-subnet 10.253.1.0/24
+
 x-application-image: &application-image
   image: '${SHORTENER_IMAGE:-ghcr.io/christ008/shortener}:${SHORTENER_VERSION:?set SHORTENER_VERSION}'
 
@@ -46,7 +52,9 @@ services:
       - source: nginx
         target: /etc/nginx/nginx.conf
     secrets: [tls_cert, tls_key]
-    networks: [edge]
+    networks:
+      edge: {}
+      ingress: {}
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
       interval: 10s
@@ -83,6 +91,8 @@ services:
       SHORTENER_SECURITY_RATELIMIT_PERIP_CAPACITY: '${RATE_LIMIT_PER_IP:-300}'
       SHORTENER_SECURITY_RATELIMIT_PERCLIENT_CAPACITY: '${RATE_LIMIT_PER_CLIENT:-60}'
       SERVER_TOMCAT_MAXCONNECTIONS: '${MAX_CONNECTIONS:-500}'
+      # Forwarded headers are honoured from the edge's network alone: not from the other services, which share the data network.
+      SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES: *ingress-subnet
       SHORTENER_SHORTLINK_REDIRECTCACHE_ENABLED: '${REDIRECT_CACHE_ENABLED:-true}'
       SHORTENER_SHORTLINK_REDIRECTCACHE_TTL: '${REDIRECT_CACHE_TTL:-30s}'
       SHORTENER_SHORTLINK_REDIRECTCACHE_MAXENTRIES: '${REDIRECT_CACHE_MAX_ENTRIES:-100000}'
@@ -95,8 +105,9 @@ services:
       # The DPoP nonce secret, the same on every instance, since a nonce made by one is checked by another.
       - {source: dpop_nonce_secret, target: shortener.security.dpop.nonce.secret}
     networks:
-      edge: {}
+      ingress: {}
       data: {}
+      egress: {}
     # Failures during start_period do not count. Two JVMs starting together on 2 vCPUs took 17 to 29 s (a t4g.small), and with 15 s Swarm
     # killed both as unhealthy before they were ready. A task that is ready earlier is healthy at once.
     healthcheck:
@@ -191,16 +202,26 @@ services:
       update_config: {order: stop-first, failure_action: rollback}
 
 networks:
-  # The edge reaches the application here, and the application reaches the identity provider. Encrypted between Swarm nodes
-  # (IPsec: allow UDP 4789 and ESP).
-  edge:
+  # The edge alone, and the only network with a published port. It has a route out (Docker cannot publish a port from an internal
+  # network). Nothing else is on it, and the edge shares exactly one network with each service it proxies to: Docker's DNS answers
+  # with the addresses of one shared network, not necessarily the one meant, and the application trusts only the ingress subnet.
+  edge: {}
+  # The edge to the application, over HTTP. No route out. Encrypted between nodes (IPsec: allow UDP 4789 and ESP).
+  ingress:
+    internal: true
     driver_opts:
       encrypted: 'true'
-  # The application, the migration job and the database. No route out. Encrypted between nodes.
+    ipam:
+      config:
+        - subnet: *ingress-subnet
+  # The application, the migration job and the database, and what the other overlays attach to them. No route out. Encrypted between nodes.
   data:
     internal: true
     driver_opts:
       encrypted: 'true'
+  # The application's way out, for an identity provider that is not in the stack and for traces. Nothing else is on it, so the
+  # database, the edge and Keycloak have no route out.
+  egress: {}
 
 volumes:
   postgres-data: {}

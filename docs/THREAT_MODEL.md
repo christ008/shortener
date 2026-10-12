@@ -76,7 +76,7 @@ flowchart LR
     end
     subgraph host["Trusted: the node and its Docker networks"]
         edge["Edge: nginx<br/>TLS, limits"]
-        subgraph edgeNet["edge network"]
+        subgraph ingressNet["ingress network, no route out"]
             app["Application<br/>2 tasks"]
         end
         subgraph dataNet["data network, internal"]
@@ -101,7 +101,7 @@ flowchart LR
 | Boundary | Crossing | What is checked there |
 |---|---|---|
 | Internet to edge (1, 2) | TLS, headers, body | TLS 1.2+, body 16 KiB, timeouts, connections per address |
-| Edge to application (3) | forwarded headers | edge replaces them, the application trusts them only from private addresses |
+| Edge to application (3) | forwarded headers | edge replaces them, the application trusts them only from the `ingress` subnet, which the edge and the application alone share ([ADR 0038](adr/0038-segment-the-stack-networks.md)) |
 | Application to database (4) | SQL | bound parameters, least-privilege role, timeouts |
 | Application to identity provider (6) | signing keys | issuer, audience, type, expiry, DPoP binding |
 | Pipeline to node (8) | the image | tests, scan, signature, digest |
@@ -118,7 +118,7 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 
 | STRIDE | Threat | What stops it | Residual |
 |:-:|---|---|---|
-| S | Forged `X-Forwarded-For` to dodge the address limit | nginx replaces the header with `$remote_addr`. Tomcat trusts forwarded headers only from private addresses | once IPv6 is enabled, clients rotate inside their /64. The edge listens on IPv4 only today ([F-09](#findings)) |
+| S | Forged `X-Forwarded-For` to dodge the address limit | nginx replaces the header with `$remote_addr` and empties `Forwarded`, `X-Real-IP` and the other forwarding headers the application does not read. Tomcat trusts forwarded headers only from the `ingress` subnet | once IPv6 is enabled, clients rotate inside their /64. The edge listens on IPv4 only today ([F-09](#findings)) |
 | S | A forged `Host` | none: `server_name _` accepts any, and the value is forwarded | reflected to the sender, low ([F-08](#findings)) |
 | T | TLS stripping, downgrade | plain HTTP only redirects, HSTS for a year, TLS 1.2 and 1.3, no session tickets | the first request of a client that calls `http://` sends its headers in clear before the redirect. Clients must use `https://` |
 | R | No trail of who called | JSON access log with address, status, route and upstream, no query string | the edge's log and the application's are local, three files of 10 MB each ([F-03](#findings)) |
@@ -130,7 +130,7 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 
 | STRIDE | Threat | What stops it | Residual |
 |:-:|---|---|---|
-| S | Forging or confusing a token | signature against the provider's keys, issuer, audience `shortener-api`, expiry, type `at+jwt`, a token without `owner` is invalid (`SecurityIntegrationTest`) | the provider issues what it is told to |
+| S | Forging or confusing a token | signature against the provider's keys, issuer, audience `shortener-api`, expiry, type `at+jwt` (or the header `JWT` with the claim `typ` `Bearer` or `DPoP`, never `ID` or `Refresh`), a token without `owner` is invalid (`SecurityIntegrationTest`) | the provider issues what it is told to |
 | S | Using a stolen token | DPoP: a proof for this method, URL and token, signed by the bound key. `Bearer` refused even for a valid token (`DpopIntegrationTest`). `production` does not start with DPoP off, so an environment variable cannot turn this control off by mistake ([ADR 0035](adr/0035-production-refuses-bearer-tokens.md), `DpopRequiredInProductionTest`) | stealing the key as well |
 | S | Replaying a captured request | the `jti` must be new, proofs expire in 30 s (`DpopIntegrationTest`), and a proof must carry the server's current nonce, so one made ahead or kept stops working within ten minutes at most ([ADR 0032](adr/0032-dpop-nonces.md), `DpopNonceIntegrationTest`) | the cache is per instance, so each of two instances accepts one replay inside the window. Needs a break of TLS first |
 | S | Token in a query string or body | only the `Authorization` header is read (`SecurityIntegrationTest`) | |
@@ -264,6 +264,7 @@ to do. The fixed ones are collapsed at the end.
 | F-10 | Low | Open | [The issuer and key URL need not be `https`](#f-10-the-issuer-and-key-url-need-not-be-https) |
 | F-12 | Low | Open | [Page depth is unbounded and the count scans the table](#f-12-page-depth-is-unbounded-and-the-count-scans-the-table) |
 | F-13 | Low | Open | [The Keycloak image has no supply-chain evidence](#f-13-the-keycloak-image-has-no-supply-chain-evidence) |
+| F-14 | Low | Open | [A client that registers itself can name a `jwks_uri`](#f-14-a-client-that-registers-itself-can-name-a-jwks_uri) |
 
 ### F-02. The identity provider decides ownership and admin
 
@@ -303,8 +304,8 @@ to do. The fixed ones are collapsed at the end.
 ### F-07. Traffic between services is encrypted but peers are not authenticated
 
 - **Rating:** Medium, multi-node, **partly fixed** 2026-10-06
-- **Finding:** Both overlays are now encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). What remains: peers are not authenticated, and an external database needs `sslmode=verify-full` set by the operator
-- **Why it matters:** a container on a stack network can still call the application as the edge
+- **Finding:** The overlays between services are now encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). What remains: peers are not authenticated, and an external database needs `sslmode=verify-full` set by the operator
+- **Why it matters:** a container on a stack network can still call the application, but since [ADR 0038](adr/0038-segment-the-stack-networks.md) the application does not believe its forwarded headers unless it shares `ingress`, which only the edge does
 - **Recommendation:** mutual TLS is proposed in [ADR 0022](adr/0022-mtls-between-services.md). Build it when there is more than one node or something untrusted can attach
 
 ### F-08. The edge accepts any `Host`
@@ -338,9 +339,16 @@ to do. The fixed ones are collapsed at the end.
 ### F-13. The Keycloak image has no supply-chain evidence
 
 - **Rating:** Low
-- **Finding:** The Keycloak image is built by the operator, not by the release workflow: no scan, signature or bill of materials. Keycloak sits on the `edge` network, which has a way out. A bad realm file or a restart loop is only visible in its log
+- **Finding:** The Keycloak image is built by the operator, not by the release workflow: no scan, signature or bill of materials. Keycloak has no route out ([ADR 0038](adr/0038-segment-the-stack-networks.md)). A bad realm file or a restart loop is only visible in its log
 - **Why it matters:** the most trusted component has the least supply-chain evidence
 - **Recommendation:** build, scan and sign it in the release workflow ([ADR 0018](adr/0018-signed-scanned-releases.md)), and alert on its health. Its database is backed up with the rest by the Postgres overlay ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md))
+
+### F-14. A client that registers itself can name a `jwks_uri`
+
+- **Rating:** Low
+- **Finding:** A client registered with an invitation ([ADR 0039](adr/0039-clients-register-themselves-with-an-invitation.md)) may give its key as a `jwks_uri`, and Keycloak fetches that URL when the client asks for a token. The `Trusted Hosts` policy does not cover it. A URL inside the stack (the management port of the application, say) is requested, blind: the answer must be a key set, and a host that does not answer holds the token request until it times out
+- **Why it matters:** a request from Keycloak to a service on its network, and a slow token request, by someone with an invitation. Keycloak has no route out ([ADR 0038](adr/0038-segment-the-stack-networks.md)), the endpoint is limited to six requests a minute per address, and the token endpoint to ten a second
+- **Recommendation:** accept while invitations go to people you know. To remove it, refuse a registration that names a `jwks_uri` at the edge (a body check, which nginx does not do on its own), or use a Keycloak client policy that does not exist yet in 26.8
 
 <details>
 <summary>Fixed findings</summary>

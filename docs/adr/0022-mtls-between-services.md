@@ -5,9 +5,8 @@
 
 ## Problem
 
-[0021](0021-encrypt-internal-traffic.md) hides the traffic. It does not authenticate it. A container that reaches the `edge`
-network can call the application as if it were nginx, and the application trusts forwarded headers from any private
-address. A container on `data` still needs the database password, but nothing proves the caller is the application.
+[0021](0021-encrypt-internal-traffic.md) hides the traffic. It does not authenticate it. A container that reaches the application can call it as if it were nginx. Since [0038](0038-segment-the-stack-networks.md) the application
+trusts forwarded headers only from the `ingress` subnet, so such a caller can reach the application but cannot lie to it about the client. A container on `data` still needs the database password, but nothing proves the caller is the application.
 
 ## Proposal
 

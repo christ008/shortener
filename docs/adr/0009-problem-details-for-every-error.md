@@ -17,7 +17,7 @@ writers mean two shapes, and a client has to parse both.
 - The filter chain builds a `SecurityProblem` with its headers (`WWW-Authenticate`, `Retry-After`) and hands it to MVC's
   exception resolver, so the body has the same shape and follows the client's `Accept`.
 - The `401` challenge names `DPoP` with the accepted algorithms, and `Bearer` only when DPoP is not required. The error
-  is `invalid_token`, `invalid_request` or `invalid_dpop_proof`.
+  is `invalid_token` or `invalid_dpop_proof` (and `invalid_request` with a `400`, [0040](0040-status-codes-of-the-dpop-errors.md)).
 - In production, errors and health carry no message, trace or exception name.
 
 ## Consequences

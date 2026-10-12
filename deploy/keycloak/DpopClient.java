@@ -51,6 +51,10 @@ import java.util.regex.Pattern;
  *
  * <pre>
  *   java DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
+ *   java DpopClient.java register NAME INVITATION KEY_FILE
+ *                                                         makes a key, writes its private half to KEY_FILE (which must not
+ *                                                         exist), registers a client with the public half using the
+ *                                                         invitation an administrator gave, and prints the client id
  *   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
  *   java DpopClient.java token KEY_FILE CLIENT_ID         prints a DPoP-bound access token
  *   java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]
@@ -84,6 +88,7 @@ public final class DpopClient {
 
     private static final String USAGE = """
             usage: java DpopClient.java keygen CLIENT_ID
+                   java DpopClient.java register NAME INVITATION KEY_FILE
                    java DpopClient.java token KEY_FILE CLIENT_ID
                    java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
                    java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]""";
@@ -118,6 +123,7 @@ public final class DpopClient {
     static boolean validArguments(String[] args) {
         return args.length > 0 && switch (args[0]) {
             case "keygen" -> args.length == 2;
+            case "register" -> args.length == 4;
             case "token" -> args.length == 3;
             case "call", "login" -> args.length == 5 || args.length == 6;
             default -> false;
@@ -127,6 +133,7 @@ public final class DpopClient {
     private void run(String[] args) throws Exception {
         switch (args[0]) {
             case "keygen" -> keygen(args[1]);
+            case "register" -> register(args[1], args[2], Path.of(args[3]));
             case "token" -> System.out.println(fetchToken(Path.of(args[1]), args[2], newKey()).accessToken());
             case "call" -> printCall(Path.of(args[1]), args[2], args[3], args[4], args.length > 5 ? args[5] : null);
             case "login" -> login(args[1], args[2], args[3], args[4], args.length > 5 ? args[5] : null);
@@ -159,6 +166,13 @@ public final class DpopClient {
     // ---- the commands -----------------------------------------------------------------------------------------------
 
     private static void keygen(String clientId) {
+        List<Map<String, Object>> jwks = newJwks(clientId);
+        System.out.println(Json.write(jwks.get(0)));
+        System.out.println(Json.write(jwks.get(1)));
+    }
+
+    /** A new client key as a private JWK and a public one, in that order. */
+    private static List<Map<String, Object>> newJwks(String clientId) {
         KeyPair pair = newKey();
         ECPublicKey pub = (ECPublicKey) pair.getPublic();
         Map<String, Object> publicJwk = new LinkedHashMap<>();
@@ -171,8 +185,51 @@ public final class DpopClient {
         publicJwk.put("y", coordinate(pub.getW().getAffineY()));
         Map<String, Object> privateJwk = new LinkedHashMap<>(publicJwk);
         privateJwk.put("d", coordinate(((ECPrivateKey) pair.getPrivate()).getS()));
-        System.out.println(Json.write(privateJwk));
-        System.out.println(Json.write(publicJwk));
+        return List.of(privateJwk, publicJwk);
+    }
+
+    /**
+     * Registers a client with the invitation an administrator made (an initial access token of the realm: one use, with a
+     * deadline). The key is made here and its private half never leaves the file, which is made readable by its owner alone and
+     * is written before the request, so that a registration that succeeds cannot be left without its key. The identity provider
+     * chooses the client id, the scopes and the owner: only the name and the public key are sent.
+     */
+    private void register(String name, String invitation, Path keyFile) throws Exception {
+        if (Files.exists(keyFile)) throw new Failure(keyFile + " exists already: it is not overwritten, name another file");
+        List<Map<String, Object>> jwks = newJwks(name);
+        try {
+            Files.writeString(keyFile, Json.write(jwks.get(0)) + "\n", java.nio.file.StandardOpenOption.CREATE_NEW);
+            try {
+                Files.setPosixFilePermissions(keyFile, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+            } catch (UnsupportedOperationException ignored) {
+                // not a POSIX file system: nothing more can be done here
+            }
+        } catch (IOException e) {
+            throw new Failure("could not write the key file " + keyFile + ": " + e.getMessage(), e);
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("client_name", name);
+        metadata.put("token_endpoint_auth_method", "private_key_jwt");
+        metadata.put("token_endpoint_auth_signing_alg", "ES256");
+        metadata.put("grant_types", List.of("client_credentials"));
+        metadata.put("jwks", Map.of("keys", List.of(jwks.get(1))));
+        String endpoint = issuer + "/clients-registrations/openid-connect";
+        HttpResponse<String> response = send(HttpRequest.newBuilder(uri(endpoint)).timeout(TIMEOUT)
+                .header("Authorization", "Bearer " + invitation).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(Json.write(metadata))).build());
+        if (response.statusCode() != 201) {
+            try {
+                Files.deleteIfExists(keyFile);
+            } catch (IOException ignored) {
+                // the registration failed and so the key means nothing; a leftover file is harmless
+            }
+            throw new Failure("the registration was refused (" + response.statusCode() + "): " + excerpt(response.body(), 300));
+        }
+        String clientId = Json.parse(response.body()).string("client_id");
+        if (clientId == null) throw new Failure("the identity provider registered the client but did not say its id: " + excerpt(response.body(), 300));
+        System.out.println("registered: " + clientId);
+        System.out.println("private key: " + keyFile + " (keep it: it is the only way to be this client, and it cannot be recovered)");
+        System.out.println("try it:  java DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
     }
 
     private void printCall(Path keyFile, String clientId, String method, String url, String body) throws Exception {

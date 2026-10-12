@@ -78,6 +78,7 @@ class SecurityPropertiesBindingTest {
 
         assertThat(defaults.dpop.required).isTrue
         assertThat(defaults.accessTokenType).isEqualTo("at+jwt")
+        assertThat(defaults.accessTokenClaimTypes).containsExactly("Bearer", "DPoP")
         assertThat(relaxed.dpop.required).isFalse
         assertThat(relaxed.accessTokenType).isEmpty()
     }

@@ -60,6 +60,24 @@ class SecurityProblemResponderTest {
     fun clearContext() = SecurityContextHolder.clearContext()
 
     @Test
+    fun `each OAuth error has the status RFC 6750 and RFC 9449 give it, a 400 for a request that is not well formed and a 401 for a token or a proof that is wrong`() {
+        mapOf(
+            "invalid_request" to 400,
+            "invalid_token" to 401,
+            "invalid_dpop_proof" to 401,
+            "use_dpop_nonce" to 401,
+        ).forEach { (code, status) ->
+            val response = MockHttpServletResponse()
+            val recorded = RecordingResolver()
+            SecurityProblemResponder(recorded, dpopRequired = true).commence(request("DPoP t"), response, oauthError(code))
+
+            assertThat(response.status).describedAs(code).isEqualTo(status)
+            assertThat(recorded.problems.single().statusCode.value()).describedAs(code).isEqualTo(status)
+            assertThat(recorded.problems.single().headers[HttpHeaders.WWW_AUTHENTICATE].orEmpty().single()).describedAs(code).contains("error=\"$code\"")
+        }
+    }
+
+    @Test
     fun `a request with no credentials is answered with a 401 that offers both schemes`() {
         responder().commence(request(), response, BadCredentialsException("no credentials"))
 

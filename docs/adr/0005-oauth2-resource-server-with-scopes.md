@@ -2,6 +2,7 @@
 
 - Status: Accepted, 2026-10-03. Replaces the API-key scheme of `4c62308`
 - Evidence: `6e9241f`, `SecurityIntegrationTest`, `AuthorizationIntegrationTest`
+- Amended by [0039](0039-clients-register-themselves-with-an-invitation.md): the type check also accepts the header `JWT` with the claim `typ` of an access token
 
 ## Problem
 
