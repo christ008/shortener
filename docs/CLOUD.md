@@ -79,7 +79,14 @@ Isolation between clients, tried with a second client made for the test (a copy 
 `404` for the first client's link, an empty list, `404` to disabling it and `403` (`insufficient_scope`) to claiming its code, the same answer as for a code that does not exist
 (apart from the code), and the first client's link stayed enabled and went on redirecting. The reverse held too (`404` to read or disable the second client's link), each client saw
 only its own in the list, and the same target URL got a different code for each. Each could read and disable its own. `admin-client`, whose scope reads and disables any link, was
-not used. **Not run:** the backups and the replica, Prometheus, and a renewal of the certificate 30 days on.
+not used.
+
+Backups with pgBackRest, without the replica, on the same VM: `POSTGRES_HA=1` with the image built from `deploy/postgres` and the node left **without** the `shortener.postgres-replica`
+label, so that `postgres-replica` stays pending (`0/1`, no memory). Postgres restarted once (the redirect went on answering `302` while it was down, which the redirect cache explains) and archives WAL. `backup init`
+took a full backup of the 44 MB database into 4.9 MB, `backup check` passed, and `backup restore-test` restored it into a throwaway container with the same links as the live
+database. A link created **after** that backup was also in a restore once the WAL segment was switched, so the archive is replayed. The repository is a volume on the same disk, so it does
+not survive losing the VM; there is no schedule yet (the crontab of [DEPLOY.md](DEPLOY.md#backups-and-a-replica)). **Not run:** the replica, Prometheus, a renewal of the certificate
+30 days on, and a restore into the real database.
 
 
 Not built:
