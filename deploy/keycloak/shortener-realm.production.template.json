@@ -131,7 +131,38 @@
           }
         }
       ]
+    },
+    {
+      "name": "shortener-owner",
+      "description": "The owner of a link is the client that made it: the claim `owner` is the client id, which the identity provider writes and no client can choose",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "owner",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usersessionmodel-note-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.session.note": "client_id",
+            "claim.name": "owner",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     }
+  ],
+  "defaultDefaultClientScopes": [
+    "shortener-owner",
+    "shortlinks:create",
+    "shortlinks:read",
+    "shortlinks:delete"
   ],
   "clients": [
     {
@@ -148,7 +179,8 @@
       "defaultClientScopes": [
         "shortlinks:create",
         "shortlinks:read",
-        "shortlinks:delete"
+        "shortlinks:delete",
+        "shortener-owner"
       ],
       "optionalClientScopes": [],
       "attributes": {
@@ -157,23 +189,7 @@
         "jwks.string": "@JWKS:demo-client@",
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true"
-      },
-      "protocolMappers": [
-        {
-          "name": "owner",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-hardcoded-claim-mapper",
-          "consentRequired": false,
-          "config": {
-            "claim.name": "owner",
-            "claim.value": "demo-client",
-            "jsonType.label": "String",
-            "access.token.claim": "true",
-            "id.token.claim": "false",
-            "introspection.token.claim": "true"
-          }
-        }
-      ]
+      }
     },
     {
       "clientId": "admin-client",
@@ -187,7 +203,8 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "defaultClientScopes": [
-        "shortlinks:admin"
+        "shortlinks:admin",
+        "shortener-owner"
       ],
       "optionalClientScopes": [],
       "attributes": {
@@ -196,25 +213,95 @@
         "jwks.string": "@JWKS:admin-client@",
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true"
-      },
-      "protocolMappers": [
-        {
-          "name": "owner",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-hardcoded-claim-mapper",
-          "consentRequired": false,
-          "config": {
-            "claim.name": "owner",
-            "claim.value": "admin-client",
-            "jsonType.label": "String",
-            "access.token.claim": "true",
-            "id.token.claim": "false",
-            "introspection.token.claim": "true"
-          }
-        }
-      ]
+      }
     }
   ],
   "revokeRefreshToken": true,
-  "refreshTokenMaxReuse": 0
+  "refreshTokenMaxReuse": 0,
+  "components": {
+    "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy": [
+      {
+        "name": "Allowed Protocol Mapper Types",
+        "providerId": "allowed-protocol-mappers",
+        "subType": "anonymous",
+        "config": {
+          "allowed-protocol-mapper-types": []
+        }
+      },
+      {
+        "name": "Allowed Client Scopes",
+        "providerId": "allowed-client-templates",
+        "subType": "anonymous",
+        "config": {
+          "allow-default-scopes": [
+            "true"
+          ]
+        }
+      },
+      {
+        "name": "Max Clients Limit",
+        "providerId": "max-clients",
+        "subType": "anonymous",
+        "config": {
+          "max-clients": [
+            "50"
+          ]
+        }
+      },
+      {
+        "name": "Allowed Protocol Mapper Types",
+        "providerId": "allowed-protocol-mappers",
+        "subType": "authenticated",
+        "config": {
+          "allowed-protocol-mapper-types": []
+        }
+      },
+      {
+        "name": "Allowed Client Scopes",
+        "providerId": "allowed-client-templates",
+        "subType": "authenticated",
+        "config": {
+          "allow-default-scopes": [
+            "true"
+          ]
+        }
+      },
+      {
+        "name": "Max Clients Limit",
+        "providerId": "max-clients",
+        "subType": "authenticated",
+        "config": {
+          "max-clients": [
+            "50"
+          ]
+        }
+      },
+      {
+        "name": "Trusted Hosts",
+        "providerId": "trusted-hosts",
+        "subType": "anonymous",
+        "config": {
+          "host-sending-registration-request-must-match": [
+            "true"
+          ],
+          "client-uris-must-match": [
+            "true"
+          ]
+        }
+      },
+      {
+        "name": "Trusted Hosts",
+        "providerId": "trusted-hosts",
+        "subType": "authenticated",
+        "config": {
+          "host-sending-registration-request-must-match": [
+            "false"
+          ],
+          "client-uris-must-match": [
+            "true"
+          ]
+        }
+      }
+    ]
+  }
 }

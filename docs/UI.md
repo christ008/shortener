@@ -166,7 +166,7 @@ sequenceDiagram
 
 ## Risks and open questions
 
-- Keycloak DPoP support for public clients in the browser flow is assumed, not verified (phase 0), and so is a step-up to `acr` 2 for `shortlinks:admin` ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)). Fallback: a
+- Keycloak DPoP support for public clients in the browser flow is assumed, not verified (phase 0), and a step-up to `acr` 2 for `shortlinks:admin` is verified on Keycloak 26.8.0 with `deploy/keycloak/realm-step-up.json` and checked by the API ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)). Fallback: a
   backend-for-frontend that holds the tokens, with no browser-side DPoP.
 - TanStack Start was a release candidate when this was written. Check the shell file name and base path under `/app` in phase 2.
 - Mantine's CSS must load before the app's, and its color scheme script must work in a static shell without a flash.

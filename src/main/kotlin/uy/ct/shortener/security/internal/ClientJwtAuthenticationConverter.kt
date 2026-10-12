@@ -13,14 +13,20 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
  * - The name is the [clientIdClaim] of the token.
  * - Each granted scope becomes an authority named exactly as the scope.
  * - A token without the claim is invalid.
+ * - A token with the administrator scope must pass [adminAssurance].
  */
-class ClientJwtAuthenticationConverter(private val clientIdClaim: String) : Converter<Jwt, AbstractAuthenticationToken> {
+class ClientJwtAuthenticationConverter(
+    private val clientIdClaim: String,
+    private val adminAssurance: AdminAssurance,
+) : Converter<Jwt, AbstractAuthenticationToken> {
 
     private val scopes = JwtGrantedAuthoritiesConverter().apply { setAuthorityPrefix("") }
 
     override fun convert(jwt: Jwt): AbstractAuthenticationToken {
         val client = jwt.getClaimAsString(clientIdClaim)
             ?: throw InvalidBearerTokenException("The token has no '$clientIdClaim' claim")
-        return JwtAuthenticationToken(jwt, scopes.convert(jwt), client)
+        val authorities = scopes.convert(jwt).orEmpty()
+        adminAssurance.require(jwt, authorities)
+        return JwtAuthenticationToken(jwt, authorities, client)
     }
 }

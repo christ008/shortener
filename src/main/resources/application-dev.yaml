@@ -14,6 +14,9 @@ management:
 
 shortener:
   security:
+    # The administrator of the development realm is a service account, which has no second factor to show.
+    admin:
+      exempt-clients: admin-client
     rate-limit:
       per-ip:
         capacity: 10000

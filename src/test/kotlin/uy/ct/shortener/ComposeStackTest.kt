@@ -20,7 +20,9 @@ import java.nio.file.Path
  * - Only the migration job holds the credentials of the role that owns the tables, so code execution in the
  *   application cannot drop them, and only it is a job that migrates and stops.
  * - Writable memory uses the long `volumes:` syntax, because Swarm silently drops the short `tmpfs:` key.
- * - The database network has no route out, and the images are pinned to a version.
+ * - The networks: every one but the edge's and the application's way out is internal, the edge shares exactly one network with each
+ *   service it proxies to, and the application trusts forwarded headers from that network's subnet alone. Keycloak has no route out.
+ * - The images are pinned to a version.
  * - Keycloak, when the stack has one, is held to the same rules, is not published, and is the only service that holds its
  *   passwords besides the database that creates its role. Its database URL is a variable, so a promoted replica needs no file edit.
  * - The variables the files read and the ones `deploy/stack/.env.example` lists are the same, and the defaults the stack gives
@@ -67,6 +69,16 @@ class ComposeStackTest {
 
     @Suppress("UNCHECKED_CAST")
     private fun Map<String, Any?>.list(key: String): List<Any?> = this[key] as? List<Any?> ?: emptyList()
+
+    private val networks: Map<String, Map<String, Any?>> = files
+        .flatMap { it.map("networks").entries }
+        .groupBy({ it.key }, { it.value.asMap() })
+        .mapValues { (_, parts) -> parts.reduce(::merged) }
+
+    private fun networksOf(service: String): Set<String> =
+        services.getValue(service).let { it.list("networks").map(Any?::toString).ifEmpty { it.map("networks").keys.toList() } }.toSet()
+
+    private fun membersOf(network: String): Set<String> = services.keys.filter { network in networksOf(it) }.toSet()
 
     private fun secretsOf(service: Map<String, Any?>): Set<String> =
         service.list("secrets").map { if (it is Map<*, *>) it["source"] as String else it as String }.toSet()
@@ -189,11 +201,35 @@ class ComposeStackTest {
     }
 
     @Test
-    fun `both networks are encrypted between nodes, since the edge carries tokens and the data network carries rows`() {
-        val networks = files.first().map("networks")
-        listOf("edge", "data").forEach { name ->
-            assertThat(networks.map(name).map("driver_opts")["encrypted"]).describedAs("$name network encrypted").isEqualTo("true")
+    fun `the networks between services are internal and encrypted between nodes, and only the edge's and the way out have a route out`() {
+        listOf("ingress", "data", "idp-front").forEach { name ->
+            assertThat(networks.getValue(name).map("driver_opts")["encrypted"]).describedAs("$name network encrypted").isEqualTo("true")
+            assertThat(networks.getValue(name)["internal"]).describedAs("$name network internal").isEqualTo(true)
         }
+        assertThat(networks.keys).containsExactlyInAnyOrder("edge", "ingress", "idp-front", "data", "egress")
+        listOf("edge", "egress").forEach { assertThat(networks.getValue(it)["internal"]).describedAs("$it network internal").isNull() }
+    }
+
+    @Test
+    fun `only the edge is on the edge network and only the application is on the way out`() {
+        assertThat(membersOf("edge")).containsExactly("edge")
+        assertThat(membersOf("egress")).containsExactly("shortener")
+        assertThat(membersOf("ingress")).containsExactlyInAnyOrder("edge", "shortener")
+        services.keys.filter { it !in setOf("edge", "shortener") }.forEach {
+            assertThat(networksOf(it)).describedAs("$it has no route out").doesNotContain("edge", "egress", "ingress")
+        }
+    }
+
+    @Test
+    fun `the edge shares exactly one network with each service it proxies to, and the application trusts forwarded headers from that network alone`() {
+        assertThat(networksOf("edge") intersect networksOf("shortener")).describedAs("Docker's DNS answers with one shared network, so a second one makes the edge arrive from an address the application does not trust").containsExactly("ingress")
+        assertThat(networksOf("edge") intersect networksOf("keycloak")).containsExactly("idp-front")
+        assertThat(networksOf("keycloak")).containsExactlyInAnyOrder("idp-front", "data")
+
+        val subnet = networks.getValue("ingress").map("ipam").list("config").single().asMap()["subnet"]
+        assertThat(subnet).isNotNull
+        assertThat(environmentOf(services.getValue("shortener"))["SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES"])
+            .describedAs("the subnet the edge arrives from and the one the application trusts").isEqualTo(subnet.toString())
     }
 
     @Test
@@ -244,12 +280,12 @@ class ComposeStackTest {
     }
 
     @Test
-    fun `keycloak writes only to memory, and reaches the database and the edge but is not the way out`() {
+    fun `keycloak writes only to memory, and reaches the database and the edge but has no route out`() {
         val keycloak = services.getValue("keycloak")
 
         assertThat(keycloak.list("volumes").filterIsInstance<Map<*, *>>().map { it["target"] })
             .containsExactlyInAnyOrder("/tmp", "/opt/keycloak/data/tmp")
-        assertThat(keycloak.list("networks")).containsExactlyInAnyOrder("edge", "data")
+        assertThat(networksOf("keycloak").map { networks.getValue(it)["internal"] }).containsOnly(true)
     }
 
     @Test
@@ -257,21 +293,63 @@ class ComposeStackTest {
         val conf = Files.readAllLines(Path.of("deploy/edge/keycloak.conf")).filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
         val locations = Regex("""(?m)^location\s+(?:=\s+|~\s+)?(\S+)""").findAll(conf).map { it.groupValues[1] }.toList()
 
-        assertThat(locations).containsExactly("/realms/shortener/protocol/openid-connect/token", "^/(realms/shortener|resources)/")
+        assertThat(locations).describedAs("in this order, since the first regular expression that matches wins").containsExactly(
+            "/realms/shortener/protocol/openid-connect/token",
+            "^/realms/shortener/clients-registrations/openid-connect(/[^/]+)?$",
+            "^/realms/shortener/clients-registrations/",
+            "^/(realms/shortener|resources)/",
+        )
         assertThat(conf).doesNotContain("/admin").doesNotContain("realms/master")
-        assertThat(conf).contains("limit_req zone=token")
+        assertThat(conf).contains("limit_req zone=token", "limit_req zone=register")
     }
 
     @Test
-    fun `every proxied location tells the application the port the client used, taken from its Host header`() {
-        val confs = Files.list(Path.of("deploy/edge")).use { files -> files.filter { it.toString().endsWith(".conf") }.toList() }
-        val lines = confs.flatMap { Files.readAllLines(it) }.filterNot { it.trimStart().startsWith("#") }
+    fun `a client registers through the OpenID Connect endpoint alone, and the rest of the registration service answers 404`() {
+        val conf = Files.readAllLines(Path.of("deploy/edge/keycloak.conf")).filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+        val blocks = Regex("""(?s)location\s+~\s+(\S+)\s*\{(.*?)\n}""").findAll(conf).associate { it.groupValues[1] to it.groupValues[2] }
 
-        assertThat(lines.count { it.trim().startsWith("proxy_pass ") }).isGreaterThan(0)
-        assertThat(lines.count { it.trim() == "proxy_set_header X-Forwarded-Port \$forwarded_port;" })
-            .describedAs("a proxied location without the port makes the application rebuild the proof's URL on 443")
-            .isEqualTo(lines.count { it.trim().startsWith("proxy_pass ") })
-        assertThat(lines.joinToString("\n")).contains("map \$http_host \$forwarded_port", "default 443;")
+        assertThat(blocks.getValue("^/realms/shortener/clients-registrations/openid-connect(/[^/]+)?$")).contains("limit_req zone=register", "proxy_pass")
+        assertThat(blocks.getValue("^/realms/shortener/clients-registrations/")).contains("return 404").doesNotContain("proxy_pass")
+        assertThat(Files.readString(Path.of("deploy/edge/nginx.conf"))).contains("zone=register:10m rate=6r/m")
+    }
+
+    @Test
+    fun `the administrator script is valid shell, and refuses what it should before it touches Docker`() {
+        val script = Path.of("deploy/keycloak/admin-user")
+        fun run(vararg args: String): Pair<Int, String> {
+            val process = ProcessBuilder("sh", script.toString(), *args).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            return process.waitFor() to output
+        }
+
+        assertThat(Files.isExecutable(script)).isTrue
+        assertThat(ProcessBuilder("sh", "-n", script.toString()).start().waitFor()).describedAs("sh -n").isZero()
+        assertThat(run().first).describedAs("no arguments").isEqualTo(2)
+        assertThat(run("destroy", "ana").first).describedAs("an unknown command").isEqualTo(2)
+        assertThat(run("create", "an a").first).describedAs("a name with a space").isEqualTo(2)
+        val bootstrap = run("create", "admin")
+        assertThat(bootstrap.first).describedAs("the bootstrap administrator is not made again").isEqualTo(2)
+        assertThat(bootstrap.second).contains("must not be the bootstrap administrator")
+        val text = Files.readString(script)
+        assertThat(text).describedAs("it asks for the app before it retires the one with a password").contains("CONFIGURE_TOTP", "grep -qx otp", "defaultAction=true")
+    }
+
+    @Test
+    fun `every proxied location replaces the forwarded headers the application reads and empties the ones it does not`() {
+        val confs = Files.list(Path.of("deploy/edge")).use { files -> files.filter { it.toString().endsWith(".conf") }.toList() }
+        val lines = confs.flatMap { Files.readAllLines(it) }.filterNot { it.trimStart().startsWith("#") }.map { it.trim() }
+        val proxied = lines.count { it.startsWith("proxy_pass ") }
+
+        assertThat(proxied).isGreaterThan(0)
+        mapOf(
+            "proxy_set_header X-Forwarded-Host \$forwarded_host;" to "a host with its port is read by Tomcat without the port",
+            "proxy_set_header X-Forwarded-Port \$forwarded_port;" to "a proxied location without the port makes the application rebuild the proof's URL on 443",
+            "proxy_set_header X-Forwarded-Proto \$scheme;" to "the scheme is the edge's, never the client's",
+            "proxy_set_header X-Forwarded-For \$remote_addr;" to "the address is replaced, not appended to",
+            *listOf("Forwarded", "X-Forwarded-Prefix", "X-Forwarded-Ssl", "X-Forwarded-Server", "X-Forwarded-By", "X-Real-IP")
+                .map { "proxy_set_header $it \"\";" to "$it is not read by the application, so what a client sends is dropped" }.toTypedArray(),
+        ).forEach { (line, why) -> assertThat(lines.count { it == line }).describedAs(why).isEqualTo(proxied) }
+        assertThat(lines.joinToString("\n")).contains("map \$http_host \$forwarded_port", "default 443;", "map \$http_host \$forwarded_host")
     }
 
     @Test

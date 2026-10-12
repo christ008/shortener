@@ -19,6 +19,11 @@ import java.time.Duration
  *   next. [Nonce.secret] must be the same on every instance, and in `production` it is required; elsewhere a blank one is a random
  *   secret for each process.
  * - [accessTokenType]: the JOSE type access tokens must carry (RFC 9068). Blank skips the check.
+ * - [admin]: what a token with the administrator scope must show. Its person signed in with a second factor, meaning an `acr` claim that
+ *   is a number of at least [Admin.minLevel] (2) or one of [Admin.acrValues] (names a realm gives such levels, none by default), unless its
+ *   client is in [Admin.exemptClients], the service accounts that hold the scope. [Admin.scope] is the scope of `shortener.shortlink.scopes.admin`.
+ * - [accessTokenClaimTypes]: the values of the `typ` claim that make a token with the header `JWT` an access token, `Bearer` and
+ *   `DPoP` as Keycloak writes them. Empty accepts the header alone. A client that registers itself gets no `at+jwt` header.
  */
 @ConfigurationProperties("shortener.security")
 data class SecurityProperties(
@@ -26,7 +31,16 @@ data class SecurityProperties(
     val rateLimit: RateLimit = RateLimit(),
     val dpop: Dpop = Dpop(),
     val accessTokenType: String = "at+jwt",
+    val accessTokenClaimTypes: List<String> = listOf("Bearer", "DPoP"),
+    val admin: Admin = Admin(),
 ) {
+
+    data class Admin(
+        val scope: String = "shortlinks:admin",
+        val minLevel: Int = 2,
+        val acrValues: List<String> = emptyList(),
+        val exemptClients: List<String> = emptyList(),
+    )
 
     data class Dpop(val required: Boolean = true, val nonce: Nonce = Nonce())
 

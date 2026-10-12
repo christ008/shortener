@@ -180,6 +180,70 @@ Notes:
   worked. `DpopIntegrationTest` reproduces the refusal at the application and shows the header fixing it, and the smoke test
   passed through the edge on 9443 ([Verified](INTERNALS.md#verified)).
 
+### The administrator
+
+The bootstrap administrator (`admin`, with the password of the `keycloak_admin_password` secret) signs in with a password alone, and is for making the first real one.
+Make it, from the node, with the stack running:
+
+```bash
+deploy/keycloak/admin-user create ana
+```
+
+It prints a password that works once. At the first sign-in to the console Keycloak asks for a new password and a code from an authenticator app (any TOTP app), and from then on
+a password is not enough: every user the master realm gets has to set the app up (`CONFIGURE_TOTP` is a default action), and five wrong passwords slow the account down. When
+`ana` has signed in with the app, retire the bootstrap one:
+
+```bash
+deploy/keycloak/admin-user retire ana
+```
+
+`retire` refuses until `ana` has an authenticator app and the administrator role, so the stack is not left without a way in. It disables `admin`; delete it in the console once you are sure.
+Names are lower case: Keycloak keeps them so.
+
+`kcadm.sh` cannot answer a one-time code, so with a user that has the app it cannot sign in with a password: use the console (reached as above) for what the notes list as `kcadm.sh`.
+Tried on Keycloak 26.8.0 (2026-10-12): a password alone asks for the code, a wrong code is refused, the right one signs in, and `retire` disables the bootstrap administrator and refuses before the app is set up.
+
+### Administrators in the API
+
+The administrator scope (`shortlinks:admin`) reads and disables every client's links, and the API does not take a token with it on trust ([ADR 0031](adr/0031-human-administrators-need-a-second-factor.md)):
+
+- **A service account** (`admin-client`) authenticates with a key and has no second factor to show. It must be listed in `ADMIN_SERVICE_CLIENTS` (default `admin-client`), and a client listed there must not be able to sign a person in.
+- **A person** needs a token whose `acr` claim is a level of 2 or more (`shortener.security.admin.min-level`). Otherwise the API answers `401` with `error="insufficient_user_authentication"` and `acr_values="2"` (RFC 9470), and a client signs the person in again with that `acr_values`.
+
+Keycloak's own flows do not write it: a person who gave a one-time code and one who did not both get `acr: 1`. The realm that gives people the scope (the UI's) must take
+the flow of `deploy/keycloak/realm-step-up.json` (its `authenticationFlows`, `authenticatorConfig` and `browserFlow`) and its client must send `acr_values=2`, or have it as its default. Tried on
+Keycloak 26.8.0: a person who asks for level 2 and has a code configured is asked for it and gets `acr: 2`; one who does not ask gets `1`, as a service account does (the flow gives the levels no names: a name such as `pwd` would label a client that signs in with a key); one with no code configured is made to set it up first.
+
+### Registering a client
+
+A client is a key. Nobody registers without an invitation, and an invitation is made by an administrator in the console: Clients, Initial access token, Create, with a count of 1 and
+a deadline (seven days is plenty). The token is shown once. Give it to the person by a channel you trust.
+
+The person, with a JDK 17 or newer and `deploy/keycloak/DpopClient.java`:
+
+```bash
+export ISSUER=https://shortener.example.com/realms/shortener TOKEN_URL=$ISSUER/protocol/openid-connect/token
+java deploy/keycloak/DpopClient.java register ana INVITATION ana.jwk.json
+java deploy/keycloak/DpopClient.java call ana.jwk.json CLIENT_ID POST https://shortener.example.com/api/short-links '{"targetUrl":"https://example.com/a/long/path"}'
+```
+
+`register` makes the key and writes its private half to `ana.jwk.json` (readable by its owner alone, never overwritten) before it asks, registers the public half, and prints the client id. A refused
+registration leaves no file. The person is told to keep the file: it is the only way to be that client.
+
+What the client gets is the realm's, not its own: `shortlinks:create`, `read` and `delete`, no custom codes (`claim`), no administration; the audience `shortener-api`; an `owner` that is its client id
+(a UUID, which is what `created_by` shows: the name it gave is `client_name` in the console); tokens that live five minutes and are bound to a key of the client's own, since the application accepts no other. It cannot ask for more: another
+scope, a mapper of its own or a client id of its choosing is refused ([ADR 0039](adr/0039-clients-register-themselves-with-an-invitation.md)).
+
+Limits and how to end one:
+
+- **At most 50 clients** in the realm, the operator's included (`Max Clients Limit`, in the console: Clients, Client registration, Client registration policies). A used invitation is gone, an unused one stays until its deadline;
+  delete it under Initial access token.
+- **Six requests a minute per address** to the registration endpoint at the edge. Keycloak's own endpoint and SAML answer `404`.
+- **To end a client:** disable or delete it in the console. Its token stops working within five minutes. To take a link down, `PATCH` it with the administrator client.
+- **A `jwks_uri`** instead of the key itself is accepted, and fetched by Keycloak: [F-14](THREAT_MODEL.md#f-14-a-client-that-registers-itself-can-name-a-jwks_uri).
+- **An existing stack** keeps the realm it imported. Bring it in line with the new template in the console (a client scope `shortener-owner` with a *User Session Note* mapper of the note `client_id` into the claim `owner`, as default
+  scope with `shortlinks:create`, `read` and `delete`; the registration policies above; and remove the `owner` mapper of each client), or import the new realm into a new stack.
+
 ## Backups and a replica
 
 `deploy/stack/overlays/compose.postgres-ha.yaml` adds pgBackRest backups and a streaming replica ([ADR 0028](adr/0028-postgres-backups-and-a-replica.md)).

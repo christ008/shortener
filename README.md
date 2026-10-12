@@ -73,7 +73,8 @@ Then call it, rehearse the production stack on your machine, and go to productio
 
 ## The public instance
 
-<https://shortener.codes> accepts links to `example.com` only, and calling the API needs a client key (the demo client's is not published). With one:
+<https://shortener.codes> accepts links to `example.com` only, and calling the API needs a client key (the demo client's is not published). Ask for an invitation, then make your own client
+with `java deploy/keycloak/DpopClient.java register NAME INVITATION KEY_FILE` ([DEPLOY.md](docs/DEPLOY.md#registering-a-client)). With a key:
 
 ```bash
 export TOKEN_URL=https://shortener.codes/realms/shortener/protocol/openid-connect/token ISSUER=https://shortener.codes/realms/shortener

@@ -12,8 +12,9 @@
 #   Keycloak's documentation sizes a pod at 1250 MB with 10,000 cached sessions, about 300 MB of it outside the heap, and says a limit of
 #   750 MB is the least that gives the heap the old maximum of 512 MB; docs/DEPLOY.md#keycloak has what a small host can do.
 # - Realm: imported at the first start only. Made by `tools/run Realms production` (./gradlew productionRealm).
-# - Keys: read over the stack's network (JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs).
+# - Keys: read over the `data` network (JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs).
 #   ISSUER_URI is the public ${PUBLIC_URL}/realms/shortener.
+# - Networks: `idp-front` with the edge and `data` with the database and the application. Neither has a route out, so Keycloak has none.
 services:
   keycloak:
     read_only: true
@@ -42,7 +43,9 @@ services:
     volumes:
       - {type: tmpfs, target: /tmp, tmpfs: {size: 67108864, mode: 1023}}
       - {type: tmpfs, target: /opt/keycloak/data/tmp, tmpfs: {size: 67108864, mode: 1023}}
-    networks: [edge, data]
+    networks:
+      idp-front: {}
+      data: {}
     healthcheck:
       # No curl in the image: a bash TCP request to the management port.
       test: ['CMD', 'bash', '-c', 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "\"UP\"" <&3']
@@ -69,6 +72,16 @@ services:
   edge:
     configs:
       - {source: edge-keycloak, target: /etc/nginx/locations/keycloak.conf}
+    networks:
+      idp-front: {}
+
+networks:
+  # The edge to Keycloak, and nothing else, so Keycloak has no route out: it shares no network with the edge but this one, and the
+  # edge shares none with the application but ingress. Encrypted between nodes.
+  idp-front:
+    internal: true
+    driver_opts:
+      encrypted: 'true'
 
 configs:
   # Names carry a hash of the file (set by deploy/stack/deploy.sh).

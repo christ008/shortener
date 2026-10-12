@@ -1,0 +1,78 @@
+#!/bin/sh
+# The administrator of Keycloak, with a second factor. Run it on the node, with the Keycloak of the stack running:
+#
+#   deploy/keycloak/admin-user create NAME     makes the administrator NAME and prints a password that works once
+#   deploy/keycloak/admin-user retire NAME     disables the bootstrap administrator, once NAME has an authenticator app
+#
+# The bootstrap administrator (KC_BOOTSTRAP_ADMIN_USERNAME, `admin`) exists to make the first one, and signs in with a password
+# alone. `create` makes a user of the master realm who must, at the first sign-in, choose a new password and scan a
+# one-time-password code (TOTP, any authenticator app), and makes that setup the default for every user the realm gets
+# afterwards, so nobody is an administrator on a password alone. `retire` refuses until NAME has set the app up, so the
+# stack is never left without an administrator who can sign in.
+#
+# The console is not on the edge: sign in through an SSH tunnel to the node (docs/DEPLOY.md#keycloak). kcadm cannot answer
+# a one-time code, so what this does it does with the bootstrap password, which is why it is the last thing it is used for.
+#
+# Settings, optional: KEYCLOAK_CONTAINER (default: the container of the service shortener_keycloak), BOOTSTRAP_ADMIN (default
+# admin), BOOTSTRAP_PASSWORD_FILE (default /run/secrets/keycloak_admin_password, inside the container).
+set -eu
+
+command=${1:-}
+name=${2:-}
+bootstrap=${BOOTSTRAP_ADMIN:-admin}
+password_file=${BOOTSTRAP_PASSWORD_FILE:-/run/secrets/keycloak_admin_password}
+
+usage() {
+  echo "usage: deploy/keycloak/admin-user create NAME | retire NAME" >&2
+  exit 2
+}
+[ -n "$name" ] || usage
+case "$command" in create | retire) ;; *) usage ;; esac
+case "$name" in
+  *[!A-Za-z0-9._-]* | '') echo "NAME may have letters, digits, dots, dashes and underscores" >&2; exit 2 ;;
+esac
+# Keycloak keeps user names in lower case, and kcadm looks them up as written.
+name=$(printf '%s' "$name" | tr 'A-Z' 'a-z')
+[ "$name" != "$bootstrap" ] || { echo "NAME must not be the bootstrap administrator" >&2; exit 2; }
+
+container=${KEYCLOAK_CONTAINER:-$(docker ps -q -f name=shortener_keycloak | head -n 1)}
+[ -n "$container" ] || { echo "no running Keycloak container (set KEYCLOAK_CONTAINER)" >&2; exit 1; }
+
+config=/tmp/kcadm.config
+kc() { docker exec "$container" /opt/keycloak/bin/kcadm.sh "$@" --config "$config"; }
+
+docker exec "$container" sh -c '/opt/keycloak/bin/kcadm.sh config credentials --config "$1" --server http://localhost:8080 \
+  --realm master --user "$2" --password "$(cat "$3")"' _ "$config" "$bootstrap" "$password_file" >/dev/null \
+  || { echo "could not sign in as $bootstrap with $password_file: is it already retired?" >&2; exit 1; }
+
+user_id() { kc get users -r master -q "username=$1" -q exact=true --fields id --format csv --noquotes | head -n 1; }
+
+case "$command" in
+  create)
+    [ -z "$(user_id "$name")" ] || { echo "$name exists already" >&2; exit 1; }
+    password=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
+    id=
+    # A user that was made and could not be finished is removed, so that a second try is not met with "exists already".
+    undo() { [ $? -eq 0 ] || [ -z "$id" ] || { kc delete "users/$id" -r master >/dev/null 2>&1 && echo "$name was removed" >&2; }; }
+    trap undo EXIT
+    id=$(kc create users -r master -s "username=$name" -s enabled=true -s 'requiredActions=["CONFIGURE_TOTP","UPDATE_PASSWORD"]' -i)
+    kc set-password -r master --userid "$id" --new-password "$password" --temporary
+    kc add-roles -r master --uusername "$name" --rolename admin
+    # Anyone the realm gets from now on sets up the app too, and a person who tries a password guess is slowed down.
+    kc update authentication/required-actions/CONFIGURE_TOTP -r master -s defaultAction=true
+    kc update realms/master -s bruteForceProtected=true -s failureFactor=5 -s maxFailureWaitSeconds=900 -s sslRequired=external
+    echo "administrator $name made. First sign-in: user $name, password $password"
+    echo "It asks for a new password and a code from an authenticator app, then $bootstrap can be retired:"
+    echo "  deploy/keycloak/admin-user retire $name"
+    ;;
+  retire)
+    id=$(user_id "$name")
+    [ -n "$id" ] || { echo "$name does not exist" >&2; exit 1; }
+    kc get "users/$id/credentials" -r master --fields type --format csv --noquotes | grep -qx otp \
+      || { echo "$name has not set up an authenticator app: sign in as $name first, and nothing was changed" >&2; exit 1; }
+    kc get "users/$id/role-mappings/realm/composite" -r master --fields name --format csv --noquotes | grep -qx admin \
+      || { echo "$name is not an administrator: nothing was changed" >&2; exit 1; }
+    kc update "users/$(user_id "$bootstrap")" -r master -s enabled=false
+    echo "$bootstrap is disabled. Delete it, once you are sure, in the console: Users, $bootstrap."
+    ;;
+esac

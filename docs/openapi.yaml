@@ -601,15 +601,18 @@ components:
       description: |
         A body that is not valid JSON, lacks a field or has a `customCode` on a `POST`, a short code that is not 3 to 32 letters, digits, `-` or `_`, a sort
         property that is not allowed, a `PATCH` that is not `{"disabled": true}`, or a target whose host this instance does
-        not accept.
+        not accept. Also a request that presents its access token in more than one way, such as two `Authorization` headers: its
+        `WWW-Authenticate` names the `DPoP` scheme with `error="invalid_request"` (RFC 9449, section 7.2).
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     Unauthorized:
       description: |
-        No credentials, a bad token or proof, the `Bearer` scheme, or a proof without the current nonce. `WWW-Authenticate`
-        names the `DPoP` scheme and the error (`invalid_token`, `invalid_request`, `invalid_dpop_proof` or `use_dpop_nonce`).
+        No credentials, a bad token, no proof or a bad one, the `Bearer` scheme, or a proof without the current nonce. `WWW-Authenticate`
+        names the `DPoP` scheme and the error (`invalid_token`, `invalid_dpop_proof`, `use_dpop_nonce` or `insufficient_user_authentication`).
+        With `insufficient_user_authentication` the token has the administrator scope without the second factor it needs, and `acr_values` has the
+        authentication level to sign the person in with (RFC 9470).
         With `use_dpop_nonce`, `DPoP-Nonce` has the nonce for the proof of the repeated request.
       headers:
         WWW-Authenticate:
