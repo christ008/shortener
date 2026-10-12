@@ -20,7 +20,7 @@ it, and sees that another client cannot see it.
 
 ## Shape
 
-One arm64 VM (Ubuntu 24.04 on AWS, a Graviton `t4g.medium` in `us-east-2`: 2 vCPU and 4 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm. Oracle's Always Free Ampere A1 (up to 4 OCPU and 24 GB for the account) is the same shape and costs nothing, when Oracle has capacity: a script that retries until it does is the cheapest way to get one.
+One arm64 VM (Ubuntu 24.04 on AWS, a Graviton `t4g.medium` in `us-east-2`: 2 vCPU and 4 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm. The first choice was Oracle's Always Free Ampere A1, which is the same shape and costs nothing, but it had no capacity, so the plan went to AWS.
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ flowchart LR
 
 | Decision | Options |
 |---|---|
-| Provider | AWS (decided 2026-10-11): `t4g.medium`, `us-east-2`, with the free plan's credits. Oracle's Ampere A1 is the free alternative. Another arm64 VM works; an amd64 one needs the image built there |
+| Provider | AWS (decided 2026-10-11): `t4g.medium`, `us-east-2`, with the free plan's credits (Oracle's Always Free Ampere A1 had no capacity). Another arm64 VM works; an amd64 one needs the image built there |
 | Host name | a domain or subdomain you control; the token `iss` must equal the public issuer URL |
 | Who can create links | the dev clients' public keys, or a demo client whose key is published in the README |
 | Certificate | decided: `certbot --webroot` through the edge, with the secrets named after their contents ([DEPLOY.md](DEPLOY.md#certificate)). Written, not run against Let's Encrypt |
