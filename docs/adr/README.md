@@ -56,6 +56,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0038](0038-segment-the-stack-networks.md) | Five networks: the edge alone, the edge with the application, with Keycloak, the data, and the application's way out | Keycloak could reach the internet, and the application trusted every private address | five networks to keep straight, no network policy inside one | earned |
 | [0039](0039-clients-register-themselves-with-an-invitation.md) | Clients register themselves with an invitation, and the identity provider decides all but the key | the operator made each client by hand | a UUID as owner, a type check that reads a claim | earned |
 | [0040](0040-status-codes-of-the-dpop-errors.md) | A DPoP error has the status RFC 6750 and RFC 9449 give it: `401` for a token or a proof, `400` for a request with two ways of presenting the token | every failure was a `401`, even `invalid_request` | a client that read `invalid_request` for a missing proof sees `invalid_dpop_proof` | earned |
+| [0041](0041-keycloaks-console-through-an-ssh-tunnel.md) | Keycloak's console is served at the site's own address to the node itself only, so an SSH tunnel reaches it | the console could not be reached, and a tunnel to the container's address does not work on Swarm |
 
 <details>
 <summary>Conventions and tooling: common practice, recorded so the history is complete</summary>

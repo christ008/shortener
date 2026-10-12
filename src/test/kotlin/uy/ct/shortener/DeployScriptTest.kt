@@ -156,4 +156,26 @@ class DeployScriptTest {
         deploy("VERIFY_SIGNATURE" to "never", "ACME" to "1")
         assertThat(calls.last { it.contains("stack deploy") }).contains("-c deploy/stack/overlays/compose.acme.yaml")
     }
+
+    @Test
+    fun `adds the console overlay only with CONSOLE and Keycloak, and names its config after its contents`() {
+        stub("docker", "echo \"docker \$* EDGE_CONSOLE_CONF_HASH=\$EDGE_CONSOLE_CONF_HASH\" >>\"$work/calls.log\"")
+        deploy("VERIFY_SIGNATURE" to "never", "KEYCLOAK" to "1")
+        assertThat(calls.last { it.contains("stack deploy") }).doesNotContain("compose.console.yaml")
+
+        val result = deploy("VERIFY_SIGNATURE" to "never", "KEYCLOAK" to "1", "CONSOLE" to "1")
+        assertThat(result.exit).isZero()
+        val deployed = calls.last { it.contains("stack deploy") }
+        assertThat(deployed).contains("-c deploy/stack/overlays/compose.console.yaml")
+        assertThat(deployed.substringAfter("EDGE_CONSOLE_CONF_HASH=")).matches("[0-9a-f]{12}")
+    }
+
+    @Test
+    fun `refuses the console without Keycloak, and deploys nothing`() {
+        val result = deploy("VERIFY_SIGNATURE" to "never", "CONSOLE" to "1")
+
+        assertThat(result.exit).isNotZero()
+        assertThat(result.output).contains("needs KEYCLOAK=1")
+        assertThat(calls).noneMatch { it.contains("stack deploy") }
+    }
 }

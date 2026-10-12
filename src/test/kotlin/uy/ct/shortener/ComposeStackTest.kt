@@ -37,6 +37,7 @@ class ComposeStackTest {
         "deploy/stack/overlays/compose.observability.yaml",
         "deploy/stack/overlays/compose.keycloak.yaml",
         "deploy/stack/overlays/compose.postgres-ha.yaml",
+        "deploy/stack/overlays/compose.console.yaml",
     ).map(::load)
 
     private val services: Map<String, Map<String, Any?>> = files
@@ -311,6 +312,33 @@ class ComposeStackTest {
         assertThat(blocks.getValue("^/realms/shortener/clients-registrations/openid-connect(/[^/]+)?$")).contains("limit_req zone=register", "proxy_pass")
         assertThat(blocks.getValue("^/realms/shortener/clients-registrations/")).contains("return 404").doesNotContain("proxy_pass")
         assertThat(Files.readString(Path.of("deploy/edge/nginx.conf"))).contains("zone=register:10m rate=6r/m")
+    }
+
+    @Test
+    fun `the console overlay adds one file of locations to the edge, and publishes and mounts nothing else`() {
+        val overlay = load("deploy/stack/overlays/compose.console.yaml")
+
+        assertThat(overlay.map("services").keys).containsExactly("edge")
+        val edge = overlay.map("services").map("edge")
+        assertThat(edge.keys).describedAs("what the overlay sets on the edge").containsExactly("configs")
+        assertThat(edge.list("configs").filterIsInstance<Map<*, *>>().map { it["target"] }).containsExactly("/etc/nginx/locations/console.conf")
+        assertThat(overlay.map("configs")["edge-console"].asMap()["file"]).isEqualTo("../edge/console.conf")
+    }
+
+    @Test
+    fun `the console answers 404 to everyone but the node itself, in every location, before it proxies anything`() {
+        val conf = Files.readAllLines(Path.of("deploy/edge/console.conf")).filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+        val blocks = Regex("""(?s)location\s+\^~\s+(\S+)\s*\{(.*?)\n}""").findAll(conf).associate { it.groupValues[1] to it.groupValues[2] }
+
+        assertThat(blocks.keys).describedAs("the console and the master realm, and nothing else").containsExactly("/admin/", "/realms/master/")
+        blocks.forEach { (path, body) ->
+            val guard = Regex("""if \(\${'$'}remote_addr != ([0-9.]+)\) \{\s*return 404;\s*}""").find(body)
+            assertThat(guard).describedAs("the guard of $path").isNotNull
+            assertThat(guard!!.groupValues[1]).describedAs("the address of the node, the gateway of docker_gwbridge").isEqualTo("172.18.0.1")
+            assertThat(body.indexOf("if (\$remote_addr")).describedAs("the guard of $path comes first").isLessThan(body.indexOf("proxy_pass"))
+        }
+        val public = Files.readAllLines(Path.of("deploy/edge/keycloak.conf")).filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
+        assertThat(public).describedAs("the public file does not name the console").doesNotContain("/admin").doesNotContain("realms/master")
     }
 
     @Test

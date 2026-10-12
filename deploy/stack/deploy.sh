@@ -10,6 +10,7 @@
 #   COMPOSE_FILES   files to deploy, default "deploy/stack/compose.prod.yaml". The overlays in deploy/stack/overlays/ are added with
 #                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
 #                   POSTGRES_HA=1 (compose.postgres-ha.yaml) and ACME=1 (compose.acme.yaml, for deploy/stack/certificate.sh)
+#                   and CONSOLE=1 (compose.console.yaml: Keycloak's console through an SSH tunnel, needs KEYCLOAK=1)
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
 #   VERIFY_SIGNATURE  `always` (default) runs `cosign verify` on the image for VERSION, which must have been signed by the
 #                   release workflow of its repository on ghcr.io, and deploys nothing when it fails. `never` skips it, for
@@ -39,6 +40,8 @@ if [ -f .env ]; then
   done < .env
 fi
 
+[ -z "${CONSOLE:-}" ] || [ -n "${KEYCLOAK:-}" ] || { echo "CONSOLE=1 is Keycloak's console: it needs KEYCLOAK=1" >&2; exit 1; }
+
 if [ "${VERIFY_SIGNATURE:-always}" != never ]; then
   image=${SHORTENER_IMAGE:-ghcr.io/christ008/shortener}
   case "$image" in
@@ -58,6 +61,7 @@ files=${COMPOSE_FILES:-deploy/stack/compose.prod.yaml}
 [ -z "${KEYCLOAK:-}" ] || files="$files deploy/stack/overlays/compose.keycloak.yaml"
 [ -z "${POSTGRES_HA:-}" ] || files="$files deploy/stack/overlays/compose.postgres-ha.yaml"
 [ -z "${ACME:-}" ] || files="$files deploy/stack/overlays/compose.acme.yaml"
+[ -z "${CONSOLE:-}" ] || files="$files deploy/stack/overlays/compose.console.yaml"
 args=""
 for f in $files; do args="$args -c $f"; done
 
@@ -71,6 +75,10 @@ if [ -n "${KEYCLOAK:-}" ]; then
 fi
 # The certificate secrets are named after their contents, so renewing one replaces it.
 TLS_HASH=$(cat "${SECRETS_DIR:-secrets}/tls_cert" "${SECRETS_DIR:-secrets}/tls_key" 2>/dev/null | sha256sum | cut -c1-12)
+if [ -n "${CONSOLE:-}" ]; then
+  EDGE_CONSOLE_CONF_HASH=$(sha256sum deploy/edge/console.conf | cut -c1-12)
+  export EDGE_CONSOLE_CONF_HASH
+fi
 export NGINX_CONF_HASH PROMETHEUS_CONF_HASH TLS_HASH
 
 deploy() {
