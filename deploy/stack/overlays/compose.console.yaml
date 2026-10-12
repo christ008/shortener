@@ -1,0 +1,14 @@
+# Lets the administrator reach Keycloak's console at the site's own address, through an SSH tunnel to the node. Add it beside the Keycloak overlay:
+#   KEYCLOAK=1 CONSOLE=1 deploy/stack/deploy.sh <version>
+#
+# - Edge: one more file of locations, deploy/edge/console.conf, for /admin/ and the master realm. It answers 404 to every connection but the node's own
+#   (docs/DEPLOY.md#the-console-through-a-tunnel, ADR 0041). No service publishes anything more, and Keycloak is on the same networks as before.
+services:
+  edge:
+    configs:
+      - {source: edge-console, target: /etc/nginx/locations/console.conf}
+
+configs:
+  edge-console:
+    name: 'shortener-edge-console-${EDGE_CONSOLE_CONF_HASH:-local}'
+    file: ../edge/console.conf

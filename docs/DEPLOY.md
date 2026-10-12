@@ -200,8 +200,32 @@ deploy/keycloak/admin-user retire ana
 `retire` refuses until `ana` has an authenticator app and the administrator role, so the stack is not left without a way in. It disables `admin`; delete it in the console once you are sure.
 Names are lower case: Keycloak keeps them so.
 
-`kcadm.sh` cannot answer a one-time code, so with a user that has the app it cannot sign in with a password: use the console (reached as above) for what the notes list as `kcadm.sh`.
+`kcadm.sh` cannot answer a one-time code, so with a user that has the app it cannot sign in with a password: use the console ([through a tunnel](#the-console-through-a-tunnel)) for what the notes list as `kcadm.sh`.
 Tried on Keycloak 26.8.0 (2026-10-12): a password alone asks for the code, a wrong code is refused, the right one signs in, and `retire` disables the bootstrap administrator and refuses before the app is set up.
+
+### The console through a tunnel
+
+The console is not on the Internet, and Keycloak's address on the Swarm network cannot be reached from the node, so a tunnel to it does not work. `CONSOLE=1`, beside `KEYCLOAK=1` ([ADR 0041](adr/0041-keycloaks-console-through-an-ssh-tunnel.md)),
+adds to the edge `/admin/` and the master realm at the site's own address, for connections from the node and for nobody else. From anywhere else they answer `404`. Put `CONSOLE=1` in `.env`, with the other flags, and deploy.
+
+To sign in, from your machine (the local port 443 needs root, and the name must point at the local end while the tunnel is open):
+
+```bash
+sudo sh -c 'echo "127.0.0.1 <host>" >> /etc/hosts'
+```
+
+```bash
+sudo ssh -i <key> -o UserKnownHostsFile=$HOME/.ssh/known_hosts -N -L 443:localhost:443 ubuntu@<node>
+```
+
+Then open `https://<host>/admin/master/console/`, with the real certificate. When you are done, stop the tunnel (`Ctrl-C`) and remove the line:
+
+```bash
+sudo sed -i '/127.0.0.1 <host>$/d' /etc/hosts
+```
+
+The guard is the address `172.18.0.1` in `deploy/edge/console.conf`, the gateway of `docker_gwbridge`; if `docker network inspect docker_gwbridge` says another, change it there, or the console stays closed.
+Tried on the AWS VM (2026-10-12): `404` from the Internet and `200` through the tunnel for `/admin/`, the master realm's metadata and the `shortener` realm. Not tried: the sign-in in a browser on the port 443, and the code of an authenticator app.
 
 ### Administrators in the API
 

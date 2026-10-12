@@ -105,7 +105,7 @@ Switches of `deploy/stack/deploy.sh`, which may also be in `.env`:
 
 | Variable | Effect |
 |---|---|
-| `OBSERVABILITY=1`, `KEYCLOAK=1`, `POSTGRES_HA=1`, `ACME=1` | add the overlay in `deploy/stack/overlays/`. `ACME=1` is for [certificate.sh](DEPLOY.md#certificate) |
+| `OBSERVABILITY=1`, `KEYCLOAK=1`, `POSTGRES_HA=1`, `ACME=1`, `CONSOLE=1` | add the overlay in `deploy/stack/overlays/`. `ACME=1` is for [certificate.sh](DEPLOY.md#certificate), and `CONSOLE=1` (needs `KEYCLOAK=1`) opens [Keycloak's console to a tunnel](DEPLOY.md#the-console-through-a-tunnel) |
 | `TLS_HASH` | set by the script: a hash of `tls_cert` and `tls_key`, in the names of the two secrets, so a renewed certificate is a new secret |
 | `ACME_DIR` | with `ACME=1`, the directory of the challenges on the node, default `/srv/shortener/acme` |
 | `COMPOSE_FILES` | the files to deploy, default `deploy/stack/compose.prod.yaml`. The rehearsal adds `deploy/stack/local/compose.local.yaml` |
