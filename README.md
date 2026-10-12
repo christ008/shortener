@@ -29,7 +29,7 @@ Spring Boot 4.2 · Kotlin 2.4 · Java 25 · Postgres 18 · Keycloak 26 · nginx 
   the cache TTL (30 s).
 
 Not goals: editing a link's target, expiry, teams or shared ownership, several short domains, and billing. Click analytics
-and a web UI ([docs/UI.md](docs/UI.md)) are planned, not built.
+([ADR 0037](docs/adr/0037-click-analytics-counted-off-the-hot-path.md)) and a web UI ([docs/UI.md](docs/UI.md)) are planned, not built.
 
 ```mermaid
 flowchart LR

@@ -25,7 +25,7 @@ People sign in, create short links (optionally with a custom code), list them, a
 user's links. The UI is a client of the existing API and adds no server-side logic.
 
 In scope: sign-in and sign-out, create, list with paging and sorting, copy and QR code, disable, error and rate-limit
-handling, light and dark themes, keyboard use, responsive layout. Out of scope: analytics, link editing or expiry, teams or
+handling, light and dark themes, keyboard use, responsive layout. Out of scope: analytics (planned in [ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md), the panel waits for this UI), link editing or expiry, teams or
 shared ownership.
 
 ## Choices
@@ -171,4 +171,4 @@ sequenceDiagram
 - TanStack Start was a release candidate when this was written. Check the shell file name and base path under `/app` in phase 2.
 - Mantine's CSS must load before the app's, and its color scheme script must work in a static shell without a flash.
 - A user whose refresh token expires loses unsaved form input.
-- Open: sharing links between users, per-link analytics (needs backend support), a short domain different from the UI's.
+- Open: sharing links between users, per-link analytics (needs the backend of [ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md)), a short domain different from the UI's.
