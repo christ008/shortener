@@ -2,8 +2,9 @@
 # Starts a built image of the application as the container "app", on the host network and against the Postgres and Keycloak of
 # compose.yaml, and returns when the application is ready. For CI and for trying an image by hand.
 #
-# - The image runs under the production profile, so it gets what production requires: every target host accepted, and a random
-#   DPoP nonce secret.
+# - The image runs under the production profile, so it gets what production requires: every target host accepted, a random
+#   DPoP nonce secret, and `admin-client`, the service account of the development realm, named as the one administrator that needs no
+#   second factor (ADR 0031: nobody is exempt by default, and the `dev` profile that names it is not active here).
 # - Waits up to 120 seconds for readiness, and fails at once when the container has stopped, printing the end of its log.
 #
 #   perf/start-image.sh IMAGE
@@ -22,6 +23,7 @@ docker run -d --name app --network host --memory 512m \
   -e SPRING_DATASOURCE_USERNAME=myuser -e SPRING_DATASOURCE_PASSWORD="$DEV_POSTGRES_PASSWORD" \
   -e SHORTENER_SHORTLINK_TARGETURLS_ALLOWANY=true \
   -e SHORTENER_SECURITY_DPOP_NONCE_SECRET="$(openssl rand -hex 32)" \
+  -e SHORTENER_SECURITY_ADMIN_EXEMPTCLIENTS=admin-client \
   "$image" >/dev/null
 
 for seconds in $(seq 120); do
