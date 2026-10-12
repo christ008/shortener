@@ -13,7 +13,7 @@
 #
 # Settings, all optional:
 #   SWAP_GB               swap file, default 2 (4 GB of memory is tight for the whole stack); 0 makes none
-#   COSIGN_VERSION        default 2.5.0
+#   COSIGN_VERSION        default 3.0.6: 2.x reads the signatures of the release only while they use the old layout (docs/DEPLOY.md#requirements)
 #   OVERLAYS              overlay flags written to .env, default "ACME=1 KEYCLOAK=1 POSTGRES_HA=1". Keep ACME: certificate.sh needs it
 #   KEYCLOAK_MEMORY       Keycloak's memory limit when it is in OVERLAYS, default 768M, with KEYCLOAK_HEAP_PERCENT 50 (docs/CLOUD.md#shape has the measure)
 #
@@ -25,7 +25,7 @@ set -eu
 [ "$(id -u)" -ne 0 ] || { echo "run it as the deploying user, not root; it uses sudo where needed" >&2; exit 1; }
 [ "$(dpkg --print-architecture)" = arm64 ] || { echo "this VM is not arm64" >&2; exit 1; }
 swap=${SWAP_GB:-2}
-cosign=${COSIGN_VERSION:-2.5.0}
+cosign=${COSIGN_VERSION:-3.0.6}
 overlays=${OVERLAYS:-ACME=1 KEYCLOAK=1 POSTGRES_HA=1}
 
 echo "== packages"

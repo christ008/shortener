@@ -21,8 +21,10 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
 - The image `ghcr.io/christ008/shortener:<version>`, published by the Release workflow on a `v*` tag. It is arm64 ([ADR 0036](adr/0036-jvm-image-for-arm64.md)), so the hosts are
   arm64 (AWS Graviton, Oracle's Ampere); on an amd64 host build it there with `./gradlew bootBuildImage` and set `SHORTENER_IMAGE`. A private package needs
   `docker login ghcr.io` on the manager. `deploy.sh` passes `--with-registry-auth`.
-- `cosign` on the manager. `deploy.sh` verifies the image's signature before it deploys anything, and `VERIFY_SIGNATURE=never`
-  skips that (the [one-machine rehearsal](OPERATING.md#rehearse-production-on-one-machine) does, because its image is built locally).
+- `cosign` 3.0.4 or later on the manager (`deploy/aws/bootstrap.sh` installs 3.0.6). `deploy.sh` verifies the image's signature before it deploys anything, and `VERIFY_SIGNATURE=never`
+  skips that (the [one-machine rehearsal](OPERATING.md#rehearse-production-on-one-machine) does, because its image is built locally). Cosign 3 signs in a new layout (a bundle stored as an OCI
+  referrer) that cosign 2.x does not find: it answers `no signatures found`, as for an image nobody signed. Cosign 3 verifies both layouts (tried on 0.22.1, signed in the old one), so a manager with 2.x
+  must be upgraded before a release signed by 3 can be deployed. Versions up to 2.6.1 and 3.0.3 have [CVE-2026-22703](https://github.com/advisories/GHSA-whqx-f9j3-ch6m) (medium: a crafted bundle verifies).
 - An identity provider whose tokens carry the `owner` claim and bind to the client's key (DPoP). The dev realm
   `deploy/keycloak/shortener-realm.json` shows what is needed. Never import it into a real one.
 - A certificate and key for the host name, as PEM files, and DNS pointing at the node that runs the edge.
