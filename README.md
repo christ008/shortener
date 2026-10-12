@@ -10,9 +10,9 @@
 - **Ready to run.** One command deploys it with TLS, metrics and alerts, after checking the release's signature.
 - **Every choice explained.** A threat model, a short record per decision with its cost, and a test behind each guarantee.
 
-> [!IMPORTANT]
-> Not yet run in public: performance figures come from load tests on one machine. See [Limitations](docs/INTERNALS.md#limitations)
-> and what a public instance still needs ([CLOUD.md](docs/CLOUD.md)).
+> [!NOTE]
+> **Live: <https://shortener.codes>**, a small demo with no promise of availability. Follow a link: <https://shortener.codes/RQM4j56>. See [CLOUD.md](docs/CLOUD.md).
+> The performance figures below come from load tests on one machine, not from this instance.
 
 <p align="center">
   <img src="docs/images/dashboard.png" alt="Grafana dashboard of the service at 1,500 requests a second" width="420">
@@ -71,6 +71,15 @@ Then call it, rehearse the production stack on your machine, and go to productio
 [docs/OPERATING.md](docs/OPERATING.md). Metrics, dashboard and traces: `docker compose --profile observability up -d`, then
 <http://localhost:3000/d/shortener/shortener> ([OBSERVABILITY.md](docs/OBSERVABILITY.md)).
 
+## The public instance
+
+<https://shortener.codes> accepts links to `example.com` only, and calling the API needs a client key (the demo client's is not published). With one:
+
+```bash
+export TOKEN_URL=https://shortener.codes/realms/shortener/protocol/openid-connect/token ISSUER=https://shortener.codes/realms/shortener
+java deploy/keycloak/DpopClient.java call demo-client.jwk.json demo-client POST https://shortener.codes/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
+```
+
 ## API
 
 | Request | Scope | Success | Errors |
@@ -95,8 +104,8 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
 
 ## Evidence
 
-- **Tests:** 380, all passing, 255 of them on the service. Line coverage 96.9%, branch coverage 87.5%.
-- **Mutation score:** 92% on the core logic (95 mutants), with the survivors explained.
+- **Tests:** 479, all passing, 335 of them on the service. Line coverage 97.2%, branch coverage 91.2%.
+- **Mutation score:** 92% on the logic of the `shortlink` and `security` modules (249 mutants), with the survivors explained.
   [INTERNALS.md#testing](docs/INTERNALS.md#testing)
 - **Security:** the controls, and a STRIDE model with a register of findings, severities, fix dates and the risks accepted.
   [SECURITY.md](docs/SECURITY.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md)
@@ -130,7 +139,7 @@ Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's s
 | [SECURITY.md](docs/SECURITY.md) | the controls: filter chain, tokens, DPoP, scopes, rate limits |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
 | [adr/](docs/adr/README.md) | decision records |
-| [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | plans for a public instance and a web UI (nothing built) |
+| [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | the public instance: setup, costs, what was run; a plan for a web UI (nothing built) |
 | [openapi.yaml](docs/openapi.yaml) | API contract |
 
 Releases are tagged `v0.x.y`: a minor version for a change, a patch for a fix to a release.
