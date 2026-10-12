@@ -61,3 +61,8 @@ Before any user holds `shortlinks:admin`:
 - No person is ever an administrator: the UI could not take a link down, and the operator would use a command line and a key,
   which is one factor. It was the position until this was built.
 - A second factor for `admin-client`: it has no person to ask.
+- A level above 2 for every administrator token (WebAuthn, a hardware key), weighed on 2026-10-12 and not adopted. It resists a phishing site
+  that relays a one-time code, at the cost of two keys per administrator, a flow with a level 3 and an enrolment, none of which can be tried
+  without a hardware key. It stays a setting: `SHORTENER_SECURITY_ADMIN_MINLEVEL=3` on the service, if administrators grow past a few trusted
+  people. `admin-client`, listed and bound to a key, is a way in if a person loses theirs. A level 3 only for taking links down was weighed too,
+  and needs the refusal to come from inside the operation, not from the filter.
