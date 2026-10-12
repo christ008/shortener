@@ -29,8 +29,12 @@ import java.util.Date
  * invalid one: another signing key, the wrong issuer or audience, an expired token, or one
  * missing its client or scope, with the wrong JOSE type, or bound to a client key by thumbprint
  * ([jkt]). The `owner` claim names who owns what the token creates: the client, as for a service, or
- * a user when [owner] and [authorizedParty] are given separately, as for the web UI. The JDK HTTP server behind it uses a non-daemon thread, so [stop]
- * must run when the test session ends or the test JVM never exits; [TestIdpShutdown] does that.
+ * a user when [owner] and [authorizedParty] are given separately, as for the web UI.
+ *
+ * - The JDK HTTP server behind it uses a non-daemon thread, so [stop] must run when the test session ends or the test JVM never
+ *   exits; [TestIdpShutdown] does that.
+ * - The server starts on the first use of [jwksUri] and starts again after [stop], on the port it had, because a Spring context
+ *   that the test framework keeps for later test classes holds that address. PIT opens several sessions in one JVM, and Gradle opens one.
  */
 object TestIdp {
     const val ISSUER = "http://idp.test/realms/shortener"
@@ -42,7 +46,12 @@ object TestIdp {
 
     val unpublishedKey: RSAKey = RSAKeyGenerator(2048).keyID("test-signing-key").generate()
 
-    private val server: HttpServer = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
+    private var server: HttpServer? = null
+
+    private var port = 0
+
+    @Synchronized
+    private fun running(): HttpServer = server ?: HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0).apply {
         val jwks = JWKSet(signingKey.toPublicJWK()).toString().toByteArray()
         createContext("/jwks") { exchange ->
             exchange.responseHeaders.add("Content-Type", "application/json")
@@ -50,11 +59,17 @@ object TestIdp {
             exchange.responseBody.use { it.write(jwks) }
         }
         start()
+        port = address.port
+        server = this
     }
 
-    val jwksUri: String get() = "http://localhost:${server.address.port}/jwks"
+    val jwksUri: String get() = "http://localhost:${running().address.port}/jwks"
 
-    fun stop() = server.stop(0)
+    @Synchronized
+    fun stop() {
+        server?.stop(0)
+        server = null
+    }
 
     fun token(
         client: String? = CLIENT,

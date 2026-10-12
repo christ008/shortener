@@ -1,11 +1,13 @@
 package uy.ct.shortener.shortlink.internal.persistence
 
+import ch.qos.logback.classic.Level
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.jdbc.UncategorizedSQLException
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.jdbc.datasource.AbstractDataSource
+import uy.ct.shortener.LogCapture
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.StorageUnavailableException
 import java.lang.reflect.Proxy
@@ -69,6 +71,42 @@ class JdbcShortLinkRepositoryUnavailableTest {
         val pool = RefusingPool(SQLException("internal error", "XX000"))
 
         assertFailsWith<UncategorizedSQLException> { JdbcShortLinkRepository(JdbcClient.create(pool)).findByShortCode(ShortCode("abcdefg")) }
+    }
+
+    @Test
+    fun `a lock that lock_timeout gave up on is storage being unavailable`() {
+        val pool = RefusingPool(SQLException("could not obtain lock", "55P03"))
+
+        val failure = assertFailsWith<StorageUnavailableException> {
+            JdbcShortLinkRepository(JdbcClient.create(pool)).findByShortCode(ShortCode("abcdefg"))
+        }
+
+        assertThat(failure.cause).isInstanceOf(UncategorizedSQLException::class.java)
+    }
+
+    @Test
+    fun `a storage that stays down is logged once, not once per request`() {
+        LogCapture(JdbcShortLinkRepository::class.java.name).use { log ->
+            repeat(50) { assertFailsWith<StorageUnavailableException> { repository.findByShortCode(ShortCode("abcdefg")) } }
+
+            assertThat(log.events).singleElement().satisfies({ line ->
+                assertThat(line.level).isEqualTo(Level.WARN)
+                assertThat(line.message).contains("Storage unavailable").contains("CannotGetJdbcConnectionException")
+            })
+        }
+    }
+
+    @Test
+    fun `each repository logs its first failure`() {
+        LogCapture(JdbcShortLinkRepository::class.java.name).use { log ->
+            repeat(2) {
+                assertFailsWith<StorageUnavailableException> {
+                    JdbcShortLinkRepository(JdbcClient.create(ExhaustedPool())).findByShortCode(ShortCode("abcdefg"))
+                }
+            }
+
+            assertThat(log.events).hasSize(2)
+        }
     }
 
     @Test

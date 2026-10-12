@@ -126,11 +126,13 @@ sonar {
 }
 
 /**
- * Mutation testing of the logic of the `shortlink` module, by hand: `./gradlew mutationTest`. Not part of `check` and not in CI.
- * Results: the Testing section of docs/INTERNALS.md.
+ * Mutation testing of the logic of the `shortlink` and `security` modules, by hand: `./gradlew mutationTest`. Not part of `check`
+ * and not in CI. Results: the Testing section of docs/INTERNALS.md.
  *
- * - Scope: the domain types, the service, the redirect cache, the target-URL policy and the code generator.
- * - Tests: the ones that need no Docker.
+ * - Scope: the domain types, the service, the redirect cache, the target-URL policy and the code generator, and in `security` the
+ *   problem responder, the nonces, the rate limiter and its filter, and the small filters and converters of the chain.
+ * - Tests: the ones that need no Docker, and the integration tests of `security`, which do. `TestIdp` starts again after each session
+ *   of the launcher, because PIT opens several in one JVM.
  */
 pitest {
     junit5PluginVersion = "1.2.3"
@@ -153,6 +155,18 @@ pitest {
         "uy.ct.shortener.shortlink.internal.AnyTarget*",
         "uy.ct.shortener.shortlink.internal.AllowedHosts*",
         "uy.ct.shortener.shortlink.internal.RandomShortCodeGenerator*",
+        "uy.ct.shortener.security.SecurityConfiguration*",
+        "uy.ct.shortener.security.internal.AuthScheme*",
+        "uy.ct.shortener.security.internal.ClientJwtAuthenticationConverter",
+        "uy.ct.shortener.security.internal.DpopNonces*",
+        "uy.ct.shortener.security.internal.HmacDpopNonces*",
+        "uy.ct.shortener.security.internal.NoDpopNonces*",
+        "uy.ct.shortener.security.internal.DpopNonceAuthenticationConverter",
+        "uy.ct.shortener.security.internal.DpopNonceFilter",
+        "uy.ct.shortener.security.internal.RateLimit*",
+        "uy.ct.shortener.security.internal.SecurityEvents*",
+        "uy.ct.shortener.security.internal.SecurityProblem*",
+        "uy.ct.shortener.security.internal.SenderConstrainedBearerTokenResolver",
     )
     targetTests = setOf(
         "uy.ct.shortener.shortlink.ShortCodeTest",
@@ -163,6 +177,15 @@ pitest {
         "uy.ct.shortener.shortlink.internal.TargetUrlPolicy*Test",
         "uy.ct.shortener.shortlink.internal.AuditTrailTest",
         "uy.ct.shortener.shortlink.internal.ShortLinkAuthorizationTest",
+        "uy.ct.shortener.security.internal.DpopNoncesTest",
+        "uy.ct.shortener.security.internal.RateLimiterTest",
+        "uy.ct.shortener.security.internal.SecurityEventsTest",
+        "uy.ct.shortener.security.internal.SecurityProblemResponderTest",
+        "uy.ct.shortener.security.internal.DpopNonceAuthenticationConverterTest",
+        "uy.ct.shortener.security.internal.SecurityFiltersTest",
+        "uy.ct.shortener.security.DpopNoncesConfigurationTest",
+        "uy.ct.shortener.security.DpopRequiredInProductionTest",
+        "uy.ct.shortener.security.internal.*IntegrationTest",
     )
     threads = 4
     outputFormats = setOf("HTML", "XML")

@@ -556,9 +556,8 @@ Notes:
 How the tests are counted, and what coverage and mutation testing say about them.
 
 > [!NOTE]
-> Everything below was measured on 2026-10-06 on one machine, with Docker, with the DPoP nonces
-> ([ADR 0032](adr/0032-dpop-nonces.md)) and the port fix of the edge. The commands were `./gradlew test koverHtmlReport koverXmlReport`
-> and `./gradlew mutationTest`, on a JDK 25.0.2 (SDKMAN).
+> Everything below was measured on 2026-10-11 on one machine, with Docker. The commands were `./gradlew test koverHtmlReport koverXmlReport`
+> and `./gradlew mutationTest`, with Gradle 9.8.0 launched on a GraalVM CE 25.0.4.
 
 ### What is counted
 
@@ -567,49 +566,55 @@ files and scripts of the repository.
 
 | Kind | Tests | Where | Needs Docker |
 |---|--:|---|---|
-| The application: domain, service, cache, policy, web, persistence, security, architecture | 255 | `src/test` | 114 of them, in 24 classes that all import `TestcontainersConfiguration` |
+| The application: domain, service, cache, policy, web, persistence, security, architecture | 335 | `src/test` | 118 of them, in 24 classes that all import `TestcontainersConfiguration` |
 | Infrastructure of the repository | 64 | `src/test` | none |
-| The tools ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 61 | `tools/src/test` | none |
-| **Total** | **380** | | |
+| The tools ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 80 | `tools/src/test` | none |
+| **Total** | **479** | | |
 
-All 380 ran and passed (`./gradlew test`, which runs the tools' tests too).
+All 479 ran and passed (`./gradlew test`, which runs the tools' tests too).
 
 ### Coverage (Kover)
 
-- **Tool.** Kover 0.9.11, which works with Kotlin 2.4.20 and Gradle 9.7.1 here. `./gradlew test koverHtmlReport koverXmlReport`
+- **Tool.** Kover 0.9.11, which works with Kotlin 2.4.20 and Gradle 9.8.0 here. `./gradlew test koverHtmlReport koverXmlReport`
   writes `build/reports/kover`, and CI keeps it as the `coverage` artifact. It is a measurement: there is no threshold.
 - **SonarCloud.** CI then runs `./gradlew sonar -x test`, which sends the analysis and the Kover XML report (it has the JaCoCo
   format) to project `christ008_shortener` of organization `christ008`. It needs the `SONAR_TOKEN` secret and Automatic Analysis
   switched off on the project; without the secret, as on a pull request from a fork, the step is skipped.
-- **Scope.** The classes of `uy.ct.shortener`, from the 319 tests of `src/test`, all of which ran. The tools are a build of their own
+- **Scope.** The classes of `uy.ct.shortener`, from the 399 tests of `src/test`, all of which ran. The tools are a build of their own
   and are not measured.
-- **Result.** Lines 96.9% (632 of 652), branches 87.5% (258 of 295), methods 93.6% (206 of 220), classes 94.4% (84 of 89). By
+- **Result.** Lines 97.2% (652 of 671), branches 91.2% (280 of 307), methods 93.9% (217 of 231), classes 94.6% (88 of 93). By
   package, lines:
 
   | Package | Covered | Total | Lines |
   |---|--:|--:|--:|
-  | `shortlink` (the contract) | 68 | 69 | 98.6% |
-  | `shortlink.internal` (service, cache, policy) | 153 | 155 | 98.7% |
-  | `shortlink.internal.web` | 52 | 53 | 98.1% |
-  | `security.internal` | 183 | 189 | 96.8% |
+  | `shortlink` (the contract) | 70 | 71 | 98.6% |
+  | `shortlink.internal` (service, cache, policy) | 157 | 159 | 98.7% |
+  | `shortlink.internal.web` | 60 | 62 | 96.8% |
+  | `security.internal` | 185 | 189 | 97.9% |
   | `shortlink.internal.authorization` | 32 | 33 | 97.0% |
   | `shortlink.internal.persistence` | 81 | 85 | 95.3% |
-  | `security` | 56 | 60 | 93.3% |
+  | `security` | 60 | 64 | 93.8% |
   | `uy.ct.shortener` (the migration runner) | 7 | 8 | 87.5% |
-  | **All** | **632** | **652** | **96.9%** |
+  | **All** | **652** | **671** | **97.2%** |
 
 - **How to read it.** Covered is not checked: a line a test runs is a line a test could have asserted nothing about, which is what
-  the mutation score below looks at. The branch figure is the lower one, 37 of 295 not taken.
+  the mutation score below looks at. The branch figure is the lower one, 27 of 307 not taken.
 
 ### Mutation testing (PIT)
 
 - **Tool.** PIT 1.30.0 with its JUnit 5 plugin, through `info.solidsoft.pitest` 1.19.0. `./gradlew mutationTest` writes
-  `build/reports/pitest`. It is run by hand: it is not part of `check` and not in CI, and a run took 25 s here with the classes already compiled.
-- **Scope.** The domain types, `DefaultShortLinkService`, the redirect cache, the target-URL policy and the code generator, which
-  is 95 mutants (PIT's default mutators). Not the web and persistence adapters, which are tested against HTTP and Postgres. Not
-  authorization, which is a framework's expressions, nor the audit trail, configuration, properties and native hints. It runs the
-  tests of those classes that need no Docker, because PIT wants a green run first. A mutant that only a test with a database
-  would kill would show as surviving, and none did.
+  `build/reports/pitest`. It is run by hand: it is not part of `check` and not in CI, and a run took 4 minutes here.
+- **Scope.** Two parts, 249 mutants in all (PIT's default mutators). In `shortlink`: the domain types, `DefaultShortLinkService`,
+  the redirect cache, the target-URL policy and the code generator, 103 mutants. In `security`: the problem responder, the DPoP
+  nonces and their converter and filter, the rate limiter and its filter, the security events, `AuthScheme`, the client converter, the
+  sender-constrained token resolver and `SecurityConfiguration`, 146 mutants. Not the web and persistence adapters, which are
+  tested against HTTP and Postgres. Not authorization, which is a framework's expressions, nor the audit trail, properties and
+  native hints.
+- **Tests it runs.** The ones that need no Docker, and the integration tests of `security` (Spring and Postgres), because PIT wants
+  a green run first. Those failed under PIT until `TestIdp`, the stand-in identity provider of the tests, started again after each
+  session of the JUnit launcher: PIT opens several in one JVM, Gradle one, and the listener that stops the provider at the end of a
+  session had left the next ones with no key server and a `401` for every token. A mutant that only a test with a database would
+  kill would show as surviving, and none did.
 - **First run: 95 mutants, 83 killed (87%), 2 with no coverage, test strength 89%.** A mutant killed by running forever (a
   `TIMED_OUT` change to the retry loop in `shorten`) counts as killed.
 - **What the survivors showed.** Four were not checked by the tests PIT ran: two were behaviour no test checked, two were
@@ -636,13 +641,23 @@ All 380 ran and passed (`./gradlew test`, which runs the tools' tests too).
 
   </details>
 
-- **After: 95 mutants, 87 killed (92%), 0 with no coverage, test strength 92%** (the same again with the whole suite, the DPoP nonces and the port fix). Eight survive, and none is behaviour of the
-  project: six are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
-  `CaffeineRedirectCache` and `AllowedHosts`), and two are in code of the standard library that Kotlin inlines (the early return
+- **After, `shortlink`: 103 mutants, 99 killed (96%), 0 with no coverage.** Four survive, and none is behaviour of the
+  project: two are the null checks that the Kotlin compiler adds to what a Java library returns (`Intrinsics.checkNotNull…` in
+  `AllowedHosts`; the ones in `CaffeineRedirectCache` are killed by the integration tests), and two are in code of the standard library that Kotlin inlines (the early return
   of `none` and `any` for an empty collection, an optimisation whose result is the same), so no test can kill them. PIT can be told
   to skip calls to `kotlin.jvm.internal`, but that removed 23 mutants, not 6, and most of them were killed, so the percentage
   rose without the tests having changed: it is not used.
-- **How to read it.** 92% is a statement about 95 mutants of the logic of one module, run against the tests of those classes. It
+- **`security`: 146 mutants, 131 killed (90%), 2 with no coverage.** The responder, the nonce converter, the two filters and the token
+  resolver had no test that PIT could run, so their 52 mutants went unmeasured until their unit tests; now 50 of the 52 are killed
+  and the other two are compiler null checks. Fifteen of the 146 are not killed, and none is behaviour of the project:
+  - Nine are null checks of the Kotlin compiler (`Intrinsics.checkNotNull…`).
+  - Five are in the check of `SecurityConfiguration` that the DPoP authentication filter is in the chain, which exists for a
+    native image that lacks its hints ([ADR 0017](adr/0017-native-image-on-a-pinned-base.md), on hold): on the JVM the filter is always there, and
+    the rest of these are the standard library's `check` and `any`, inlined.
+  - One has no coverage because the list of algorithms is built when the class loads, before PIT starts counting; the metadata
+    test of `DpopIntegrationTest` does read it.
+- **Together: 249 mutants, 230 killed (92%), 2 with no coverage, test strength 93%.**
+- **How to read it.** 92% is a statement about 249 mutants of the logic of two modules, run against the tests of those classes. It
   does not say how well the project is tested, and a mutant that survives is a question to read, not a defect.
 
 ### Where the evidence is
