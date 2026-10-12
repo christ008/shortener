@@ -8,6 +8,10 @@ updates:
     directories: ['/', '/tools']
     schedule:
       interval: weekly
+    ignore:
+      # The test pin in build.gradle.kts is the version Spring Security resolves for the application, so the tests use the library that ships.
+      # Raising it alone would test 10.10 while the image carries 10.9.1. It moves with Spring Boot.
+      - dependency-name: com.nimbusds:nimbus-jose-jwt
   - package-ecosystem: docker
     directories: ['/deploy/postgres', '/deploy/keycloak']
     schedule:
