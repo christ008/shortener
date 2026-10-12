@@ -1,9 +1,12 @@
 package uy.ct.shortener.shortlink.internal.web
 
 import jakarta.validation.Valid
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.data.web.SortDefault
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
@@ -13,12 +16,14 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.util.UriComponentsBuilder
 import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.ClaimResult
 import uy.ct.shortener.shortlink.CreatedByFilter
+import uy.ct.shortener.shortlink.LinkFollowed
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLink
 import uy.ct.shortener.shortlink.ShortLinkService
@@ -35,7 +40,8 @@ import java.net.URI
  * - `GET /api/short-links` lists the client's own links a page at a time (`page`, `size`, `sort`). An administrator may list
  *   any client's.
  * - `GET /api/short-links/{shortCode}` reads one, and `PATCH` with `{"disabled": true}` disables it: `200` with the link.
- * - `GET /{shortCode}` is public. It answers `302`, `404` for an unknown code, or `410` once the link is disabled.
+ * - `GET /{shortCode}` is public. It answers `302`, `404` for an unknown code, or `410` once the link is disabled. A `GET` that
+ *   redirects is published as a [LinkFollowed], so it can be counted. A `HEAD`, which link checkers send, is not.
  *
  * The `Location` and every `shortUrl` are built from the request's own scheme, host and port.
  */
@@ -43,6 +49,7 @@ import java.net.URI
 class ShortLinkController(
     private val service: ShortLinkService,
     private val scopes: ShortLinkScopes,
+    private val events: ApplicationEventPublisher,
 ) {
 
     private fun Authentication.isAdmin() = authorities.any { it.authority == scopes.admin }
@@ -103,8 +110,13 @@ class ShortLinkController(
         ShortLinkResponse.from(service.disable(shortCode, authentication.asClient()), uriBuilder.shortUrl(shortCode))
 
     @GetMapping("/{shortCode}")
-    fun redirect(@PathVariable shortCode: ShortCode): ResponseEntity<Void> {
+    fun redirect(
+        @PathVariable shortCode: ShortCode,
+        method: HttpMethod,
+        @RequestHeader(HttpHeaders.USER_AGENT, defaultValue = "") userAgent: String,
+    ): ResponseEntity<Void> {
         val shortLink = service.resolve(shortCode)
+        if (method == HttpMethod.GET) events.publishEvent(LinkFollowed(shortCode, userAgent))
         return ResponseEntity.status(HttpStatus.FOUND).location(shortLink.targetUrl).build()
     }
 }

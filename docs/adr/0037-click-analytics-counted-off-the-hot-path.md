@@ -1,7 +1,7 @@
 # 0037. Clicks are counted in aggregate, off the redirect's path
 
 - Status: **Proposed**, 2026-10-12. Nothing is built
-- Evidence: [THREAT_MODEL.md](../THREAT_MODEL.md) E3 (R), [0011](0011-in-process-redirect-cache.md), [0012](0012-readiness-excludes-the-database.md), [0013](0013-three-database-roles-and-a-migration-job.md), [0028](0028-postgres-backups-and-a-replica.md)
+- Evidence: `ClickAggregator`, `ClickFlusher`, `AnalyticsIntegrationTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) E3 (R), [0011](0011-in-process-redirect-cache.md), [0012](0012-readiness-excludes-the-database.md), [0013](0013-three-database-roles-and-a-migration-job.md), [0028](0028-postgres-backups-and-a-replica.md)
 - Replaces the threat model's "not recorded, by design: no analytics"
 
 ## Problem
@@ -17,8 +17,8 @@ and must not turn the service into a record of who read what. The public instanc
   primary language of `Accept-Language`. Bots and link previewers are a class of their own, left out of the default total.
 - **Not measured.** The address, the raw `User-Agent`, cookies, any visitor identifier, the country, unique visitors. Nothing that identifies
   a visitor is stored or logged by this feature.
-- **Capture.** The controller publishes `LinkFollowed` once `resolve` has succeeded, so a `404` or a `410` counts nothing and an unknown code
-  cannot make a row. The service's `resolve` does not change: headers are the web layer's business. Values are closed types (`DeviceClass`,
+- **Capture.** The controller publishes `LinkFollowed` once `resolve` has succeeded for a `GET`, so a `HEAD` (what link checkers send), a `404` or a `410`
+  counts nothing and an unknown code cannot make a row. The service's `resolve` does not change: headers are the web layer's business. Values are closed types (`DeviceClass`,
   a referrer that is `Direct` or a `Host`), not nullable strings.
 - **Aggregate in memory, write in batches.** A bounded aggregator keyed by (code, hour, class, dimension, value) is flushed about every 10 s with
   `INSERT ... ON CONFLICT DO UPDATE SET clicks = clicks + EXCLUDED.clicks`, so rows grow with links and hours, not with clicks, and replicas add up

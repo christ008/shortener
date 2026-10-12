@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.micrometer.observation.ObservationRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver
 import org.springframework.format.support.DefaultFormattingConversionService
 import org.springframework.http.HttpHeaders
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import uy.ct.shortener.shortlink.LinkFollowed
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.internal.AnyTarget
@@ -53,8 +55,12 @@ class ShortLinkWebTest {
         AnyTarget, ObservationRegistry.NOOP, NoAuditTrail,
     )
 
+    private val published = mutableListOf<Any>()
+
+    private val events = ApplicationEventPublisher { published += it }
+
     private val mvc: MockMvc = MockMvcBuilders
-        .standaloneSetup(ShortLinkController(service, ShortLinkScopes("shortlinks:create", "shortlinks:claim", "shortlinks:read", "shortlinks:delete", "shortlinks:admin")))
+        .standaloneSetup(ShortLinkController(service, ShortLinkScopes("shortlinks:create", "shortlinks:claim", "shortlinks:read", "shortlinks:delete", "shortlinks:admin"), events))
         .setConversionService(DefaultFormattingConversionService().apply { addConverter(StringToShortCodeConverter()) })
         .setCustomArgumentResolvers(PageableHandlerMethodArgumentResolver())
         .build()
@@ -110,6 +116,31 @@ class ShortLinkWebTest {
 
         assertThat(read.status()).isEqualTo(200)
         assertThat(read.body()).isEqualTo(created.body())
+    }
+
+    @Test
+    fun `a GET that redirects is published as a followed link, with the visitor's user agent`() {
+        create()
+
+        mvc.perform(get("/aaaaaaa").header(HttpHeaders.USER_AGENT, "Mozilla/5.0 (iPhone)")).andReturn()
+        mvc.perform(get("/aaaaaaa")).andReturn()
+
+        assertThat(published).containsExactly(
+            LinkFollowed(ShortCode("aaaaaaa"), "Mozilla/5.0 (iPhone)"),
+            LinkFollowed(ShortCode("aaaaaaa"), ""),
+        )
+    }
+
+    @Test
+    fun `a HEAD, an unknown code and a disabled link are not published`() {
+        create()
+
+        mvc.perform(head("/aaaaaaa")).andReturn()
+        mvc.perform(get("/zzzzzzz")).andReturn()
+        mvc.perform(patch("/api/short-links/aaaaaaa").asAlice().json("""{"disabled":true}""")).andReturn()
+        mvc.perform(get("/aaaaaaa")).andReturn()
+
+        assertThat(published).isEmpty()
     }
 
     @Test

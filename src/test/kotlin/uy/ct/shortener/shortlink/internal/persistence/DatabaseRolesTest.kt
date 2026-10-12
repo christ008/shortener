@@ -101,6 +101,7 @@ class DatabaseRolesTest {
 
         assertThat(owners).containsOnly(
             entry("short_link", "shortener_migrator"),
+            entry("link_click_hourly", "shortener_migrator"),
             entry("flyway_schema_history", "shortener_migrator"),
         )
     }
@@ -124,6 +125,38 @@ class DatabaseRolesTest {
                 "UPDATE short_link SET disabled_at = COALESCE(disabled_at, now()), disabled_by = COALESCE(disabled_by, 'client') WHERE short_code = 'app-role' RETURNING short_code",
             )
             assertThat(disable.use { it.next() }).describedAs("disabled").isTrue()
+        }
+    }
+
+    @Test
+    fun `lets the application role add to a count of clicks and read it, as the click store does`() {
+        asRole("shortener_app") { connection ->
+            val add = connection.prepareStatement(
+                "INSERT INTO link_click_hourly (short_code, hour, device_class, clicks) VALUES ('clicks-a', '2026-10-12T10:00:00Z', 'desktop', ?) " +
+                    "ON CONFLICT (short_code, hour, device_class) DO UPDATE SET clicks = link_click_hourly.clicks + EXCLUDED.clicks",
+            )
+            repeat(2) {
+                add.setLong(1, 3)
+                add.executeUpdate()
+            }
+
+            val total = connection.createStatement().executeQuery("SELECT clicks FROM link_click_hourly WHERE short_code = 'clicks-a'")
+            assertThat(total.use { it.next(); it.getLong(1) }).isEqualTo(6L)
+        }
+    }
+
+    @Test
+    fun `refuses the application role to delete a count or move it to another link or hour`() {
+        asRole("shortener_app") { connection ->
+            listOf(
+                "DELETE FROM link_click_hourly",
+                "TRUNCATE link_click_hourly",
+                "UPDATE link_click_hourly SET short_code = 'y'",
+                "UPDATE link_click_hourly SET hour = now()",
+                "UPDATE link_click_hourly SET device_class = 'bot'",
+                "DROP TABLE link_click_hourly",
+                "ALTER TABLE link_click_hourly ADD COLUMN extra int",
+            ).forEach { assertRefused(connection, it) }
         }
     }
 
@@ -172,6 +205,7 @@ class DatabaseRolesTest {
         asRole("shortener_exporter") { connection ->
             assertThat(connection.createStatement().executeQuery("SELECT count(*) FROM pg_stat_database").use { it.next() }).isTrue()
             assertRefused(connection, "SELECT * FROM short_link")
+            assertRefused(connection, "SELECT * FROM link_click_hourly")
         }
     }
 
