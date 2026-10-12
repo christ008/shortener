@@ -12,6 +12,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.parallel.Execution
+import org.junit.jupiter.api.parallel.ExecutionMode
 import org.junit.jupiter.api.io.TempDir
 import java.lang.reflect.InvocationTargetException
 import java.math.BigInteger
@@ -50,7 +52,13 @@ import javax.tools.ToolProvider
  * with `--release 17` and every lint on, and the rest of what it has no unit to call, such as its JSON reader and the
  * padding of coordinates, is called on that compiled class. Compiling for 17 is not running on 17, so with
  * `DPOP_CLIENT_JAVA_HOME` set to a JDK 17 the client runs on that one, which is what CI does.
+ *
+ * - Every test starts a JVM for the client, which is most of the time of the suite, so the tests of this class run concurrently.
+ * - Each has its own stand-in server, key file and temporary directory, and nothing else in the suite runs at the same time.
+ * - The client runs with the C1 compiler only: it lives under a second, and the C2 threads were more than half of its CPU time,
+ *   which is what limited how many could run together.
  */
+@Execution(ExecutionMode.CONCURRENT)
 class DpopClientTest {
 
     @TempDir
@@ -215,7 +223,7 @@ class DpopClientTest {
 
     private fun run(vararg args: String, environment: Map<String, String> = emptyMap()): Output {
         val java = Path.of(javaHomeOfTheClient, "bin", "java").toString()
-        val process = ProcessBuilder(listOf(java, "deploy/keycloak/DpopClient.java") + args)
+        val process = ProcessBuilder(listOf(java, "-XX:TieredStopAtLevel=1", "deploy/keycloak/DpopClient.java") + args)
             .apply {
                 environment().remove("TRACEPARENT")
                 environment()["TOKEN_URL"] = "$baseUrl/realms/shortener/protocol/openid-connect/token"
