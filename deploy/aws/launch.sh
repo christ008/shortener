@@ -10,7 +10,7 @@
 #
 # Settings, all optional:
 #   NAME            name of the instance, key pair and security group, default shortener-aws
-#   INSTANCE_TYPE   default t4g.medium (2 vCPU, 4 GB; t4g.large for 8 GB). Keep it arm64: the published image is
+#   INSTANCE_TYPE   default t4g.small (2 vCPU, 2 GB), the largest arm64 type the free plan allows; t4g.medium (4 GB) needs the paid plan. Keep it arm64: the published image is
 #   DISK_GB         root volume, default 30
 #   SSH_KEY         public key file, default ~/.ssh/aws_shortener.pub
 #   ADMIN_CIDR      who may reach port 22, default your current address (a /32, from checkip.amazonaws.com)
@@ -19,7 +19,7 @@
 set -eu
 
 name=${NAME:-shortener-aws}
-type=${INSTANCE_TYPE:-t4g.medium}
+type=${INSTANCE_TYPE:-t4g.small}
 disk=${DISK_GB:-30}
 key=${SSH_KEY:-$HOME/.ssh/aws_shortener.pub}
 
