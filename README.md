@@ -11,10 +11,8 @@
 - **Every choice explained.** A threat model, a short record per decision with its cost, and a test behind each guarantee.
 
 > [!NOTE]
-> **Live at <https://shortener.codes>**: one small instance (a 2 GB AWS VM) to try the service, with no promise of availability. It accepts links to `example.com`
-> only, and creating one needs a client key that is not published; following one works for anyone: <https://shortener.codes/RQM4j56> redirects to example.com.
-> How it was set up, and what was and was not run on it: [CLOUD.md](docs/CLOUD.md). The performance figures below come from load tests on one machine, not from this
-> instance ([Limitations](docs/INTERNALS.md#limitations)).
+> **Live: <https://shortener.codes>**, a small demo with no promise of availability. Follow a link: <https://shortener.codes/RQM4j56>. See [CLOUD.md](docs/CLOUD.md).
+> The performance figures below come from load tests on one machine, not from this instance.
 
 <p align="center">
   <img src="docs/images/dashboard.png" alt="Grafana dashboard of the service at 1,500 requests a second" width="420">
@@ -75,20 +73,12 @@ Then call it, rehearse the production stack on your machine, and go to productio
 
 ## The public instance
 
-<https://shortener.codes> runs the production stack of `deploy/stack/` (signed image, nginx edge, Keycloak with the `production` realm). Anyone can follow a link, and
-the realm's discovery document is at <https://shortener.codes/realms/shortener/.well-known/openid-configuration>.
-
-Calling the API needs a client key. With one (the realm's `demo-client` has one, which is not published), the reference client from [Run it](#run-it) works
-against it:
+<https://shortener.codes> accepts links to `example.com` only, and calling the API needs a client key (the demo client's is not published). With one:
 
 ```bash
 export TOKEN_URL=https://shortener.codes/realms/shortener/protocol/openid-connect/token ISSUER=https://shortener.codes/realms/shortener
 java deploy/keycloak/DpopClient.java call demo-client.jwk.json demo-client POST https://shortener.codes/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
-curl -i https://shortener.codes/<shortCode>
 ```
-
-Links may point only to the hosts of `ALLOWED_TARGET_HOSTS` (here `example.com`); any other target answers `400`. A client sees only its own links: tried on this
-instance with a second client, which got `404` for the first one's link ([CLOUD.md](docs/CLOUD.md)).
 
 ## API
 
@@ -149,7 +139,7 @@ Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's s
 | [SECURITY.md](docs/SECURITY.md) | the controls: filter chain, tokens, DPoP, scopes, rate limits |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
 | [adr/](docs/adr/README.md) | decision records |
-| [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | the public instance: its shape, costs and what was run on it; a plan for a web UI (nothing built) |
+| [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | the public instance: setup, costs, what was run; a plan for a web UI (nothing built) |
 | [openapi.yaml](docs/openapi.yaml) | API contract |
 
 Releases are tagged `v0.x.y`: a minor version for a change, a patch for a fix to a release.
