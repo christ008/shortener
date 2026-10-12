@@ -2,6 +2,7 @@ package uy.ct.shortener.analytics.internal
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import kotlin.test.assertFailsWith
 
 /**
  * What a `User-Agent` has to say for a click to be a visitor on a desktop, on a phone, or not a visitor at all. The headers are
@@ -59,7 +60,9 @@ class DeviceClassifierTest {
     }
 
     @Test
-    fun `the database stores the three values its constraint allows`() {
+    fun `the database stores the three values its constraint allows, and each reads back as its class`() {
         assertThat(DeviceClass.entries.map { it.value }).containsExactly("desktop", "mobile", "bot")
+        DeviceClass.entries.forEach { assertThat(DeviceClass.of(it.value)).isSameAs(it) }
+        assertFailsWith<NoSuchElementException> { DeviceClass.of("tablet") }
     }
 }

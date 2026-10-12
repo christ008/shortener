@@ -273,7 +273,13 @@ An owner's view of how a link is followed, counted without touching the redirect
   after the web server stops.
 - **Role.** `shortener_app` can read and insert rows of `link_click_hourly` and update `clicks`, nothing else (V7, `DatabaseRolesTest`).
 - **Off.** `shortener.analytics.enabled=false` swaps in `NoClickRecorder`: no aggregator, no flusher, no write.
-- **Not yet.** Reading the counts (`/stats`), referrer and language, consolidation of old hours and the alert on drops are phases 2 to 4 of the ADR.
+- **Read.** `GET /api/short-links/{code}/stats` (`ClickStatsController`) takes `granularity` (`hour` or `day`), `from` and `to`. `Granularity` is a sealed type whose two
+  variants each know where a bucket starts and ends, how wide a window may be (90 days of hours, 366 of days) and the window used when none is asked for.
+  `StatsWindow` rounds a request outward to whole buckets, in UTC, and refuses an empty or too wide one with a `400`. `DefaultClickStatsService` first reads the link
+  through `ShortLinkService.get`, so the rule of who may see it is that service's (`404` for another client's link, any for an administrator), then reads
+  the window with one grouped statement over the primary key range and fills the buckets that have no row with zeros. `visitors` is desktop plus mobile, and `bot` is never in it.
+  The counts are read whether or not counting is switched on.
+- **Not yet.** Referrer and language, consolidation of old hours and the alert on drops are phases 3 and 4 of the ADR.
 
 ## Errors
 
