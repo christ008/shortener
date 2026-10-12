@@ -20,7 +20,7 @@ it, and sees that another client cannot see it.
 
 ## Shape
 
-One arm64 VM (Ubuntu 24.04 on AWS, a Graviton `t4g.medium` in `us-east-2`: 2 vCPU and 4 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm. The first choice was Oracle's Always Free Ampere A1, which is the same shape and costs nothing, but it had no capacity, so the plan went to AWS.
+One arm64 VM (Ubuntu 24.04 on AWS, a Graviton `t4g.small` in `us-east-2`: 2 vCPU and 2 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm. The first choice was Oracle's Always Free Ampere A1, which is the same shape and costs nothing, but it had no capacity, so the plan went to AWS.
 
 ```mermaid
 flowchart LR
