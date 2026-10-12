@@ -151,7 +151,7 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 | T | Changing the target of an existing link | no endpoint edits a target, and the application role has no `UPDATE` on it (`DatabaseRolesTest`) | the migrator role and the operator can |
 | T | Header injection through the target | the target is parsed as a `URI`, which rejects line breaks, and only `http` and `https` are accepted | |
 | T | Stale target after takedown | the disabling instance evicts at once | other instances serve it up to 30 s, and up to 5 minutes if the database is down |
-| R | Who followed a link | not recorded, by design: no analytics | |
+| R | Who followed a link | not recorded: no address, user agent or visitor identifier is kept. [ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md) (proposed) would count clicks in aggregate, with no visitor in them | counts are approximate and a client can inflate its own |
 | I | Enumerating codes | generated codes are 7 base62 characters from `SecureRandom`, about $3.5 \times 10^{12}$ | custom codes are guessable by nature. A `410` says a code once existed |
 | D | Random codes to reach the database | the cache answers hot links. A miss is a primary-key read with a 5 s limit. 300 a minute per address. A database failure is `503`, and links already read keep redirecting | many addresses can keep the pool of ten busy and make cold reads fail |
 | E | Redirecting to a non-web scheme | `javascript:` and `data:` are refused | |
