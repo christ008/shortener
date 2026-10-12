@@ -11,7 +11,13 @@ package uy.ct.shortener.analytics.internal
 enum class DeviceClass(val value: String) {
     DESKTOP("desktop"),
     MOBILE("mobile"),
-    BOT("bot"),
+    BOT("bot");
+
+    companion object {
+
+        /** The class the database stores as [value], which its constraint keeps to the three there are. */
+        fun of(value: String): DeviceClass = entries.single { it.value == value }
+    }
 }
 
 /**

@@ -29,11 +29,12 @@ and must not turn the service into a record of who read what. The public instanc
 - **Storage.** Two tables in migration V7. The application role gets `SELECT`, `INSERT` and `UPDATE (clicks)` on them and no `DELETE`, stated next to
   the schema like V6 ([0013](0013-three-database-roles-and-a-migration-job.md)).
 - **Reading.** `GET /api/short-links/{shortCode}/stats?from=&to=&granularity=hour|day`: the total, the series, the top referrers, devices and languages.
-  The owner and an administrator may read it, through `ManageableLinks`, so another client's link is a `404`. The range is bounded.
+  The owner and an administrator may read it, by reading the link first through `ShortLinkService.get`, so another client's link is a `404` and the rule is not copied.
+  The window is rounded outward to whole buckets in UTC, and is at most 90 days of hours or 366 of days. `visitors` is desktop plus mobile, and bots are counted apart.
 - **Retention.** Hours for 90 days, days for 2 years. A job under its own role, which may `DELETE` from these tables only, folds hours into days and
   removes what is old, so `shortener_app` still cannot delete. No partitioning ([0028](0028-postgres-backups-and-a-replica.md)). A monthly compressed
   archive waits for a remote destination: on a volume of the same node it would be lost with the node, as the backup repository is.
-- **Switch.** `shortener.analytics.enabled`. Off, a null object counts nothing and the stats answer zeros, as [0011](0011-in-process-redirect-cache.md) does for the cache.
+- **Switch.** `shortener.analytics.enabled`. Off, a null object counts nothing, as [0011](0011-in-process-redirect-cache.md) does for the cache. What was counted stays readable.
 - **Modules.** `analytics` depends on `shortlink` for the event and for the ownership rule, never the reverse. The module tests check it.
 - **Observed.** `analytics_clicks_recorded_total`, `analytics_clicks_dropped_total`, `analytics_flush_seconds` and the aggregator's size. An alert on drops.
 
@@ -47,7 +48,7 @@ and must not turn the service into a record of who read what. The public instanc
 - Cost: the aggregator's memory is a setting to size for the 2 GB VM, and its entries are lost on a restart.
 - Cost: a new migration, a role in `bootstrap.sql`, a job to run, and the docs that said "no analytics" change: the threat model, the README, the UI plan and the API description.
 - Known: a referrer host can name an internal site. Only the host is kept, never the path or the query.
-- Way back: set `enabled` to false. The tables stay and are read-only history.
+- Way back: set `enabled` to false. The tables stay and the stats keep answering from them.
 
 ## Rejected
 

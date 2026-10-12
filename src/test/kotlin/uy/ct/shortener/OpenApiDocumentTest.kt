@@ -3,6 +3,9 @@ package uy.ct.shortener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.yaml.snakeyaml.Yaml
+import uy.ct.shortener.analytics.internal.web.ClickCountsResponse
+import uy.ct.shortener.analytics.internal.web.ClickPointResponse
+import uy.ct.shortener.analytics.internal.web.ClickStatsResponse
 import uy.ct.shortener.shortlink.internal.web.ClaimShortLinkRequest
 import uy.ct.shortener.shortlink.internal.web.CreateShortLinkRequest
 import uy.ct.shortener.shortlink.internal.web.ShortLinkPageResponse
@@ -115,6 +118,9 @@ class OpenApiDocumentTest {
         mapOf<String, KClass<*>>(
             "ShortLink" to ShortLinkResponse::class,
             "ShortLinkPage" to ShortLinkPageResponse::class,
+            "ClickStats" to ClickStatsResponse::class,
+            "ClickPoint" to ClickPointResponse::class,
+            "ClickCounts" to ClickCountsResponse::class,
             "CreateShortLinkRequest" to CreateShortLinkRequest::class,
             "ClaimShortLinkRequest" to ClaimShortLinkRequest::class,
             "UpdateShortLinkRequest" to UpdateShortLinkRequest::class,

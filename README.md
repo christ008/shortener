@@ -88,6 +88,7 @@ java deploy/keycloak/DpopClient.java call demo-client.jwk.json demo-client POST 
 | `PUT /api/short-links/{code}` | `shortlinks:create` and `shortlinks:claim` | for a code you choose: `201`, or `200` when you already have this link, so repeating is safe | `400`; `409` when the code is reserved, taken, or yours for another target |
 | `GET /api/short-links?page&size&sort` | `shortlinks:read` | `200` with `items`, `page`, `size`, `hasNext`, `totalItems` and `totalPages`. Sort by `createdAt` or `shortCode` | none of its own |
 | `GET /api/short-links/{code}` | `shortlinks:read` | `200` | `404` |
+| `GET /api/short-links/{code}/stats?granularity&from&to` | `shortlinks:read` | `200` with the clicks of the link as a series of hours or days, and their total. Approximate ([ADR 0037](docs/adr/0037-click-analytics-counted-off-the-hot-path.md)) | `400` for a window it cannot answer; `404` |
 | `PATCH /api/short-links/{code}` with `{"disabled": true}` | `shortlinks:delete` | `200` with the link, disabled. Repeating is safe | `400`; `404` |
 | `GET /{code}` | none | `302` | `404`; `410` when disabled |
 
