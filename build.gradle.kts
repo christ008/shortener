@@ -126,7 +126,7 @@ sonar {
 }
 
 /**
- * Mutation testing of the logic of the `shortlink` and `security` modules, by hand: `./gradlew mutationTest`. Not part of `check`
+ * Mutation testing of the logic of the `shortlink`, `analytics` and `security` modules, by hand: `./gradlew mutationTest`. Not part of `check`
  * and not in CI. Results: the Testing section of docs/INTERNALS.md.
  *
  * - Scope: the domain types, the service, the redirect cache, the target-URL policy and the code generator, and in `security` the
@@ -155,6 +155,12 @@ pitest {
         "uy.ct.shortener.shortlink.internal.AnyTarget*",
         "uy.ct.shortener.shortlink.internal.AllowedHosts*",
         "uy.ct.shortener.shortlink.internal.RandomShortCodeGenerator*",
+        "uy.ct.shortener.analytics.internal.ClickAggregator*",
+        "uy.ct.shortener.analytics.internal.ClickKey*",
+        "uy.ct.shortener.analytics.internal.ClickFlusher*",
+        "uy.ct.shortener.analytics.internal.ClickListener*",
+        "uy.ct.shortener.analytics.internal.DeviceClass*",
+        "uy.ct.shortener.analytics.internal.AnalyticsProperties*",
         "uy.ct.shortener.security.SecurityConfiguration*",
         "uy.ct.shortener.security.internal.AuthScheme*",
         "uy.ct.shortener.security.internal.ClientJwtAuthenticationConverter",
@@ -177,6 +183,9 @@ pitest {
         "uy.ct.shortener.shortlink.internal.TargetUrlPolicy*Test",
         "uy.ct.shortener.shortlink.internal.AuditTrailTest",
         "uy.ct.shortener.shortlink.internal.ShortLinkAuthorizationTest",
+        "uy.ct.shortener.analytics.internal.Click*Test",
+        "uy.ct.shortener.analytics.internal.DeviceClassifierTest",
+        "uy.ct.shortener.analytics.internal.AnalyticsPropertiesTest",
         "uy.ct.shortener.security.internal.DpopNoncesTest",
         "uy.ct.shortener.security.internal.RateLimiterTest",
         "uy.ct.shortener.security.internal.SecurityEventsTest",

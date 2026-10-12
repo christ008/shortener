@@ -255,6 +255,26 @@ Rejected:
 - Cross-instance invalidation with `LISTEN/NOTIFY`: more machinery and a new failure mode for bounded staleness.
 - Caching 404s or 410s: delays new links or takedowns.
 
+## Click counting
+
+An owner's view of how a link is followed, counted without touching the redirect. The decision and what it costs are in
+[ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md); this is how it works.
+
+- **Capture.** `ShortLinkController.redirect` publishes `LinkFollowed(code, userAgent)` after `resolve` succeeded, for a `GET` only. A `HEAD`, an
+  unknown code and a disabled link publish nothing. `ClickListener` receives it in the request's thread, classifies the `User-Agent`
+  (`DeviceClassifier`: `desktop`, `mobile` or `bot`, and no header is a bot) and records it. It never throws: a failure is counted in
+  `analytics_clicks_dropped_total{reason="error"}`.
+- **Hold.** `ClickAggregator` keeps a count per (link, hour, class) in a `ConcurrentHashMap`, added to atomically with `compute`, so concurrent
+  redirects lose no click. It holds `max-entries` keys at most. A key already held always counts, and a click that needs a new key past the cap is dropped.
+- **Write.** `ClickFlusher` drains it every `flush-interval` in batches of `batch-size`. `JdbcClickStore` writes a batch with one statement,
+  `INSERT ... SELECT FROM unnest(...) ON CONFLICT DO UPDATE SET clicks = clicks + EXCLUDED.clicks`, so a batch is atomic and two instances add up.
+- **Fail.** A batch that cannot be written goes back into the aggregator, up to the cap, and the flush ends. The first failure of a run and the recovery are
+  logged, with the exception's type and no statement. Nothing in readiness depends on it. A restart loses what was not flushed, and a shutdown flushes first,
+  after the web server stops.
+- **Role.** `shortener_app` can read and insert rows of `link_click_hourly` and update `clicks`, nothing else (V7, `DatabaseRolesTest`).
+- **Off.** `shortener.analytics.enabled=false` swaps in `NoClickRecorder`: no aggregator, no flusher, no write.
+- **Not yet.** Reading the counts (`/stats`), referrer and language, consolidation of old hours and the alert on drops are phases 2 to 4 of the ADR.
+
 ## Errors
 
 Every error is an RFC 9457 problem detail (`application/problem+json`), rendered by Spring MVC.
