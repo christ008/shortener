@@ -32,13 +32,27 @@ Not goals: editing a link's target, expiry, teams or shared ownership, several s
 and a web UI ([docs/UI.md](docs/UI.md)) are planned, not built.
 
 ```mermaid
-flowchart LR
-    client(["Client with a DPoP key"]) -->|HTTPS| edge["nginx edge<br/>TLS, limits"]
-    visitor(["Visitor"]) -->|"GET /{code}"| edge
-    edge --> app["shortener x2<br/>cache of active links"]
-    app -->|"shortener_app: no DELETE, no DDL"| db[("Postgres")]
-    migrate["migration job"] -->|shortener_migrator| db
-    app -. "signing keys" .-> idp(["Identity provider"])
+architecture-beta
+    service visitor(internet)[Visitor following a link]
+    service client(internet)[Client with a DPoP key]
+    junction jv
+    junction jc
+    service edge(server)[nginx edge TLS and limits]
+    junction jt
+    service app(server)[shortener x2 with cache of active links]
+    service db(database)[Postgres shortener_app has no DELETE or DDL]
+    service migrate(server)[migration job]
+    service idp(cloud)[Identity provider signing keys]
+
+    visitor:R -- L:jv
+    jv:B -- T:jc
+    client:R -- L:jc
+    jc:R --> L:edge
+    edge:R --> L:app
+    app:R --> L:db
+    migrate:L --> R:db
+    idp:R -- L:jt
+    jt:B -- T:app
 ```
 
 ## Worth reading

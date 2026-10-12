@@ -23,16 +23,29 @@ it, and sees that another client cannot see it.
 One arm64 VM (Ubuntu 24.04 on AWS, a Graviton `t4g.small` in `us-east-2`: 2 vCPU and 2 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm. The first choice was Oracle's Always Free Ampere A1, which is the same shape and costs nothing, but it had no capacity, so the plan went to AWS.
 
 ```mermaid
-flowchart LR
-    visitor(["Visitor"]) -->|"HTTPS 443"| edge["nginx edge"]
-    subgraph vm["One arm64 VM"]
-        edge --> app["shortener x2"]
-        edge --> idp["Keycloak (production realm)"]
-        app --> db[("Postgres")]
-        idp --> db
-        migrate["migration job"] --> db
-    end
-    app -. "fetches signing keys" .-> idp
+architecture-beta
+    service visitor(internet)[Visitor over HTTPS 443]
+    group vm(cloud)[One arm64 VM]
+    service edge(server)[nginx edge] in vm
+    junction je in vm
+    service app(server)[shortener x2] in vm
+    junction jd in vm
+    service db(database)[Postgres] in vm
+    service migrate(server)[migration job] in vm
+    junction ji in vm
+    service idp(server)[Keycloak production realm] in vm
+    junction jj in vm
+
+    visitor:R --> L:edge
+    edge:R -- L:je
+    je:R --> L:app
+    app:R -- L:jd
+    jd:R --> L:db
+    migrate:L --> R:db
+    je:B -- T:ji
+    ji:R --> L:idp
+    idp:R -- L:jj
+    jj:T -- B:jd
 ```
 
 - **Edge:** nginx with a Let's Encrypt certificate for one host name, issued over HTTP-01 and renewed by certbot's timer ([DEPLOY.md](DEPLOY.md#certificate)).
