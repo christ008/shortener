@@ -199,12 +199,14 @@ Notes:
    `docker exec <postgres container> sh /docker-entrypoint-initdb.d/35-replication.sh`, then
    `psql -U postgres -c 'SELECT pg_reload_conf()'`.
 5. Make the first backup, once: `deploy/postgres/backup init`. The WAL archiving alert fires until it runs.
-6. Schedule the rest in the manager's crontab. Two full backups are kept:
+6. Schedule the rest on the node that runs Postgres. `deploy/postgres/backup.cron` is a file for `/etc/cron.d`: a full backup on Sundays and a differential one on the
+   other days, at 03:17 of the server's clock. Install it for the repository where it is (it points at `/srv/shortener`), from the repository's root. Two full backups are kept:
 
-   ```text
-   17 3 * * 0   /srv/shortener/deploy/postgres/backup full
-   17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
+   ```bash
+   sed "s|/srv/shortener|$PWD|" deploy/postgres/backup.cron | sudo tee /etc/cron.d/shortener-backup >/dev/null
    ```
+
+   Each run writes one line to the system log saying whether it worked (`journalctl -t shortener-backup`), because pgBackRest prints nothing on success.
 7. Test a restore, now and periodically: `deploy/postgres/backup restore-test` restores the latest backup into a throwaway
    container and prints how many links the copy has and when the newest was created. Compare them with the database. It checks
    only the shortener's database: Keycloak's is in the same backup, and nothing counts what it holds.
@@ -216,7 +218,7 @@ Limits:
 
 - The repository is a volume on the primary's node. It restores to within five minutes and does not survive losing the node.
   For S3 or SFTP, set `repo1-type` and its options in `deploy/postgres/pgbackrest.conf`, a Docker config: rotate it under a new name.
-- Nothing alerts when no backup ran. Check `deploy/postgres/backup info`, or have cron mail its failures.
+- Nothing alerts when a backup did not run or failed. Look at `journalctl -t shortener-backup` and `deploy/postgres/backup info`.
 - The replica is read only, and the application does not read from it.
 
 ### Losing the primary

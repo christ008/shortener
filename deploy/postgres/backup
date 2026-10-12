@@ -11,9 +11,7 @@
 # Settings: PG_CONTAINER (default: the stack's postgres task), STACK (default shortener), and for restore-test PG_IMAGE and
 # PGBACKREST_VOLUME (default: read from the container).
 # Exit status: 0 on success, 1 when a step fails or no container is found, 2 for arguments it does not understand.
-# Schedule, in the manager's crontab:
-#   17 3 * * 0   /srv/shortener/deploy/postgres/backup full
-#   17 3 * * 1-6 /srv/shortener/deploy/postgres/backup diff
+# Schedule: deploy/postgres/backup.cron, a file for /etc/cron.d (a full backup on Sundays, a differential one on the other days).
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)

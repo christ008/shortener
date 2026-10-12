@@ -85,7 +85,7 @@ Backups with pgBackRest, without the replica, on the same VM: `POSTGRES_HA=1` wi
 label, so that `postgres-replica` stays pending (`0/1`, no memory). Postgres restarted once (the redirect went on answering `302` while it was down, which the redirect cache explains) and archives WAL. `backup init`
 took a full backup of the 44 MB database into 4.9 MB, `backup check` passed, and `backup restore-test` restored it into a throwaway container with the same links as the live
 database. A link created **after** that backup was also in a restore once the WAL segment was switched, so the archive is replayed. The repository is a volume on the same disk, so it does
-not survive losing the VM; there is no schedule yet (the crontab of [DEPLOY.md](DEPLOY.md#backups-and-a-replica)). **Not run:** the replica, Prometheus, a renewal of the certificate
+not survive losing the VM. The schedule (`deploy/postgres/backup.cron`, in `/etc/cron.d`) was installed and its lines run by hand in cron's bare environment, on both the success and the failure path; the first run by cron itself was not seen yet. **Not run:** the replica, Prometheus, a renewal of the certificate
 30 days on, and a restore into the real database.
 
 
@@ -93,7 +93,6 @@ Not built:
 
 1. The backup repository off the VM.
 2. The `shortener-ui` client and web users (they wait for the [web UI](UI.md)).
-3. A timer for `backup full` and `diff`: the crontab of [DEPLOY.md](DEPLOY.md#backups-and-a-replica).
 
 ## Steps
 
@@ -104,7 +103,7 @@ Not built:
 4. Make the production realm on your machine ([DEPLOY.md](DEPLOY.md#keycloak)) and copy `shortener-realm.production.json` to the VM.
 5. `sudo deploy/stack/certificate.sh placeholder <host>`, `deploy/stack/deploy.sh <version>` (it reads the overlays from `.env`), then
    `sudo deploy/stack/certificate.sh issue <host> <email>`. Try it once with `STAGING=1`: the real service allows five failures an hour.
-6. `deploy/postgres/backup init`, the crontab, and `docker service ls`.
+6. `deploy/postgres/backup init`, the cron file of [DEPLOY.md](DEPLOY.md#backups-and-a-replica), and `docker service ls`.
 7. `perf/smoke.sh` against the public URL with the demo client.
 8. Publish the demo client's key and the README commands with the URL.
 
