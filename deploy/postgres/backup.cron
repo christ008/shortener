@@ -1,0 +1,9 @@
+# Schedules the backups of deploy/postgres/backup: a full one on Sundays and a differential one on the other days, at 03:17 of the server's clock (UTC on the AWS VM).
+# A file for /etc/cron.d, so it has a user field. It points at /srv/shortener: install it for the repository where it is, on the node that runs Postgres:
+#   sed "s|/srv/shortener|$PWD|" deploy/postgres/backup.cron | sudo tee /etc/cron.d/shortener-backup >/dev/null
+# Each run writes one line to the system log (journalctl -t shortener-backup) that says whether it worked, after anything the backup printed, because pgBackRest prints
+# nothing on success. Nothing alerts when a run is missing or failed: look at that log, or at `deploy/postgres/backup info`.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+17 3 * * 0   root { /srv/shortener/deploy/postgres/backup full 2>&1 && echo "backup full ok" || echo "backup full failed (exit $?)"; } | logger -t shortener-backup
+17 3 * * 1-6 root { /srv/shortener/deploy/postgres/backup diff 2>&1 && echo "backup diff ok" || echo "backup diff failed (exit $?)"; } | logger -t shortener-backup
