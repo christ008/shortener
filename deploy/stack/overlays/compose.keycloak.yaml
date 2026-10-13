@@ -92,6 +92,7 @@ configs:
     name: 'shortener-edge-keycloak-${EDGE_KEYCLOAK_CONF_HASH:-local}'
     file: ../edge/keycloak.conf
   postgres-keycloak-database:
+    name: 'shortener-postgres-keycloak-database-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/keycloak-database.sh
 
 secrets:

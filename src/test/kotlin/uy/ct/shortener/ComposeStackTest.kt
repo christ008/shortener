@@ -433,6 +433,16 @@ class ComposeStackTest {
     )
 
     @Test
+    fun `every config is named after a hash of its file, because Swarm does not update one in place`() {
+        (composePaths + "deploy/stack/overlays/compose.console.yaml").forEach { path ->
+            val configs = Yaml().load<Map<String, Any?>>(Files.readString(Path.of(path)))["configs"] as Map<*, *>? ?: emptyMap<String, Any?>()
+            configs.forEach { (name, config) ->
+                assertThat((config as Map<*, *>)["name"].toString()).describedAs("the name of config $name in $path").contains("_HASH")
+            }
+        }
+    }
+
+    @Test
     fun `every variable the files read is in dot env example, and every one listed there is read`() {
         val example = Files.readString(Path.of("deploy/stack/.env.example"))
         val listed = Regex("""(?m)^#?\s*([A-Z][A-Z0-9_]*)=""").findAll(example).map { it.groupValues[1] }.toSet()
