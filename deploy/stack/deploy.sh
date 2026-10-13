@@ -79,7 +79,10 @@ if [ -n "${CONSOLE:-}" ]; then
   EDGE_CONSOLE_CONF_HASH=$(sha256sum deploy/edge/console.conf | cut -c1-12)
   export EDGE_CONSOLE_CONF_HASH
 fi
-export NGINX_CONF_HASH PROMETHEUS_CONF_HASH TLS_HASH
+# The scripts and files Postgres is given: Swarm does not update a config in place, and they change with the releases.
+POSTGRES_CONF_HASH=$(cat deploy/postgres/bootstrap.sql deploy/postgres/include-diagnostics.sh deploy/postgres/set-role-passwords.sh \
+  deploy/postgres/diagnostics.conf deploy/postgres/keycloak-database.sh deploy/postgres/pgbackrest.conf deploy/postgres/replication.sh | sha256sum | cut -c1-12)
+export NGINX_CONF_HASH PROMETHEUS_CONF_HASH POSTGRES_CONF_HASH TLS_HASH
 
 deploy() {
   # shellcheck disable=SC2086

@@ -73,8 +73,10 @@ volumes:
 
 configs:
   postgres-pgbackrest:
+    name: 'shortener-postgres-pgbackrest-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/pgbackrest.conf
   postgres-replication:
+    name: 'shortener-postgres-replication-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/replication.sh
 
 secrets:

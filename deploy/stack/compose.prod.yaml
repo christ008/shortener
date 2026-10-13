@@ -234,12 +234,16 @@ configs:
     name: 'shortener-nginx-${NGINX_CONF_HASH:-local}'
     file: ../edge/nginx.conf
   postgres-bootstrap:
+    name: 'shortener-postgres-bootstrap-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/bootstrap.sql
   postgres-include-diagnostics:
+    name: 'shortener-postgres-include-diagnostics-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/include-diagnostics.sh
   postgres-set-role-passwords:
+    name: 'shortener-postgres-set-role-passwords-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/set-role-passwords.sh
   postgres-diagnostics:
+    name: 'shortener-postgres-diagnostics-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/diagnostics.conf
 
 # Files under ${SECRETS_DIR} (default ./secrets, ignored by Git). deploy/stack/local/prepare.sh makes throwaway ones.
