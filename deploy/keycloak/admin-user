@@ -6,7 +6,7 @@
 #
 # The bootstrap administrator (KC_BOOTSTRAP_ADMIN_USERNAME, `admin`) exists to make the first one, and signs in with a password
 # alone. `create` makes a user of the master realm who must, at the first sign-in, choose a new password and scan a
-# one-time-password code (TOTP, any authenticator app), and makes that setup the default for every user the realm gets
+# one-time-password code (TOTP, an authenticator app that does SHA-512 and eight digits), and makes that setup the default for every user the realm gets
 # afterwards, so nobody is an administrator on a password alone. `retire` refuses until NAME has set the app up, so the
 # stack is never left without an administrator who can sign in.
 #
@@ -58,9 +58,11 @@ case "$command" in
     id=$(kc create users -r master -s "username=$name" -s enabled=true -s 'requiredActions=["CONFIGURE_TOTP","UPDATE_PASSWORD"]' -i)
     kc set-password -r master --userid "$id" --new-password "$password" --temporary
     kc add-roles -r master --uusername "$name" --rolename admin
-    # Anyone the realm gets from now on sets up the app too, and a person who tries a password guess is slowed down.
+    # Anyone the realm gets from now on sets up the app too, with the codes of SHA-512 and eight digits (the app must support them: Aegis,
+    # FreeOTP, Bitwarden and 2FAS do, Google Authenticator ignores them and would show codes Keycloak refuses), and a person who tries a
+    # password guess is slowed down.
     kc update authentication/required-actions/CONFIGURE_TOTP -r master -s defaultAction=true
-    kc update realms/master -s bruteForceProtected=true -s failureFactor=5 -s maxFailureWaitSeconds=900 -s sslRequired=external
+    kc update realms/master -s otpPolicyType=totp -s otpPolicyAlgorithm=HmacSHA512 -s otpPolicyDigits=8 -s bruteForceProtected=true -s failureFactor=5 -s maxFailureWaitSeconds=900 -s sslRequired=external
     echo "administrator $name made. First sign-in: user $name, password $password"
     echo "It asks for a new password and a code from an authenticator app, then $bootstrap can be retired:"
     echo "  deploy/keycloak/admin-user retire $name"

@@ -191,8 +191,8 @@ Make it, from the node, with the stack running:
 deploy/keycloak/admin-user create ana
 ```
 
-It prints a password that works once. At the first sign-in to the console Keycloak asks for a new password and a code from an authenticator app (any TOTP app), and from then on
-a password is not enough: every user the master realm gets has to set the app up (`CONFIGURE_TOTP` is a default action), and five wrong passwords slow the account down. When
+It prints a password that works once. At the first sign-in to the console Keycloak asks for a new password and a code from an authenticator app, and from then on
+a password is not enough: every user the master realm gets has to set the app up (`CONFIGURE_TOTP` is a default action), and five wrong passwords slow the account down. The codes are TOTP with SHA-512 and eight digits, so the app has to support them (Aegis, FreeOTP, Bitwarden and 2FAS do; Google Authenticator ignores the algorithm and the length, and its codes are refused). When
 `ana` has signed in with the app, retire the bootstrap one:
 
 ```bash

@@ -359,7 +359,7 @@ class ComposeStackTest {
         assertThat(bootstrap.first).describedAs("the bootstrap administrator is not made again").isEqualTo(2)
         assertThat(bootstrap.second).contains("must not be the bootstrap administrator")
         val text = Files.readString(script)
-        assertThat(text).describedAs("it asks for the app before it retires the one with a password").contains("CONFIGURE_TOTP", "grep -qx otp", "defaultAction=true")
+        assertThat(text).describedAs("it asks for the app before it retires the one with a password").contains("CONFIGURE_TOTP", "grep -qx otp", "defaultAction=true", "otpPolicyAlgorithm=HmacSHA512", "otpPolicyDigits=8")
     }
 
     @Test
