@@ -144,6 +144,12 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `the directory Keycloak caches its gzipped files in exists in the image, open to its user, because a tmpfs takes its mode from it`() {
+        val keycloak = Files.readString(Path.of("deploy/keycloak/Dockerfile"))
+        assertThat(keycloak).contains("RUN mkdir -m 1777 /opt/keycloak/data/tmp")
+    }
+
+    @Test
     fun `only the migration job holds the credentials of the role that owns the tables`() {
         assertThat(secretsOf(services.getValue("migrate"))).contains(migratorSecret)
         services.filterKeys { it != "migrate" && it != "postgres" }.forEach { (name, service) ->

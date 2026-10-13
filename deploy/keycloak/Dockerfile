@@ -8,6 +8,9 @@ RUN /opt/keycloak/bin/kc.sh build
 
 FROM quay.io/keycloak/keycloak:26.8.0
 COPY --from=builder /opt/keycloak/ /opt/keycloak/
+# The directory the compose files mount a tmpfs on: a mount point Docker makes itself is root's, 755, and the tmpfs takes its mode from it, so
+# Keycloak (uid 1000) could not make the cache of its gzipped static files and answered 404 to every browser (they all ask for gzip).
+RUN mkdir -m 1777 /opt/keycloak/data/tmp
 COPY --chmod=0555 entrypoint.sh /opt/keycloak/bin/shortener-entrypoint.sh
 ENTRYPOINT ["/opt/keycloak/bin/shortener-entrypoint.sh"]
 CMD ["start", "--optimized"]
