@@ -1,6 +1,6 @@
 # 0037. Clicks are counted in aggregate, off the redirect's path
 
-- Status: **Proposed**, 2026-10-12. Nothing is built
+- Status: **Proposed**, 2026-10-12. Built: counting in memory, the batch flush, `V7` and `GET /api/short-links/{code}/stats` for clicks per link and hour. Not built: referrer and language, the retention job, the UI panel
 - Evidence: `ClickAggregator`, `ClickFlusher`, `AnalyticsIntegrationTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) E3 (R), [0011](0011-in-process-redirect-cache.md), [0012](0012-readiness-excludes-the-database.md), [0013](0013-three-database-roles-and-a-migration-job.md), [0028](0028-postgres-backups-and-a-replica.md)
 - Replaces the threat model's "not recorded, by design: no analytics"
 

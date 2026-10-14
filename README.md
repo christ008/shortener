@@ -2,9 +2,10 @@
 
 [![CI](https://github.com/christ008/shortener/actions/workflows/ci.yml/badge.svg)](https://github.com/christ008/shortener/actions/workflows/ci.yml)
 
-**TL;DR** A URL shortener built to be safe on the public internet.
+**TL;DR** A URL shortener you call from your own programs, built to be safe on the public internet. A program registers once,
+gets a key, and creates short links through an HTTP API; anyone can follow a short link.
 
-- **A stolen token is useless.** Each request is signed by the client's own key, and clients see only their own links.
+- **A stolen token is useless.** Each request is signed by the caller's own key, and each caller sees only its own links.
 - **A link can't be hijacked.** A short code is never reused, and in production the app has no permission to change one.
 - **Fast.** Redirects come from memory.
 - **Ready to run.** One command deploys it with TLS, metrics and alerts, after checking the release's signature.
@@ -20,20 +21,33 @@
 
 Spring Boot 4.2 · Kotlin 2.4 · Java 25 · Postgres 18 · Keycloak 26 · nginx · Apache-2.0
 
+## Who does what
+
+Links are created by programs, not in a browser: there is no web page to sign in to yet ([docs/UI.md](docs/UI.md) plans one).
+
+| Role | Is | Can |
+|---|---|---|
+| **Client** | a program or script, usually a developer's, registered with the service and holding its own key | create links with a generated or a chosen code, list and read them, see their click counts, disable them. Only its own: another client's link answers `404` |
+| **Visitor** | anyone with a short link, with no key or account | follow it: `GET /{code}` redirects |
+| **Administrator** | a client with the administrator scope, or a person with a second factor | read and disable any client's links, to take one down |
+
+A developer becomes a client with an invitation from the operator, in one command ([DEPLOY.md](docs/DEPLOY.md#registering-a-client)).
+
 ## What it does
 
 - Creates a link with a generated code (7 base62 characters) or a chosen one, and redirects `GET /{code}` with `302`, not `301`,
   so a browser does not keep following a link after a takedown.
-- A client lists, reads and disables its own links. Another client's link answers `404`, and an administrator can act on any.
+- A client lists, reads and disables its own links, and reads how often each was followed (approximate, counted off the redirect's
+  path: [ADR 0037](docs/adr/0037-click-analytics-counted-off-the-hot-path.md)).
 - A disabled link answers `410` and keeps its code: a code is never handed out twice. A takedown reaches every instance within
   the cache TTL (30 s).
 
-Not goals: editing a link's target, expiry, teams or shared ownership, several short domains, and billing. Click analytics
-([ADR 0037](docs/adr/0037-click-analytics-counted-off-the-hot-path.md)) and a web UI ([docs/UI.md](docs/UI.md)) are planned, not built.
+Not goals: editing a link's target, expiry, teams or shared ownership, several short domains, and billing. Not built yet: where
+a click came from (referrer, language) and a web UI.
 
 ```mermaid
 flowchart LR
-    client(["Client with a DPoP key"]) -->|HTTPS| edge["nginx edge<br/>TLS, limits"]
+    client(["Client: a program with a DPoP key"]) -->|HTTPS| edge["nginx edge<br/>TLS, limits"]
     visitor(["Visitor"]) -->|"GET /{code}"| edge
     edge --> app["shortener x2<br/>cache of active links"]
     app -->|"shortener_app: no DELETE, no DDL"| db[("Postgres")]
@@ -73,12 +87,12 @@ Then call it, rehearse the production stack on your machine, and go to productio
 
 ## The public instance
 
-<https://shortener.codes> accepts links to `example.com` only, and calling the API needs a client key (the demo client's is not published). Ask for an invitation, then make your own client
-with `java deploy/keycloak/DpopClient.java register NAME INVITATION KEY_FILE` ([DEPLOY.md](docs/DEPLOY.md#registering-a-client)). With a key:
+<https://shortener.codes> accepts links to `example.com` only. Following a link needs nothing; creating one needs a client. Ask for an invitation, then register
+your own with `java deploy/keycloak/DpopClient.java register NAME INVITATION KEY_FILE` ([DEPLOY.md](docs/DEPLOY.md#registering-a-client)). With its key file:
 
 ```bash
 export TOKEN_URL=https://shortener.codes/realms/shortener/protocol/openid-connect/token ISSUER=https://shortener.codes/realms/shortener
-java deploy/keycloak/DpopClient.java call demo-client.jwk.json demo-client POST https://shortener.codes/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
+java deploy/keycloak/DpopClient.java call KEY_FILE CLIENT_ID POST https://shortener.codes/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 
 ## API
