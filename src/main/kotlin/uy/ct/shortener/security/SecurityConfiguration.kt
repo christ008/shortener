@@ -34,6 +34,8 @@ import uy.ct.shortener.security.internal.DpopNonceAuthenticationConverter
 import uy.ct.shortener.security.internal.DpopNonceFilter
 import uy.ct.shortener.security.internal.DpopNonces
 import uy.ct.shortener.security.internal.DpopRuntimeHints
+import uy.ct.shortener.security.internal.ManagementPort
+import uy.ct.shortener.security.internal.PeerIdentityFilter
 import uy.ct.shortener.security.internal.RateLimitFilter
 import uy.ct.shortener.security.internal.RateLimitKey
 import uy.ct.shortener.security.internal.RateLimiter
@@ -53,6 +55,8 @@ import uy.ct.shortener.security.internal.SingleAuthorizationFilter
  *   or old, unless `shortener.security.dpop.nonce.enabled` is off. In `production` its secret is required.
  * - The scopes an operation needs are declared on it with method security, enabled here.
  * - `GET` and `HEAD` of a short link and the health probes are public. Every other request is denied.
+ * - With `shortener.security.mtls.allowed-identities` set, only a caller whose TLS client certificate names one of them is served (the edge, in the stack), before anything else runs.
+ *   `production` does not start with it set and no certificate asked for (`server.ssl.client-auth`), or the reverse.
  * - Requests are rate limited per client IP, then per authenticated client.
  * - Responses carry restrictive security headers. Authentication, authorization and rate-limit failures are problem details
  *   and events ([SecurityEvents]).
@@ -74,10 +78,17 @@ class SecurityConfiguration {
         environment: Environment,
     ): SecurityFilterChain {
         requireDpopInProduction(properties, environment)
+        requirePeerIdentityToMatchClientAuth(properties, environment)
         val responder = SecurityProblemResponder(exceptionResolver, properties.dpop.required, SecurityEvents(meters))
         val ipLimit = RateLimitFilter("ip", RateLimiter(properties.rateLimit.perIp), responder) { RateLimitKey.Of(it.remoteAddr) }
         val clientLimit = RateLimitFilter("client", RateLimiter(properties.rateLimit.perClient), responder) { authenticatedClient() }
 
+        if (properties.mtls.allowedIdentities.isNotEmpty()) {
+            http.addFilterBefore(
+                PeerIdentityFilter(properties.mtls.allowedIdentities.toSet(), responder, ManagementPort(environment)::serves),
+                BearerTokenAuthenticationFilter::class.java,
+            )
+        }
         http
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
@@ -142,6 +153,29 @@ class SecurityConfiguration {
         check(properties.dpop.required || !environment.acceptsProfiles(Profiles.of("production"))) {
             "shortener.security.dpop.required is off, which accepts plain bearer tokens, and the production profile does not allow it. " +
                 "Unset SHORTENER_SECURITY_DPOP_REQUIRED, or run another profile for development."
+        }
+    }
+
+    /**
+     * Under `production`, asking callers for a certificate (`server.ssl.client-auth`) and naming who may call
+     * (`shortener.security.mtls.allowed-identities`) go together, and the application does not start with only one of them.
+     *
+     * - A certificate asked for and no identity named is authentication with no authorization: TLS accepts every certificate of the CA, which also
+     *   signs the migration job's and the database's, and the application would serve them all.
+     * - An identity named and no certificate asked for refuses every request, since no caller presents one.
+     * - Neither is how the application ran before mutual TLS, and still starts.
+     */
+    fun requirePeerIdentityToMatchClientAuth(properties: SecurityProperties, environment: Environment) {
+        if (!environment.acceptsProfiles(Profiles.of("production"))) return
+        val asksForCertificate = environment.getProperty("server.ssl.client-auth", "none").lowercase() in setOf("need", "want")
+        val namesIdentities = properties.mtls.allowedIdentities.isNotEmpty()
+        check(!asksForCertificate || namesIdentities) {
+            "server.ssl.client-auth asks callers for a certificate, but shortener.security.mtls.allowed-identities names none, so the application would serve every certificate " +
+                "of the CA, the migration job's and the database's too. Set it to the edge's identity, for example SHORTENER_SECURITY_MTLS_ALLOWEDIDENTITIES=spiffe://shortener.internal/prod/edge."
+        }
+        check(asksForCertificate || !namesIdentities) {
+            "shortener.security.mtls.allowed-identities names identities, but server.ssl.client-auth does not ask for a certificate, so every request would be refused. " +
+                "Set SERVER_SSL_CLIENTAUTH=need, or leave the identities empty."
         }
     }
 
