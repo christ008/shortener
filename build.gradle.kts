@@ -272,7 +272,7 @@ tasks.bootBuildImage {
     runImage = "bellsoft/buildpacks.hardened-run:glibc@sha256:81f455eb612bb818b37d3c02087fde31cd07a776334ed686f98906448b2eff42"
     buildpacks = listOf(
         "urn:cnb:builder:bellsoft/buildpacks/liberica",
-        "docker://paketobuildpacks/syft:2.41.0",
+        "docker://paketobuildpacks/syft:2.43.0",
         "urn:cnb:builder:paketo-buildpacks/executable-jar",
         "urn:cnb:builder:paketo-buildpacks/spring-boot",
         "urn:cnb:builder:paketo-buildpacks/environment-variables",
