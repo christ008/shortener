@@ -91,9 +91,9 @@ echo "== secrets"
 mkdir -p secrets
 for name in db_postgres_password db_app_password db_migrator_password db_exporter_password dpop_nonce_secret \
   db_keycloak_password keycloak_admin_password db_replicator_password; do
-  [ -e "secrets/$name" ] || openssl rand -hex 24 | tr -d '\n' >"secrets/$name"
+  # Only the ones made here: the certificate's files are root's once certbot has installed them.
+  [ -e "secrets/$name" ] || { openssl rand -hex 24 | tr -d '\n' >"secrets/$name"; chmod 0444 "secrets/$name"; }
 done
-chmod 0444 secrets/*
 
 echo "== images the overlays build here"
 case " $overlays " in *" KEYCLOAK=1 "*) $d build -q -t shortener-keycloak:26.8.0 deploy/keycloak >/dev/null ;; esac
