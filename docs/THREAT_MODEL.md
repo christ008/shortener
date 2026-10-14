@@ -301,12 +301,13 @@ to do. The fixed ones are collapsed at the end.
 - **Why it matters:** a signature nobody has produced protects nothing, and a tag moved in that moment would pass
 - **Recommendation:** tag a release and verify it from a manager. Deploy by the digest that was verified
 
-### F-07. Traffic between services is encrypted but peers are not authenticated
+### F-07. Traffic between services is encrypted, and peers are authenticated only with `PKI=1`
 
-- **Rating:** Medium, multi-node, **partly fixed** 2026-10-06
-- **Finding:** The overlays between services are now encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). What remains: peers are not authenticated, and an external database needs `sslmode=verify-full` set by the operator
-- **Why it matters:** a container on a stack network can still call the application, but since [ADR 0038](adr/0038-segment-the-stack-networks.md) the application does not believe its forwarded headers unless it shares `ingress`, which only the edge does
-- **Recommendation:** mutual TLS is proposed in [ADR 0022](adr/0022-mtls-between-services.md). Build it when there is more than one node or something untrusted can attach
+- **Rating:** Medium, multi-node, **partly fixed** 2026-10-06 and **fixable** since 2026-10-14
+- **Finding:** The overlays between services are encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). Peers are authenticated when the stack is deployed with `PKI=1` ([DEPLOY.md](DEPLOY.md#mutual-tls-between-the-services), [ADR 0022](adr/0022-mtls-between-services.md)):
+  the application serves only the edge's certificate, and the database lets the application and the migration job in with a certificate alone. It is off by default, an external database needs `sslmode=verify-full` set by the operator, and it was tried with `docker compose` on one machine (*known*), not under Swarm or on more than one node
+- **Why it matters:** without it a container on a stack network can still call the application, but since [ADR 0038](adr/0038-segment-the-stack-networks.md) the application does not believe its forwarded headers unless it shares `ingress`, which only the edge does
+- **Recommendation:** turn `PKI=1` on when there is more than one node or something untrusted can attach, after trying it under Swarm. The root stays off the node, and the CA's log holds each certificate and one-time token, so keep it with the other sensitive logs
 
 ### F-08. The edge accepts any `Host`
 

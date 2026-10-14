@@ -15,6 +15,7 @@ How the service works: a request from end to end, the database, the cache, the i
 - [Image](#image)
   - [The native image it replaced](#the-native-image-it-replaced)
 - [Deployment](#deployment)
+  - [Mutual TLS between the services](#mutual-tls-between-the-services)
   - [Hardening](#hardening)
   - [Edge](#edge)
   - [Rollouts](#rollouts)
@@ -500,7 +501,30 @@ flowchart LR
 
 The edge shares exactly one network with each service it proxies to, because Docker's DNS answers with the addresses of one shared network, and the
 application trusts only the `ingress` subnet. Nothing but the edge publishes a port. Keycloak has no route out. Docker has no network policy: inside a network every member
-can call every other (Keycloak can reach the application's ports on `data`, and the application does not believe it), which is what [ADR 0022](adr/0022-mtls-between-services.md) would change.
+can call every other (Keycloak can reach the application's ports on `data`, and the application does not believe it), which is what mutual TLS changes ([below](#mutual-tls-between-the-services)).
+
+### Mutual TLS between the services
+
+With `PKI_CA=1` the stack has its own CA, step-ca, on a sixth network, `pki`, that is internal and holds the CA alone. With `PKI=1` the services use it ([ADR 0022](adr/0022-mtls-between-services.md), [DEPLOY.md](DEPLOY.md#mutual-tls-between-the-services)).
+
+| Caller | Called | What it shows | What the called checks |
+|---|---|---|---|
+| edge | shortener `8080` | a client certificate, `spiffe://shortener.internal/prod/edge` | TLS 1.3 and the CA's chain (Tomcat), then the identity: `PeerIdentityFilter`, first in the security chain, answers `403` to any other |
+| shortener, migrate | postgres `5432` | a client certificate, `CN=shortener-app` or `shortener-migrator` | TLS 1.3 and the chain, then `pg_ident.conf` maps the name to the role, and `pg_hba.conf` refuses the two roles anything else |
+| the node | the CA | nothing: `docker exec` into it, with the provisioner's password | the policy, the template and the name constraints of the issuing CA |
+
+- **One CA, three levels.** The root is offline and signs the issuing CA once a year. The issuing CA's certificate has name constraints (the stack's DNS names and the `shortener.internal` URIs, no IP address), so even its key cannot
+  sign for any other name. Services trust the root, so replacing the issuing CA changes nothing for them.
+- **The CA never holds a private key but its own.** The node makes each key and request, with `openssl`, and the CA signs the request (`step ca sign`) with the template `deploy/pki/leaf.tpl`. The files are moved into place at the end, so a CA that fails leaves the old certificate.
+- **Every key is ECDSA P-256 and every signature SHA-256.** Ed25519 was the first choice and does not do: a certificate signed with it has no digest for SCRAM channel binding, which `libpq` asks for by default, and a client could not log in
+  with a password over TLS (measured: `could not find digest for NID UNDEF`).
+- **The application's TLS is a Spring SSL bundle** that reads the files where the secrets are (`SPRING_SSL_BUNDLE_PEM_SERVER_*` as `file:` paths, since a stack deploy keeps only the last of two mounts of one secret), `server.ssl.client-auth=need`, and TLS 1.3 set in the bundle
+  (`server.ssl.enabled-protocols` is ignored when a bundle is used). The management port shares `server.ssl` unless `management.server.ssl.enabled` is `false`, which the health check, plain HTTP, needs. The filter does not check
+  requests that came in through the management port (`ManagementPort`): it shares the application's security chain.
+- **The identity check is not Spring Security's `x509()`**: its filters would be replaced by the bearer and DPoP filters on every `/api` request (each makes a new security context), its extractors read the subject and not the URI names, and an
+  authenticated `edge` would become the key of the per-client rate limit for all the public traffic. The certificate names the proxy and not the user, so this is authorization of the connection, not authentication.
+- **Edge to application** is one file, `upstream.conf` (plain HTTP) or `upstream.mtls.conf` (TLS 1.3, the edge's certificate, `proxy_ssl_verify on`), included by the proxy location of `nginx.conf`, so the 160 lines are not repeated.
+- **Production does not start with half of it** (`requirePeerIdentityToMatchClientAuth`), and `ComposeStackTest` holds who holds which key, the one-mount-per-secret rule, the networks and the names the CA signs for.
 
 ### Hardening
 
@@ -542,6 +566,7 @@ The exceptions, and what Swarm does differently:
 - Caps bodies at 16 KiB, sets header, body and proxy timeouts, and caps connections per address. Never proxies the
   management port.
 - Resolves `shortener` every 5 s, so tasks that come and go are followed without a reload.
+- Reaches the application through one included file, `/etc/nginx/upstream.conf`: plain HTTP, or with the CA (`PKI=1`) TLS 1.3 and its own certificate ([above](#mutual-tls-between-the-services)).
 - Swarm configs cannot change once created, so `deploy.sh` puts a hash of each file in the config's name (nginx, Prometheus,
   the Keycloak realm and edge file). A changed file is a new config, and Swarm updates the service that uses it.
 

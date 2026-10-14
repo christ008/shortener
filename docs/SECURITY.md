@@ -157,7 +157,7 @@ client's key. The draft is not final, so this is alignment, not conformance. Wha
   ([ADR 0040](adr/0040-status-codes-of-the-dpop-errors.md)): a missing or invalid proof is a `401` (`invalid_dpop_proof`), and `400` is only for a request that presents its token in more than one way.
 - [ ] **Redirect URIs are not exact** (§2.3.1): `shortener-ui` in the development realm registers wildcard paths (`http://localhost:3000/app/*`).
   The production realm has no such client. Fix before the UI is built.
-- [ ] **Mutual TLS between services** (§7.14) is proposed, not built ([ADR 0022](adr/0022-mtls-between-services.md)). The overlay networks are encrypted.
+- [ ] **Mutual TLS between services** (§7.14) is built and optional (`PKI=1`, [DEPLOY.md](DEPLOY.md#mutual-tls-between-the-services), [ADR 0022](adr/0022-mtls-between-services.md)), and not the default: the stack runs without it. The overlay networks are encrypted in both cases.
 - [ ] **Not tested here, left to Keycloak:** single-use authorization codes, `Cache-Control: no-store` on token responses, and refusing a public
   client's request without a `code_challenge`.
 - [ ] **A browser client's CSRF, mix-up and CORS rules** (§2.3.3, §2.3.4, §3.1) wait for the UI.
@@ -169,7 +169,7 @@ client's key. The draft is not final, so this is alignment, not conformance. Wha
 | What the database lets the application do | three roles, so the application cannot delete or rewrite a link | [Roles and migrations](INTERNALS.md#roles-and-migrations), [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md) |
 | What the containers can do | read-only root, no capabilities, not root, secrets as files | [Hardening](INTERNALS.md#hardening) |
 | What reaches the application | TLS, replaced forwarded headers, body and connection caps | [Edge](INTERNALS.md#edge) |
-| Traffic between services | encrypted; mutual TLS is proposed and not built | [ADR 0021](adr/0021-encrypt-internal-traffic.md), [ADR 0022](adr/0022-mtls-between-services.md) |
+| Traffic between services | encrypted; with `PKI=1` also authenticated, and the application serves only the edge | [ADR 0021](adr/0021-encrypt-internal-traffic.md), [ADR 0022](adr/0022-mtls-between-services.md) |
 | Secrets | none in Git, generated per developer | [ADR 0019](adr/0019-no-secrets-in-git.md) |
 | What an error looks like | one problem-detail shape, also for `401`, `403` and `429` | [Errors](INTERNALS.md#errors), [ADR 0009](adr/0009-problem-details-for-every-error.md) |
 | What is deployed | a signed, scanned image, verified before it is deployed | [Releasing](INTERNALS.md#releasing), [ADR 0018](adr/0018-signed-scanned-releases.md) |

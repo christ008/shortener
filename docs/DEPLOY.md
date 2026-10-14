@@ -118,6 +118,67 @@ Tried on 2026-10-11 on a `t4g.small` in `us-east-2`, with `STAGING=1`: `issue` g
 with the application running (the signed image of 0.22.1), and the real service and a renewal 30 days on were not tried. `issue HOST -` registers without an email,
 for a trial: with a real certificate give one, because that is where Let's Encrypt writes before an expiry.
 
+## Mutual TLS between the services
+
+[ADR 0022](adr/0022-mtls-between-services.md). Without it the services trust the network: a container that reaches the application can call it, and the database takes
+a password from whoever has one. With it each service proves who it is to the one it calls, with a certificate from the stack's own CA ([step-ca](https://smallstep.com/docs/step-ca/)):
+
+- The edge calls the application over TLS 1.3 with its certificate. The application asks for one and serves only the edge's identity
+  (`spiffe://shortener.internal/prod/edge`), so the migration job's or the database's certificate, which the same CA signed, is a `403`.
+- The application and the migration job connect to Postgres with a certificate, and `pg_hba.conf` refuses those two roles with anything else, their passwords too.
+- The management port (`8081`, health and metrics) stays plain HTTP: the health check speaks nothing else, and it is on no network the edge shares.
+
+It is optional and for the stack's own Postgres: `PKI_CA=1` deploys the CA and `PKI=1` (which includes it) turns the mutual TLS on. It does not work with `POSTGRES_HA=1`
+(another image and entrypoint), and a managed database has its own way. Every key is ECDSA P-256 and every certificate is signed with SHA-256, one family for the whole stack.
+
+| Identity | Name in the certificate | Used as | Lives |
+|---|---|---|---|
+| `edge` | `CN=edge`, `spiffe://shortener.internal/prod/edge` | a client of the application | 30 days |
+| `shortener` | `CN=shortener-app`, `DNS:shortener`, `.../prod/shortener` | the application's server, and its client of Postgres | 30 days |
+| `migrator` | `CN=shortener-migrator`, `.../prod/migrator` | the migration job's client of Postgres | 30 days |
+| `postgres` | `CN=postgres`, `DNS:postgres`, `.../prod/postgres` | Postgres's server | a year |
+
+Each certificate says what it is for (`extendedKeyUsage`), that it is no CA, and carries a policy that points here. The root and the issuing CA's key are never on
+the same machine as a service's key, and the CA never sees a service's private key: the node makes the key and a request (`pki.sh issue`), and the CA signs the request.
+
+### Setting it up
+
+1. **The root, on another machine, offline.** `deploy/stack/pki.sh root ~/shortener-root` makes the root (ten years) with an encrypted key and its password, which stay there. Back them up apart from the node.
+2. **The node.** Label the node the CA is told to run on (`docker node update --label-add shortener.pki=true <node>`) and put `PKI_CA=1` in `.env`. As root on it, `deploy/stack/pki.sh init` makes the
+   issuing CA's key and request (`secrets/pki_ca.csr`), the CA's passwords and its configuration, and the directory of its database (`PKI_DIR`, default `/srv/shortener/pki`).
+3. **The root signs the issuing CA**, for a year, for the names of the stack and no others: take `pki_ca.csr` to the offline machine and run
+   `deploy/stack/pki.sh sign-intermediate ~/shortener-root pki_ca.csr pki_ca_cert.pem`. Bring `pki_ca_cert.pem` and `~/shortener-root/root.crt` back and run
+   `sudo deploy/stack/pki.sh install-intermediate pki_ca_cert.pem root.crt`, which checks the chain and that the certificate is for the key `init` made.
+4. **Deploy the CA.** `deploy/stack/deploy.sh <version>` with `PKI_CA=1`. The stack runs as before, with the CA beside it on a network of its own (`pki`) that nothing else is on.
+5. **Issue the identities.** `sudo deploy/stack/pki.sh issue edge`, then `shortener`, `migrator` and `postgres`. `sudo deploy/stack/pki.sh inspect` shows each one: its names, validity, key, and whether the key matches the certificate.
+6. **Turn it on.** Put `PKI=1` in `.env` and `deploy/stack/deploy.sh <version>`. Services take their certificates as secrets named after a hash of their contents, so the edge, the application and the database are replaced
+   with them, and `docker secret inspect pki_edge_cert_<hash>` shows its labels: the role, the identity, the serial, the SHA-256 fingerprint, and when it expires and is renewed.
+
+The first time, the application and the job restart until the database has accepted their certificates, as they do for a first deploy without them.
+
+### Renewing
+
+`sudo deploy/stack/pki.sh renew` issues again what is two thirds through its life and deploys with the running version, as `certificate.sh install` does. Run it daily:
+`17 4 * * * root /srv/shortener/deploy/stack/pki.sh renew` in `/etc/cron.d/shortener-pki`. The edge is replaced in a few seconds, the application one instance at a time with the new one up first,
+and Postgres, whose certificate lives a year, restarts for a few seconds when its renewal comes: that one is better done by hand at a quiet time (`FORCE=1` issues all).
+
+The issuing CA's certificate lasts a year, and `pki.sh inspect` counts the days. A month before: `deploy/stack/pki.sh request` makes a new request for the same key, the root signs it as in step 3, `install-intermediate`
+puts it in place and a deploy replaces the CA and the services' trust. The services trust the root, so no certificate has to be issued again. If a certificate expires, the service that holds it stops being served: renew early.
+
+### Trying it on one machine
+
+`deploy/stack/local/prepare.sh` and then `deploy/stack/local/prepare-pki.sh` make a root, the CA and the four identities in `secrets/` (the root is there only because this is a rehearsal), and print the
+`docker compose` command. Compose does not give each service its own copy of a secret with the owner and mode asked for, as Swarm does, so the script makes the files readable for the users the containers run as.
+
+### Limits
+
+- The keys of the roles are files in `secrets/` on the node, as `tls_key` is, not encrypted: whoever is root there has them, and has the CA's passwords too. The root is what stays out of that reach.
+- The database's passwords for the application and the migration job are still created, since the base stack asks for them. `pg_hba.conf` makes them useless.
+- The identity check is in the application: a caller with a certificate of the CA that is not the edge's is a `403`, and the event `peer_identity_not_allowed` is logged. Production does not start with a certificate asked for and
+  no identity named, or the reverse.
+- The CA logs each request with its serial, the provisioner, the names and the validity, and also the certificate and the one-time token of the request (valid five minutes). Treat that log as sensitive.
+- Tried with `docker compose` on one machine on 2026-10-14, with the image of this version. Not tried: Swarm, more than one node, and the cost of the TLS between the edge and the application under load.
+
 ## Keycloak
 
 `deploy/stack/overlays/compose.keycloak.yaml` adds Keycloak in production mode behind the edge, for a stack with no identity provider. With
