@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
  * - The check comes before the first `docker stack deploy`.
  * - The certificate secrets are named after their contents (`TLS_HASH`), so that a renewed certificate is a new secret, and `ACME=1`
  *   adds the overlay that serves the challenges.
+ * - Before it deploys, the configs and secrets of the stack that nothing uses are removed, and one that Swarm refuses to remove (in use) does not stop it.
  */
 class DeployScriptTest {
 
@@ -129,6 +130,31 @@ class DeployScriptTest {
         val skipped = deploy("SHORTENER_IMAGE" to "shortener", "VERIFY_SIGNATURE" to "never")
         assertThat(skipped.exit).isZero()
         assertThat(calls).noneMatch { it.startsWith("cosign") }
+    }
+
+    @Test
+    fun `removes the configs and secrets of the stack before it deploys, and goes on when Swarm refuses one that is in use`() {
+        stub(
+            "docker",
+            """
+            echo "docker ${'$'}*" >>"$work/calls.log"
+            case "${'$'}1 ${'$'}2" in
+              "config ls") printf 'c1\nc2\n' ;;
+              "secret ls") printf 's1\n' ;;
+              "config rm") [ "${'$'}3" != c2 ] || { echo "in use" >&2; exit 1; } ;;
+            esac
+            """.trimIndent(),
+        )
+
+        val result = deploy("VERIFY_SIGNATURE" to "never")
+
+        assertThat(result.exit).isZero()
+        assertThat(calls).contains(
+            "docker config ls -q --filter label=com.docker.stack.namespace=shortener",
+            "docker secret ls -q --filter label=com.docker.stack.namespace=shortener",
+            "docker config rm c1", "docker config rm c2", "docker secret rm s1",
+        )
+        assertThat(calls.indexOf("docker secret rm s1")).isLessThan(calls.indexOfFirst { it.contains("stack deploy") })
     }
 
     @Test

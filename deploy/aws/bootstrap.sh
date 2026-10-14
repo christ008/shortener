@@ -15,6 +15,8 @@
 #   SWAP_GB               swap file, default 2 (4 GB of memory is tight for the whole stack); 0 makes none
 #   COSIGN_VERSION        default 3.0.6: 2.x reads the signatures of the release only while they use the old layout (docs/DEPLOY.md#requirements)
 #   OVERLAYS              overlay flags written to .env, default "ACME=1 KEYCLOAK=1 POSTGRES_HA=1". Keep ACME: certificate.sh needs it
+#   POSTGRES_REPLICA      auto (default), yes or no: whether this node runs the replica of POSTGRES_HA. auto says yes from 3.5 GB of memory, so a 2 GB VM has
+#                         none (`postgres-replica` stays pending, 0/1, and takes no memory) and a 4 GB one does. Run it again after resizing
 #   KEYCLOAK_MEMORY       Keycloak's memory limit when it is in OVERLAYS, default 768M, with KEYCLOAK_HEAP_PERCENT 50 (docs/CLOUD.md#shape has the measure)
 #
 # Swarm listens on the loopback only, and the security group opens 22, 80 and 443.
@@ -69,7 +71,22 @@ if [ "$($d info --format '{{.Swarm.LocalNodeState}}')" != active ]; then
   $d swarm init --advertise-addr 127.0.0.1 --listen-addr 127.0.0.1:2377 >/dev/null
 fi
 $d node update --label-add shortener.postgres=true "$($d info --format '{{.Swarm.NodeID}}')" >/dev/null
-case " $overlays " in *" POSTGRES_HA=1 "*) $d node update --label-add shortener.postgres-replica=true "$($d info --format '{{.Swarm.NodeID}}')" >/dev/null ;; esac
+case " $overlays " in *" POSTGRES_HA=1 "*)
+  # The replica is a second Postgres with 1 GB: it gets the node's label only where there is room for it.
+  node=$($d info --format '{{.Swarm.NodeID}}')
+  memory=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)
+  replica=${POSTGRES_REPLICA:-auto}
+  if [ "$replica" = auto ]; then
+    if [ "$memory" -ge 3500 ]; then replica=yes; else replica=no; fi
+  fi
+  if [ "$replica" = yes ]; then
+    $d node update --label-add shortener.postgres-replica=true "$node" >/dev/null
+  else
+    $d node update --label-rm shortener.postgres-replica "$node" >/dev/null
+  fi
+  echo "postgres replica: $replica (${memory} MB of memory)"
+  ;;
+esac
 sudo mkdir -p /srv/shortener/acme
 sudo chmod 0755 /srv/shortener/acme
 
