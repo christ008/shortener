@@ -34,7 +34,7 @@ flowchart LR
 ```
 
 - `/api/**` needs authentication.
-- `GET` and `HEAD` on `/{code}` and the health and Prometheus endpoints are public.
+- `GET` and `HEAD` on `/{code}`, the health and Prometheus endpoints are public.
 - Everything else is denied.
 - Responses carry a restrictive CSP, `Referrer-Policy: no-referrer` and Spring Security's default headers.
 
