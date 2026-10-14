@@ -640,7 +640,7 @@ class DpopClientTest {
     private fun Any.invokeMethod(name: String, vararg arguments: Any?): Any? = Loaded(javaClass).invokeOn(this, name, *arguments)
 
     private val compiled: Compiled by lazy {
-        val classes = Files.createDirectories(Path.of("build/tmp/dpop-client-classes"))
+        val classes = Files.createDirectories(directory.resolve("client-classes"))
         val problems = compileForJdk17(classes)
         check(problems.isEmpty()) { "DpopClient.java does not compile for JDK 17:\n" + problems.joinToString("\n") }
         Compiled(classes)
