@@ -282,7 +282,7 @@ Limits and how to end one:
    docker build -t shortener-postgres:18.6 deploy/postgres
    ```
 2. Create the secret `db_replicator_password`, mode `0444`.
-3. Label the node that runs the replica (`deploy/aws/bootstrap.sh` does it for a node with 3.5 GB of memory or more, `POSTGRES_REPLICA=yes` or `no` decides otherwise):
+3. Label the node that runs the replica (`deploy/aws/bootstrap.sh` does it, with `POSTGRES_HA=1`, for a node with 3.5 GB of memory or more, and takes it off a smaller one):
 
    ```bash
    docker node update --label-add shortener.postgres-replica=true <node>
