@@ -7,9 +7,16 @@
 #   deploy/postgres/backup check          check that a WAL segment is archived and the repository holds it
 #   deploy/postgres/backup info           backups in the repository and the age of the newest
 #   deploy/postgres/backup restore-test   restore the latest backup into a throwaway container and count the links
+#   deploy/postgres/backup offsite [wal]  copy the repository to the S3 bucket with the AWS CLI, from the node (the WAL only with `wal`)
+#   deploy/postgres/backup offsite-restore-test   download that copy into a throwaway volume and run restore-test on it
 #
 # Settings: PG_CONTAINER (default: the stack's postgres task), STACK (default shortener), and for restore-test PG_IMAGE and
-# PGBACKREST_VOLUME (default: read from the container).
+# PGBACKREST_VOLUME (default: read from the container). For the commands of the bucket: OFFSITE_BUCKET (required), OFFSITE_PREFIX
+# (default: the stack's name), OFFSITE_REGION (default us-east-2), AWS_CLI (default `aws`, or /snap/bin/aws).
+#
+# The copy is made by the node, not by Postgres, which has no route out (ADR 0038), with the credentials of the instance's role: a role
+# that can write and read the bucket and cannot delete (docs/DEPLOY.md#a-copy-off-the-node). The WAL goes first, then the backups, and
+# nothing is deleted from the bucket: its lifecycle rule ages objects out.
 # Exit status: 0 on success, 1 when a step fails or no container is found, 2 for arguments it does not understand.
 # Schedule: deploy/postgres/backup.cron, a file for /etc/cron.d (a full backup on Sundays, a differential one on the other days).
 set -eu
@@ -24,6 +31,16 @@ container=${PG_CONTAINER:-$(docker ps -q -f "name=^${stack}_postgres\\." | head 
   exit 1
 }
 pgbackrest() { docker exec -u postgres "$container" pgbackrest --stanza=shortener "$@"; }
+repository_volume() {
+  docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/pgbackrest"}}{{.Name}}{{end}}{{end}}' "$container"
+}
+offsite_cli() {
+  bucket=${OFFSITE_BUCKET:?backup: set OFFSITE_BUCKET}
+  prefix=${OFFSITE_PREFIX:-$stack}
+  aws=${AWS_CLI:-$(command -v aws || echo /snap/bin/aws)}
+  [ -x "$aws" ] || { echo "backup: the AWS CLI is not installed (snap install aws-cli --classic)" >&2; exit 1; }
+}
+offsite_aws() { "$aws" "$@" --region "${OFFSITE_REGION:-us-east-2}" --only-show-errors; }
 
 case "$command" in
   init)
@@ -36,7 +53,7 @@ case "$command" in
   info) pgbackrest info ;;
   restore-test)
     image=${PG_IMAGE:-$(docker inspect --format '{{.Config.Image}}' "$container")}
-    repository=${PGBACKREST_VOLUME:-$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/pgbackrest"}}{{.Name}}{{end}}{{end}}' "$container")}
+    repository=${PGBACKREST_VOLUME:-$(repository_volume)}
     [ -n "$repository" ] || {
       echo "backup: the container has no volume at /var/lib/pgbackrest" >&2
       exit 1
@@ -47,8 +64,29 @@ case "$command" in
       -v "$here/diagnostics.conf:/etc/shortener/diagnostics.conf:ro" \
       "$image"
     ;;
+  offsite)
+    offsite_cli
+    what=${2:-all}
+    case "$what" in all | wal) ;; *) echo "usage: deploy/postgres/backup offsite [wal]" >&2; exit 2 ;; esac
+    repository=$(repository_volume)
+    [ -n "$repository" ] || { echo "backup: the container has no volume at /var/lib/pgbackrest" >&2; exit 1; }
+    dir=$(docker volume inspect --format '{{.Mountpoint}}' "$repository")
+    # One copy at a time: a second one that starts while the first runs has nothing to add.
+    exec 9>"${OFFSITE_LOCK:-/run/shortener-offsite.lock}"
+    flock -n 9 || exit 0
+    offsite_aws s3 sync "$dir/archive/" "s3://$bucket/$prefix/archive/" --exclude '*.tmp'
+    [ "$what" = wal ] || offsite_aws s3 sync "$dir/backup/" "s3://$bucket/$prefix/backup/" --exclude '*.tmp'
+    ;;
+  offsite-restore-test)
+    offsite_cli
+    scratch=shortener-offsite-restore-$$
+    docker volume create "$scratch" >/dev/null
+    trap 'docker volume rm -f "$scratch" >/dev/null 2>&1 || true' EXIT
+    offsite_aws s3 sync "s3://$bucket/$prefix/" "$(docker volume inspect --format '{{.Mountpoint}}' "$scratch")/"
+    PGBACKREST_VOLUME=$scratch "$0" restore-test
+    ;;
   *)
-    echo "usage: deploy/postgres/backup init|full|diff|check|info|restore-test" >&2
+    echo "usage: deploy/postgres/backup init|full|diff|check|info|restore-test|offsite [wal]|offsite-restore-test" >&2
     exit 2
     ;;
 esac

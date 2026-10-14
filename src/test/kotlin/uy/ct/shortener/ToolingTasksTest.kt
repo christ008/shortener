@@ -37,6 +37,7 @@ class ToolingTasksTest {
             "deploy/stack/certificate.sh", // run as root on the node that runs the edge, and by certbot's renewal hook
             "deploy/aws/launch.sh", // creates the VM with the AWS CLI, from any machine, by hand
             "deploy/aws/bootstrap.sh", // runs on the new VM
+            "deploy/aws/offsite.sh", // makes the bucket and the role of the copy of the backups, with the AWS CLI, from any machine, by hand
             "deploy/keycloak/entrypoint.sh", // inside the Keycloak image
             "deploy/postgres/entrypoint.sh", "deploy/postgres/replica-entrypoint.sh", "deploy/postgres/restore-test.sh", // inside the Postgres image
             "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", "deploy/postgres/replication.sh", // inside Postgres

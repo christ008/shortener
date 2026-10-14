@@ -306,10 +306,36 @@ Limits and how to end one:
 Backups without the replica: leave the node without the `shortener.postgres-replica` label (step 3). `postgres-replica` then stays pending, `0/1`, and takes no memory; the
 backups, the archiving and `restore-test` work as above. A 2 GB host has no room for a second Postgres.
 
+### A copy off the node
+
+The repository is a volume of the node, so on its own it does not survive losing the node. `deploy/postgres/backup offsite` copies it to an S3 bucket with the AWS CLI, **from the
+node**: Postgres keeps no route out ([ADR 0038](adr/0038-segment-the-stack-networks.md)), and the credentials are the instance's role, which only the node can reach.
+
+1. Make the bucket and the role, from your machine ([`deploy/aws/offsite.sh`](../deploy/aws/offsite.sh), which prints the bucket's name): a private bucket that keeps versions and ages objects
+   out after 90 days, and a role for the VM that can write and read it and **cannot delete**, so a VM that is broken into cannot erase the copy.
+
+   ```bash
+   AWS_REGION=us-east-2 deploy/aws/offsite.sh
+   ```
+2. On the node, the CLI (`deploy/aws/bootstrap.sh` installs it with `OFFSITE_BUCKET` set) and the schedule, after the backup's own file:
+
+   ```bash
+   sudo snap install aws-cli --classic
+   sed "s|/srv/shortener|$PWD|; s|BUCKET_NAME|my-bucket|" deploy/postgres/offsite.cron | sudo tee /etc/cron.d/shortener-offsite >/dev/null
+   ```
+
+   The WAL goes every five minutes (nothing is written unless it failed) and the backups at 03:47, half an hour after they are made: `journalctl -t shortener-offsite`. A copy by hand:
+   `OFFSITE_BUCKET=my-bucket deploy/postgres/backup offsite`.
+3. Test it, as you test the backups: `OFFSITE_BUCKET=my-bucket deploy/postgres/backup offsite-restore-test` downloads the bucket into a throwaway volume and runs `restore-test` on it.
+
+What it gives and costs: the copy trails the node by the WAL's five minutes plus the schedule's, so about ten. A backup copied while it is being made is not a good one: the backups are copied after
+they finish, and the WAL goes first. Nothing deletes from the bucket, so what pgBackRest expires on the node stays there until the bucket's rule ages it out. A restore is `aws s3 sync` of the
+bucket's prefix into a volume of `/var/lib/pgbackrest` and then pgBackRest's own `restore`, which `offsite-restore-test` does into a scratch container. The role is the instance's: it needs `aws login` on your machine, once, for `offsite.sh`,
+and not on the node. `YES=1 deploy/aws/offsite.sh teardown` deletes the bucket, every backup in it, and the role.
+
 Limits:
 
-- The repository is a volume on the primary's node. It restores to within five minutes and does not survive losing the node.
-  For S3 or SFTP, set `repo1-type` and its options in `deploy/postgres/pgbackrest.conf`, a Docker config: rotate it under a new name.
+- The repository on the node restores to within five minutes; the copy in the bucket to within about ten.
 - Nothing alerts when a backup did not run or failed. Look at `journalctl -t shortener-backup` and `deploy/postgres/backup info`.
 - The replica is read only, and the application does not read from it.
 

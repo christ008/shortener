@@ -165,7 +165,8 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 | `deploy/stack/deploy.sh` | deploy or update the stack on a manager | sh |
 | `deploy/stack/local/prepare.sh` | throwaway secrets and certificate for a rehearsal | sh |
 | `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | roles and databases at first Postgres start | sql, sh |
-| `deploy/postgres/backup` | back up, check and restore-test the stack's Postgres, from a manager | sh |
+| `deploy/postgres/backup` | back up, check and restore-test the stack's Postgres, and copy the backups to S3, from a manager | sh |
+| `deploy/aws/offsite.sh` | make (or delete) the S3 bucket and the VM's role for that copy, from your machine | sh |
 | `deploy/keycloak/entrypoint.sh` | read Keycloak's secrets from files, start it | sh |
 | `deploy/keycloak/dev-setup`, `perf/smoke.sh` | start `DevSetup` and `Smoke` | sh |
 | `tools/run TOOL [ARGS]` | build the tools if needed, start one | sh |
@@ -192,7 +193,7 @@ Gradle tasks (`./gradlew tasks --group tooling`):
 | `dpopCall` | `DpopClient.java call` | `-Pkey=FILE -Pclient=NAME -Purl=URL -Pmethod -Pbody` |
 | `smoke` | `tools/run Smoke` | `-PbaseUrl=URL -Pmgmt=URL` |
 | `stackPrepare` | `deploy/stack/local/prepare.sh` | |
-| `postgresBackup` | `deploy/postgres/backup` | `-Pcommand=init\|full\|diff\|check\|info\|restore-test` |
+| `postgresBackup` | `deploy/postgres/backup` | `-Pcommand=init\|full\|diff\|check\|info\|restore-test\|offsite\|offsite-restore-test`, with `OFFSITE_BUCKET` in the environment for the last two |
 | `report` | `tools/run Report` | `-Preport=summary\|cpu\|gc\|hprof\|profile\|json -Ptarget=PATH -Ptop=N` |
 
 The tasks run with the project's JDK 25 toolchain. `devSetup` takes the defaults because Gradle has no terminal: run the

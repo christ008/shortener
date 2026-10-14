@@ -37,7 +37,7 @@ flowchart LR
 
 - **Edge:** nginx with a Let's Encrypt certificate for one host name, issued over HTTP-01 and renewed by certbot's timer ([DEPLOY.md](DEPLOY.md#certificate)).
 - **Identity:** Keycloak with the production realm, behind the edge under `/realms/shortener` ([DEPLOY.md](DEPLOY.md#keycloak)).
-- **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, to a repository off the VM.
+- **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, with a copy in an S3 bucket made from the node ([DEPLOY.md](DEPLOY.md#a-copy-off-the-node)).
 - **Image:** `ghcr.io/christ008/shortener:<version>`, arm64 only ([ADR 0036](adr/0036-jvm-image-for-arm64.md)). Graviton is arm64, and 20% cheaper than the x86 instance of the same size. An amd64 host builds its own with `./gradlew bootBuildImage`.
 - **Memory:** the limits of the stack add up to about 3.5 GB with Keycloak at its default 1 GB and the backups overlay. Measured on a 2 GB `t4g.small` with Keycloak at
   `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50`, two application tasks, Postgres and the edge: the host used about 1.5 GB with 340 MiB available and 233 MiB of swap,
@@ -59,7 +59,7 @@ flowchart LR
 
 Built: the Keycloak overlay, the edge route for `/realms`, the production realm (`./gradlew productionRealm`: `demo-client` and
 `admin-client`, no users), and backups with a restore test ([DEPLOY.md](DEPLOY.md#backups-and-a-replica)), with the repository on the
-VM's disk.
+VM's disk and a copy of it in S3 (`deploy/aws/offsite.sh`, `backup offsite`).
 
 Verified on 2026-10-11, on a `t4g.small`:
 
@@ -85,17 +85,17 @@ Verified on 2026-10-11, on a `t4g.small`:
   - `backup init` took a full backup of the 44 MB database into 4.9 MB, `backup check` passed, and `backup restore-test` restored it into a
     throwaway container with the same links as the live database. A link created after that backup was in a restore too, once the WAL
     segment was switched.
-  - The repository is a volume on the same disk, so it does not survive losing the VM.
-  - The schedule (`deploy/postgres/backup.cron`, in `/etc/cron.d`) was installed and its lines run by hand in cron's bare environment, on the
-    success and the failure path.
+  - The repository is a volume on the same disk, and a copy of it goes to a private S3 bucket from the node (`deploy/aws/offsite.sh`,
+    `backup offsite`): the VM's role can write and read the bucket and cannot delete from it. The WAL goes every five minutes, so the copy
+    trails the node by about ten. `backup offsite-restore-test` restored the bucket into a throwaway container with the same links as the live database.
+  - The schedule (`deploy/postgres/backup.cron`, in `/etc/cron.d`) ran by itself on 2026-10-13 at 03:17 UTC (`backup diff ok`).
 
-Not run: the replica, Prometheus, the first run of the schedule by cron itself, a renewal of the certificate 30 days on, a restore into the
-real database, and an `admin-client` call on another client's link.
+Not run: the replica, Prometheus, the copy to S3 by cron at 03:47, a renewal of the certificate 30 days on, a restore into the real database,
+and an `admin-client` call on another client's link.
 
 Not built:
 
-1. The backup repository off the VM.
-2. The `shortener-ui` client and web users (they wait for the [web UI](UI.md)).
+1. The `shortener-ui` client and web users (they wait for the [web UI](UI.md)).
 
 ## Steps
 
