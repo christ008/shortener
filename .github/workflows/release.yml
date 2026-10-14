@@ -104,6 +104,7 @@ jobs:
           format: spdx-json
           output-file: sbom.spdx.json
           upload-artifact: true
+          upload-release-assets: false
 
       - name: Attach the bill of materials to the image
         run: cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@${{ steps.push.outputs.digest }}"
