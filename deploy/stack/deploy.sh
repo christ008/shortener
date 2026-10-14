@@ -16,6 +16,9 @@
 #                   release workflow of its repository on ghcr.io, and deploys nothing when it fails. `never` skips it, for
 #                   the rehearsal on one machine, whose image is built locally
 #   WAIT            seconds to wait for the migration job, default 300
+#
+# Before it deploys it removes the stack's configs and secrets that nothing uses (the ones an earlier change of a file or a renewed
+# certificate replaced). Those still in use stay, because Swarm refuses to remove them.
 set -eu
 
 version=${1:?usage: deploy/stack/deploy.sh VERSION [STACK]}
@@ -83,6 +86,14 @@ fi
 POSTGRES_CONF_HASH=$(cat deploy/postgres/bootstrap.sql deploy/postgres/include-diagnostics.sh deploy/postgres/set-role-passwords.sh \
   deploy/postgres/diagnostics.conf deploy/postgres/keycloak-database.sh deploy/postgres/pgbackrest.conf deploy/postgres/replication.sh | sha256sum | cut -c1-12)
 export NGINX_CONF_HASH PROMETHEUS_CONF_HASH POSTGRES_CONF_HASH TLS_HASH
+
+# Configs and secrets are immutable and named after their contents, so every change leaves the old ones behind. Swarm refuses to remove one
+# a service still uses, which is the whole test: what goes is what no task of the running version needs, and a deploy recreates anything it needs.
+for kind in config secret; do
+  for id in $(docker "$kind" ls -q --filter "label=com.docker.stack.namespace=$stack" 2>/dev/null); do
+    docker "$kind" rm "$id" >/dev/null 2>&1 || true
+  done
+done
 
 deploy() {
   # shellcheck disable=SC2086

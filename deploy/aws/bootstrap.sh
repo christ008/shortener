@@ -15,6 +15,8 @@
 #   SWAP_GB               swap file, default 2 (4 GB of memory is tight for the whole stack); 0 makes none
 #   COSIGN_VERSION        default 3.0.6: 2.x reads the signatures of the release only while they use the old layout (docs/DEPLOY.md#requirements)
 #   OVERLAYS              overlay flags written to .env, default "ACME=1 KEYCLOAK=1 POSTGRES_HA=1". Keep ACME: certificate.sh needs it
+#   (POSTGRES_HA in OVERLAYS also decides the replica: the node is labelled for it from 3.5 GB of memory, so a 2 GB VM has none, `postgres-replica`
+#   stays pending (0/1) and takes no memory, and a 4 GB one has it. Run this again after resizing the VM)
 #   KEYCLOAK_MEMORY       Keycloak's memory limit when it is in OVERLAYS, default 768M, with KEYCLOAK_HEAP_PERCENT 50 (docs/CLOUD.md#shape has the measure)
 #
 # Swarm listens on the loopback only, and the security group opens 22, 80 and 443.
@@ -69,7 +71,19 @@ if [ "$($d info --format '{{.Swarm.LocalNodeState}}')" != active ]; then
   $d swarm init --advertise-addr 127.0.0.1 --listen-addr 127.0.0.1:2377 >/dev/null
 fi
 $d node update --label-add shortener.postgres=true "$($d info --format '{{.Swarm.NodeID}}')" >/dev/null
-case " $overlays " in *" POSTGRES_HA=1 "*) $d node update --label-add shortener.postgres-replica=true "$($d info --format '{{.Swarm.NodeID}}')" >/dev/null ;; esac
+case " $overlays " in *" POSTGRES_HA=1 "*)
+  # The replica is a second Postgres with 1 GB: it gets the node's label only where there is room for it.
+  node=$($d info --format '{{.Swarm.NodeID}}')
+  memory=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)
+  if [ "$memory" -ge 3500 ]; then replica=yes; else replica=no; fi
+  if [ "$replica" = yes ]; then
+    $d node update --label-add shortener.postgres-replica=true "$node" >/dev/null
+  elif $d node inspect "$node" --format '{{json .Spec.Labels}}' | grep -q '"shortener.postgres-replica"'; then
+    $d node update --label-rm shortener.postgres-replica "$node" >/dev/null
+  fi
+  echo "postgres replica: $replica (${memory} MB of memory)"
+  ;;
+esac
 sudo mkdir -p /srv/shortener/acme
 sudo chmod 0755 /srv/shortener/acme
 
@@ -77,9 +91,9 @@ echo "== secrets"
 mkdir -p secrets
 for name in db_postgres_password db_app_password db_migrator_password db_exporter_password dpop_nonce_secret \
   db_keycloak_password keycloak_admin_password db_replicator_password; do
-  [ -e "secrets/$name" ] || openssl rand -hex 24 | tr -d '\n' >"secrets/$name"
+  # Only the ones made here: the certificate's files are root's once certbot has installed them.
+  [ -e "secrets/$name" ] || { openssl rand -hex 24 | tr -d '\n' >"secrets/$name"; chmod 0444 "secrets/$name"; }
 done
-chmod 0444 secrets/*
 
 echo "== images the overlays build here"
 case " $overlays " in *" KEYCLOAK=1 "*) $d build -q -t shortener-keycloak:26.8.0 deploy/keycloak >/dev/null ;; esac

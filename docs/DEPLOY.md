@@ -66,6 +66,8 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
 - **Update:** `deploy/stack/deploy.sh <version>`. It verifies the signature of that version, runs the migration job at the new version, waits for it, then updates the
   application one task at a time, new before old. A task not healthy within 20 s rolls the update back.
 - **Roll back:** `deploy/stack/deploy.sh <previous version>`. Nothing to undo in the schema.
+- **Configs and secrets** are immutable, so a file that changes (or a renewed certificate) gets a new name, named after a hash of its contents, and the service that uses it restarts. Changing a
+  Postgres file restarts Postgres once, with the application failing its queries for about a minute: do it when that is acceptable. Each deploy removes the configs and secrets that nothing uses any more.
 - **Edge configuration:** edit `deploy/edge/nginx.conf`, deploy again.
 - **Rotate a secret:** create the file under a new name in `deploy/stack/compose.prod.yaml`, deploy. A database password needs
   `ALTER ROLE` first. Rotating `dpop_nonce_secret` makes clients ask for a nonce again once, while the instances disagree.
@@ -280,7 +282,7 @@ Limits and how to end one:
    docker build -t shortener-postgres:18.6 deploy/postgres
    ```
 2. Create the secret `db_replicator_password`, mode `0444`.
-3. Label the node that runs the replica:
+3. Label the node that runs the replica (`deploy/aws/bootstrap.sh` does it, with `POSTGRES_HA=1`, for a node with 3.5 GB of memory or more, and takes it off a smaller one):
 
    ```bash
    docker node update --label-add shortener.postgres-replica=true <node>
