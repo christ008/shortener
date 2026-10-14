@@ -106,4 +106,4 @@ jobs:
           promtool test rules alerts.test.yml
       - name: Check the shell scripts
         run: |
-          shellcheck --shell=sh deploy/stack/deploy.sh deploy/stack/local/prepare.sh deploy/keycloak/dev-setup deploy/keycloak/entrypoint.sh deploy/postgres/*.sh deploy/postgres/backup tools/run perf/*.sh perf/builds/*.sh
+          shellcheck --shell=sh deploy/stack/deploy.sh deploy/stack/pki.sh deploy/stack/local/prepare.sh deploy/stack/local/prepare-pki.sh deploy/pki/ca-config deploy/keycloak/dev-setup deploy/keycloak/entrypoint.sh deploy/postgres/*.sh deploy/postgres/backup tools/run perf/*.sh perf/builds/*.sh

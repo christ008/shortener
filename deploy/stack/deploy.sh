@@ -11,6 +11,8 @@
 #                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
 #                   POSTGRES_HA=1 (compose.postgres-ha.yaml) and ACME=1 (compose.acme.yaml, for deploy/stack/certificate.sh)
 #                   and CONSOLE=1 (compose.console.yaml: Keycloak's console through an SSH tunnel, needs KEYCLOAK=1)
+#                   and PKI_CA=1 (compose.pki-ca.yaml: the stack's own CA) and PKI=1 (compose.pki.yaml: mutual TLS between the services, with that CA,
+#                   which it includes. Needs the certificates of deploy/stack/pki.sh, and not POSTGRES_HA=1). docs/DEPLOY.md#mutual-tls-between-the-services
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
 #   VERIFY_SIGNATURE  `always` (default) runs `cosign verify` on the image for VERSION, which must have been signed by the
 #                   release workflow of its repository on ghcr.io, and deploys nothing when it fails. `never` skips it, for
@@ -44,6 +46,7 @@ if [ -f .env ]; then
 fi
 
 [ -z "${CONSOLE:-}" ] || [ -n "${KEYCLOAK:-}" ] || { echo "CONSOLE=1 is Keycloak's console: it needs KEYCLOAK=1" >&2; exit 1; }
+[ -z "${PKI:-}" ] || [ -z "${POSTGRES_HA:-}" ] || { echo "PKI=1 does not work with POSTGRES_HA=1 yet: the image and the entrypoint of the database are another" >&2; exit 1; }
 
 if [ "${VERIFY_SIGNATURE:-always}" != never ]; then
   image=${SHORTENER_IMAGE:-ghcr.io/christ008/shortener}
@@ -65,11 +68,14 @@ files=${COMPOSE_FILES:-deploy/stack/compose.prod.yaml}
 [ -z "${POSTGRES_HA:-}" ] || files="$files deploy/stack/overlays/compose.postgres-ha.yaml"
 [ -z "${ACME:-}" ] || files="$files deploy/stack/overlays/compose.acme.yaml"
 [ -z "${CONSOLE:-}" ] || files="$files deploy/stack/overlays/compose.console.yaml"
+[ -z "${PKI_CA:-}${PKI:-}" ] || files="$files deploy/stack/overlays/compose.pki-ca.yaml"
+[ -z "${PKI:-}" ] || files="$files deploy/stack/overlays/compose.pki.yaml"
 args=""
 for f in $files; do args="$args -c $f"; done
 
 # Config names carry a hash of the file.
 NGINX_CONF_HASH=$(sha256sum deploy/edge/nginx.conf | cut -c1-12)
+EDGE_UPSTREAM_CONF_HASH=$(sha256sum "deploy/edge/upstream${PKI:+.mtls}.conf" | cut -c1-12)
 PROMETHEUS_CONF_HASH=$(cat deploy/observability/prometheus.stack.yml deploy/observability/alerts.yml | sha256sum | cut -c1-12)
 if [ -n "${KEYCLOAK:-}" ]; then
   KEYCLOAK_REALM_HASH=$(sha256sum deploy/keycloak/shortener-realm.production.json | cut -c1-12)
@@ -84,8 +90,18 @@ if [ -n "${CONSOLE:-}" ]; then
 fi
 # The scripts and files Postgres is given: Swarm does not update a config in place, and they change with the releases.
 POSTGRES_CONF_HASH=$(cat deploy/postgres/bootstrap.sql deploy/postgres/include-diagnostics.sh deploy/postgres/set-role-passwords.sh \
-  deploy/postgres/diagnostics.conf deploy/postgres/keycloak-database.sh deploy/postgres/pgbackrest.conf deploy/postgres/replication.sh | sha256sum | cut -c1-12)
-export NGINX_CONF_HASH PROMETHEUS_CONF_HASH POSTGRES_CONF_HASH TLS_HASH
+  deploy/postgres/diagnostics.conf deploy/postgres/keycloak-database.sh deploy/postgres/pgbackrest.conf deploy/postgres/replication.sh \
+  deploy/postgres/pg_hba.mtls.conf deploy/postgres/pg_ident.mtls.conf | sha256sum | cut -c1-12)
+export NGINX_CONF_HASH EDGE_UPSTREAM_CONF_HASH PROMETHEUS_CONF_HASH POSTGRES_CONF_HASH TLS_HASH
+# With the CA, a hash of each file pki.sh made names its secret, and the certificates' labels say whose they are and until when.
+if [ -n "${PKI_CA:-}${PKI:-}" ]; then
+  pki_env=$(deploy/stack/pki.sh env)
+  while IFS='=' read -r key value; do
+    case "$key" in PKI_[A-Z0-9_]*) export "$key=$value" ;; esac
+  done <<EOF
+$pki_env
+EOF
+fi
 
 # Configs and secrets are immutable and named after their contents, so every change leaves the old ones behind. Swarm refuses to remove one
 # a service still uses, which is the whole test: what goes is what no task of the running version needs, and a deploy recreates anything it needs.

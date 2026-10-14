@@ -35,6 +35,8 @@ class ToolingTasksTest {
         val withoutTask = setOf(
             "deploy/stack/deploy.sh", // run on a manager, by hand, with the version as its argument
             "deploy/stack/certificate.sh", // run as root on the node that runs the edge, and by certbot's renewal hook
+            "deploy/stack/pki.sh", // run as root on the node that runs the CA, by hand and by its renewal timer; the root and its signature, on another machine
+            "deploy/stack/local/prepare-pki.sh", // adds the CA to the rehearsal of prepare.sh, by hand
             "deploy/aws/launch.sh", // creates the VM with the AWS CLI, from any machine, by hand
             "deploy/aws/bootstrap.sh", // runs on the new VM
             "deploy/aws/offsite.sh", // makes the bucket and the role of the copy of the backups, with the AWS CLI, from any machine, by hand
