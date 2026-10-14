@@ -4,7 +4,7 @@
 # the user that will deploy, from the repository's root, which must already be there (git clone). It can be run again: it keeps what
 # exists.
 #
-#   HOST=shortener.example.com ALLOWED_TARGET_HOSTS=example.com,*.example.org VERSION=0.23.0 deploy/aws/bootstrap.sh
+#   HOST=shortener.example.com ALLOWED_TARGET_HOSTS=example.com,*.example.org VERSION=0.24.0 deploy/aws/bootstrap.sh
 #
 # Required:
 #   HOST                  the public host name; PUBLIC_URL, the issuer and the key endpoint of .env follow from it
