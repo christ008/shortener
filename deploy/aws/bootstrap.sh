@@ -78,7 +78,7 @@ case " $overlays " in *" POSTGRES_HA=1 "*)
   if [ "$memory" -ge 3500 ]; then replica=yes; else replica=no; fi
   if [ "$replica" = yes ]; then
     $d node update --label-add shortener.postgres-replica=true "$node" >/dev/null
-  else
+  elif $d node inspect "$node" --format '{{json .Spec.Labels}}' | grep -q '"shortener.postgres-replica"'; then
     $d node update --label-rm shortener.postgres-replica "$node" >/dev/null
   fi
   echo "postgres replica: $replica (${memory} MB of memory)"
