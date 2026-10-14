@@ -17,6 +17,7 @@
 #   OVERLAYS              overlay flags written to .env, default "ACME=1 KEYCLOAK=1 POSTGRES_HA=1". Keep ACME: certificate.sh needs it
 #   (POSTGRES_HA in OVERLAYS also decides the replica: the node is labelled for it from 3.5 GB of memory, so a 2 GB VM has none, `postgres-replica`
 #   stays pending (0/1) and takes no memory, and a 4 GB one has it. Run this again after resizing the VM)
+#   OFFSITE_BUCKET        the bucket of deploy/aws/offsite.sh: installs the AWS CLI that `deploy/postgres/backup offsite` uses (docs/DEPLOY.md#a-copy-off-the-node)
 #   KEYCLOAK_MEMORY       Keycloak's memory limit when it is in OVERLAYS, default 768M, with KEYCLOAK_HEAP_PERCENT 50 (docs/CLOUD.md#shape has the measure)
 #
 # Swarm listens on the loopback only, and the security group opens 22, 80 and 443.
@@ -52,6 +53,10 @@ if ! command -v cosign >/dev/null; then
   (cd "$tmp" && grep ' cosign-linux-arm64$' checksums | sha256sum -c -)
   sudo install -m 0755 "$tmp/cosign-linux-arm64" /usr/local/bin/cosign
   rm -rf "$tmp"
+fi
+
+if [ -n "${OFFSITE_BUCKET:-}" ] && ! command -v aws >/dev/null; then
+  sudo snap install aws-cli --classic >/dev/null
 fi
 
 if [ "$swap" -gt 0 ] && ! swapon --show --noheadings | grep -q .; then
@@ -125,4 +130,4 @@ echo "  - DNS: an A record for $HOST to this VM's Elastic IP"
 echo "  - sudo deploy/stack/certificate.sh placeholder $HOST"
 echo "  - deploy/stack/deploy.sh $VERSION          (log out and in first, or use sudo)"
 echo "  - sudo deploy/stack/certificate.sh issue $HOST you@example.com"
-echo "  - deploy/postgres/backup init, and the crontab of docs/DEPLOY.md#backups-and-a-replica"
+echo "  - deploy/postgres/backup init, and the crontab of docs/DEPLOY.md#backups-and-a-replica (and the copy off the node, docs/DEPLOY.md#a-copy-off-the-node)"

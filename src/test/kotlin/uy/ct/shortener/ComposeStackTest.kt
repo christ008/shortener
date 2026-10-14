@@ -369,6 +369,43 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `the copy of the backups is made by the node, and refuses what it should before it touches Docker or AWS`() {
+        val script = Path.of("deploy/postgres/backup")
+        fun run(environment: Map<String, String>, vararg args: String): Pair<Int, String> {
+            val builder = ProcessBuilder("sh", script.toString(), *args).redirectErrorStream(true)
+            builder.environment().apply { remove("OFFSITE_BUCKET"); put("PG_CONTAINER", "none"); putAll(environment) }
+            val process = builder.start()
+            val output = process.inputStream.bufferedReader().readText()
+            return process.waitFor() to output
+        }
+
+        assertThat(ProcessBuilder("sh", "-n", script.toString()).start().waitFor()).describedAs("sh -n").isZero()
+        val withoutBucket = run(emptyMap(), "offsite")
+        assertThat(withoutBucket.first).describedAs("no bucket").isNotZero()
+        assertThat(withoutBucket.second).contains("OFFSITE_BUCKET")
+        assertThat(run(mapOf("OFFSITE_BUCKET" to "b", "AWS_CLI" to "/bin/true"), "offsite", "everything").first).describedAs("an argument it does not know").isEqualTo(2)
+        assertThat(run(mapOf("OFFSITE_BUCKET" to "b", "AWS_CLI" to "/nonexistent/aws"), "offsite").second).contains("AWS CLI is not installed")
+        val text = Files.readString(script)
+        assertThat(text).describedAs("the WAL goes before the backups, and nothing is deleted from the bucket")
+            .containsSubsequence("archive/", "backup/").doesNotContain("--delete").doesNotContain("s3 rm")
+    }
+
+    @Test
+    fun `the schedule of the copy sends the WAL every five minutes and the backups after they are made, and the role cannot delete`() {
+        val cron = Files.readAllLines(Path.of("deploy/postgres/offsite.cron")).filterNot { it.startsWith("#") || it.isBlank() }
+        assertThat(cron).anyMatch { it.startsWith("*/5 * * * *") && it.contains("backup offsite wal") }
+        assertThat(cron).anyMatch { it.startsWith("47 3 * * *") && it.contains("backup offsite ") }
+        assertThat(cron).contains("OFFSITE_BUCKET=BUCKET_NAME")
+        assertThat(cron.first { it.startsWith("PATH=") }).describedAs("the AWS CLI is a snap").contains("/snap/bin")
+        cron.filter { it.contains("backup offsite") }.forEach { assertThat(it).contains("root").contains("/srv/shortener/deploy/postgres/backup").contains("logger -t shortener-offsite") }
+
+        val offsite = Files.readString(Path.of("deploy/aws/offsite.sh"))
+        assertThat(ProcessBuilder("sh", "-n", "deploy/aws/offsite.sh").start().waitFor()).describedAs("sh -n").isZero()
+        assertThat(offsite).contains("\"Sid\\\":\\\"NeverDelete\\\",\\\"Effect\\\":\\\"Deny\\\"", "s3:DeleteObjectVersion", "s3:PutLifecycleConfiguration", "aws:SecureTransport", "BlockPublicPolicy=true", "Status=Enabled")
+        assertThat(offsite).describedAs("it asks before it deletes the backups").contains("YES=1")
+    }
+
+    @Test
     fun `every proxied location replaces the forwarded headers the application reads and empties the ones it does not`() {
         val confs = Files.list(Path.of("deploy/edge")).use { files -> files.filter { it.toString().endsWith(".conf") }.toList() }
         val lines = confs.flatMap { Files.readAllLines(it) }.filterNot { it.trimStart().startsWith("#") }.map { it.trim() }

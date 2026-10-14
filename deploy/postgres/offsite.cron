@@ -1,0 +1,10 @@
+# Copies the backups of deploy/postgres/backup to the S3 bucket, from the node (`backup offsite`, docs/DEPLOY.md#a-copy-off-the-node). A file for /etc/cron.d. Install it
+# after the backup's own cron file, for the repository where it is and the bucket that is yours:
+#   sed "s|/srv/shortener|$PWD|; s|BUCKET_NAME|my-bucket|" deploy/postgres/offsite.cron | sudo tee /etc/cron.d/shortener-offsite >/dev/null
+# The WAL goes every five minutes, which is what Postgres archives it at, and says nothing unless it failed. The backups go half an hour after they are made, and each
+# run writes one line to the system log (journalctl -t shortener-offsite).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+OFFSITE_BUCKET=BUCKET_NAME
+*/5 * * * *  root { /srv/shortener/deploy/postgres/backup offsite wal 2>&1 || echo "offsite wal failed (exit $?)"; } | logger -t shortener-offsite
+47 3 * * *   root { /srv/shortener/deploy/postgres/backup offsite 2>&1 && echo "offsite ok" || echo "offsite failed (exit $?)"; } | logger -t shortener-offsite

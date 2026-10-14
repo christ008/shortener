@@ -37,7 +37,7 @@ flowchart LR
 
 - **Edge:** nginx with a Let's Encrypt certificate for one host name, issued over HTTP-01 and renewed by certbot's timer ([DEPLOY.md](DEPLOY.md#certificate)).
 - **Identity:** Keycloak with the production realm, behind the edge under `/realms/shortener` ([DEPLOY.md](DEPLOY.md#keycloak)).
-- **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, to a repository off the VM.
+- **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, with a copy in an S3 bucket made from the node ([DEPLOY.md](DEPLOY.md#a-copy-off-the-node)).
 - **Image:** `ghcr.io/christ008/shortener:<version>`, arm64 only ([ADR 0036](adr/0036-jvm-image-for-arm64.md)). Graviton is arm64, and 20% cheaper than the x86 instance of the same size. An amd64 host builds its own with `./gradlew bootBuildImage`.
 - **Memory:** the limits of the stack add up to about 3.5 GB with Keycloak at its default 1 GB and the backups overlay. Measured on a 2 GB `t4g.small` with Keycloak at
   `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50`, two application tasks, Postgres and the edge: the host used about 1.5 GB with 340 MiB available and 233 MiB of swap,
@@ -59,7 +59,7 @@ flowchart LR
 
 Built: the Keycloak overlay, the edge route for `/realms`, the production realm
 (`./gradlew productionRealm`: `demo-client` and `admin-client`, no users), and backups with a restore test
-([DEPLOY.md](DEPLOY.md#backups-and-a-replica)), with the repository on the VM's disk.
+([DEPLOY.md](DEPLOY.md#backups-and-a-replica)), with the repository on the VM's disk and a copy of it in S3 (`deploy/aws/offsite.sh`, `backup offsite`).
 
 Run once, on 2026-10-11: `deploy/aws/launch.sh` (the VM, its security group and Elastic IP), `deploy/aws/bootstrap.sh` (Docker, cosign, certbot, Swarm,
 secrets, `.env`) and `deploy/stack/certificate.sh` with the ACME overlay, on a `t4g.small`, up to a staging certificate served by the edge. The free
