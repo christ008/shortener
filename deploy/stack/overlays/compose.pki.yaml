@@ -85,7 +85,7 @@ configs:
 # the services that hold it. The labels are what `docker secret inspect` shows: who the identity is and until when (set by deploy.sh from pki.sh env).
 secrets:
   pki_chain:
-    name: 'pki_chain_${PKI_CHAIN_HASH:?run deploy/stack/pki.sh install-intermediate}'
+    name: 'pki_chain_${PKI_CHAIN_HASH:?install the issuing CA with deploy/stack/pki.sh}'
     file: '${SECRETS_DIR:-../../secrets}/pki_chain'
     labels:
       shortener.pki.role: trust-anchors

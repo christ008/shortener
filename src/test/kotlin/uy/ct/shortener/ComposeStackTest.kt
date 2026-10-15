@@ -619,6 +619,17 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `the message of a required variable has none of the characters that the stack loader reads as an operator`() {
+        (composePaths + "deploy/stack/overlays/compose.console.yaml").forEach { path ->
+            Regex("""\$\{[A-Z][A-Z0-9_]*:\?([^}]*)}""").findAll(Files.readString(Path.of(path))).forEach {
+                assertThat(it.groupValues[1])
+                    .describedAs("docker stack deploy takes what follows a dash in the message of a required variable as its default, so a name built from it never changes: $path")
+                    .doesNotContain("-", "+", "?")
+            }
+        }
+    }
+
+    @Test
     fun `every variable the files read is in dot env example, and every one listed there is read`() {
         val example = Files.readString(Path.of("deploy/stack/.env.example"))
         val listed = Regex("""(?m)^#?\s*([A-Z][A-Z0-9_]*)=""").findAll(example).map { it.groupValues[1] }.toSet()

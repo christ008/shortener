@@ -83,7 +83,7 @@ secrets:
     name: 'pki_provisioner_pass_${PKI_PROVISIONER_PASS_HASH:?run deploy/stack/pki.sh init}'
     file: '${SECRETS_DIR:-../../secrets}/pki_provisioner_pass'
   pki_ca_cert:
-    name: 'pki_ca_cert_${PKI_CA_CERT_HASH:?run deploy/stack/pki.sh install-intermediate}'
+    name: 'pki_ca_cert_${PKI_CA_CERT_HASH:?install the issuing CA with deploy/stack/pki.sh}'
     file: '${SECRETS_DIR:-../../secrets}/pki_ca_cert'
     labels:
       shortener.pki.role: issuing-ca
@@ -91,7 +91,7 @@ secrets:
       shortener.pki.sha256: '${PKI_CA_CERT_SHA256:-}'
       shortener.pki.not-after: '${PKI_CA_CERT_NOT_AFTER:-}'
   pki_root:
-    name: 'pki_root_${PKI_ROOT_HASH:?run deploy/stack/pki.sh install-intermediate}'
+    name: 'pki_root_${PKI_ROOT_HASH:?install the issuing CA with deploy/stack/pki.sh}'
     file: '${SECRETS_DIR:-../../secrets}/pki_root'
     labels:
       shortener.pki.role: root
