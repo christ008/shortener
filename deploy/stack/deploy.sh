@@ -11,8 +11,9 @@
 #                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
 #                   POSTGRES_HA=1 (compose.postgres-ha.yaml) and ACME=1 (compose.acme.yaml, for deploy/stack/certificate.sh)
 #                   and CONSOLE=1 (compose.console.yaml: Keycloak's console through an SSH tunnel, needs KEYCLOAK=1)
-#                   and PKI_CA=1 (compose.pki-ca.yaml: the stack's own CA) and PKI=1 (compose.pki.yaml: mutual TLS between the services, with that CA,
-#                   which it includes. Needs the certificates of deploy/stack/pki.sh, and not POSTGRES_HA=1). docs/DEPLOY.md#mutual-tls-between-the-services
+#                   and PKI_CA=1 (compose.pki-ca.yaml: the stack's own CA) and PKI=1 (compose.pki-db.yaml and compose.pki.yaml: mutual TLS between the services, with that CA,
+#                   which it includes. Needs the certificates of deploy/stack/pki.sh, and not POSTGRES_HA=1. The first time, the database is deployed alone and waited for, and then
+#                   the rest, so that the application is not rolled back while the database restarts). docs/DEPLOY.md#mutual-tls-between-the-services
 #   RESOLVE_IMAGE   `always` (default) asks the registry for the image digest, `never` uses what the node has
 #   VERIFY_SIGNATURE  `always` (default) runs `cosign verify` on the image for VERSION, which must have been signed by the
 #                   release workflow of its repository on ghcr.io, and deploys nothing when it fails. `never` skips it, for
@@ -69,9 +70,13 @@ files=${COMPOSE_FILES:-deploy/stack/compose.prod.yaml}
 [ -z "${ACME:-}" ] || files="$files deploy/stack/overlays/compose.acme.yaml"
 [ -z "${CONSOLE:-}" ] || files="$files deploy/stack/overlays/compose.console.yaml"
 [ -z "${PKI_CA:-}${PKI:-}" ] || files="$files deploy/stack/overlays/compose.pki-ca.yaml"
+[ -z "${PKI:-}" ] || files="$files deploy/stack/overlays/compose.pki-db.yaml"
+database_files=$files
 [ -z "${PKI:-}" ] || files="$files deploy/stack/overlays/compose.pki.yaml"
 args=""
 for f in $files; do args="$args -c $f"; done
+database_args=""
+for f in $database_files; do database_args="$database_args -c $f"; done
 
 # Config names carry a hash of the file.
 NGINX_CONF_HASH=$(sha256sum deploy/edge/nginx.conf | cut -c1-12)
@@ -111,13 +116,41 @@ for kind in config secret; do
   done
 done
 
-deploy() {
+deploy() { # [FILES AS -c ARGUMENTS]: all of them, unless it is told which
   # shellcheck disable=SC2086
-  docker stack deploy $args --with-registry-auth --resolve-image "${RESOLVE_IMAGE:-always}" --detach=true "$stack"
+  docker stack deploy ${1:-$args} --with-registry-auth --resolve-image "${RESOLVE_IMAGE:-always}" --detach=true "$stack"
 }
 
 current=$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_shortener" 2>/dev/null \
   | sed 's/@.*//; s/.*://' || true)
+
+tag_of() { docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$1" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
+
+database_has_certificate() {
+  for id in $(docker ps -q --filter "name=${stack}_postgres" --filter health=healthy); do
+    docker exec "$id" test -e /run/secrets/pki_postgres_key 2>/dev/null && return 0
+  done
+  return 1
+}
+
+# The first deploy of PKI=1 restarts the database to take certificates only. The application's new tasks, starting while it is down, cannot connect and fail, and Swarm
+# rolls the application back to the one that has no certificate, which the database then refuses. So the database goes first, with the application as it runs, and the
+# rest when it is up. The edge's file is the plain one in that deploy, and its config is named after it.
+if [ -n "${PKI:-}" ] && [ -n "$current" ] \
+  && ! docker service inspect --format '{{range .Spec.TaskTemplate.ContainerSpec.Secrets}}{{.SecretName}} {{end}}' "${stack}_postgres" 2>/dev/null | grep -q pki_postgres_key; then
+  echo "turning on mutual TLS: the database first"
+  EDGE_UPSTREAM_CONF_HASH=$(sha256sum deploy/edge/upstream.conf | cut -c1-12) SHORTENER_VERSION=$current SHORTENER_MIGRATE_VERSION=$(tag_of migrate) deploy "$database_args"
+  waited=0
+  until database_has_certificate; do
+    if [ "$waited" -ge "${WAIT:-300}" ]; then
+      echo "the database did not come up with its certificate in ${WAIT:-300} s; its log:" >&2
+      docker service logs --tail 30 "${stack}_postgres" >&2 || true
+      exit 1
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+fi
 
 if [ -z "$current" ]; then
   SHORTENER_VERSION=$version SHORTENER_MIGRATE_VERSION=$version deploy
@@ -125,7 +158,6 @@ if [ -z "$current" ]; then
   exit 0
 fi
 
-tag_of() { docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$1" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
 iteration() { docker service inspect --format '{{.JobStatus.JobIteration.Index}}' "${stack}_migrate" 2>/dev/null || echo 0; }
 
 if [ "$(tag_of migrate)" = "$version" ]; then

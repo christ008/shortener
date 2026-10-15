@@ -1,7 +1,7 @@
 # 0022. Mutual TLS between the services
 
-- Status: Accepted, 2026-10-14, optional and off by default. Tried with `docker compose` on one machine. Not tried under Swarm or on more than one node
-- Evidence: `deploy/stack/overlays/compose.pki-ca.yaml`, `compose.pki.yaml`, `deploy/stack/pki.sh`, `PeerIdentityFilter`, `ComposeStackTest`, `PkiScriptTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) F-07, [0021](0021-encrypt-internal-traffic.md)
+- Status: Accepted, 2026-10-14, optional and off by default. Tried with `docker compose` and under Swarm, on one machine. Not tried on more than one node
+- Evidence: `deploy/stack/overlays/compose.pki-ca.yaml`, `compose.pki-db.yaml`, `compose.pki.yaml`, `deploy/stack/pki.sh`, `PeerIdentityFilter`, `ComposeStackTest`, `PkiScriptTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) F-07, [0021](0021-encrypt-internal-traffic.md)
 
 ## Problem
 
@@ -24,7 +24,8 @@ Each link gets mutual TLS, with certificates from the stack's own CA, step-ca. `
 - **One algorithm.** Every key is ECDSA P-256 and every certificate is signed with SHA-256. Ed25519 was tried first and does not do: a certificate it signs has no digest for SCRAM channel binding, which `libpq` uses by default, so a client could not log in to the database with a password over TLS.
 - **The identity is checked in the application**, in a filter of the security chain that runs first, and not with Spring Security's `x509()`: the bearer and DPoP filters replace its result on every `/api` request, its extractors read the subject and not the URI names, and it would make `edge` the key of the per-client rate limit. The management port, which shares the chain, is not checked.
   `production` does not start with a certificate asked for and no identity named, or an identity named and no certificate asked for.
-- **Rotation is a deploy.** A secret is immutable, so each is named after a hash of its contents, and `pki.sh renew` (daily, from cron) issues what is two thirds through its life and deploys with the running version, as `certificate.sh install` does. The application is replaced one instance at a time with the new one up first, the edge in a few seconds, Postgres, whose certificate lives a year, when its renewal comes.
+- **Rotation is a deploy.** A secret is immutable, so each is named after a hash of its contents, and `pki.sh renew` (daily, from cron) issues what is two thirds through its life and deploys with the running version, as `certificate.sh install` does. The application is replaced one instance at a time with the new one up first, the edge in a few seconds.
+- **The database goes first and alone.** Replacing the database while the application's new tasks start makes them fail to connect, and Swarm rolls the application back (measured: eighteen seconds). Turning on `PKI=1` therefore deploys the database overlay first, with the application as it runs (`compose.pki-db.yaml`, `deploy.sh`), and the rest when it is up, and `renew` renews the database's certificate alone and deploys.
 - **Labels.** `docker secret inspect` shows each certificate's role, identity, serial, SHA-256 fingerprint, expiry and renewal date, which `pki.sh env` computes for `deploy.sh`.
 
 ## Consequences
@@ -37,7 +38,8 @@ Each link gets mutual TLS, with certificates from the stack's own CA, step-ca. `
 - Limit: not with `POSTGRES_HA=1`, which has another image and entrypoint, and for the stack's own Postgres: a managed database has its own way.
 - Limit: the CA logs the certificate and the one-time token of each request. Keep that log with the other sensitive ones.
 - Limit: `docker compose` gives no service its own copy of a secret with an owner and mode, so the rehearsal (`prepare-pki.sh`) makes the files readable instead. pgjdbc refuses a key file that others can read.
-- Not verified: Swarm, more than one node, and the cost of TLS between the edge and the application under load (the edge keeps connections and reuses TLS sessions, which a load test would show).
+- Cost: turning it on has about a minute in which the application as it was cannot write to the database, which now takes certificates only. Reads come from the cache. Renewing the database's certificate is a few seconds without the database.
+- Not verified: more than one node, and the cost of TLS between the edge and the application under load (the edge keeps connections and reuses TLS sessions, which a load test would show).
 
 ## Rejected
 
@@ -47,3 +49,4 @@ Each link gets mutual TLS, with certificates from the stack's own CA, step-ca. `
 - Spring Security's `x509()`: see above.
 - Ed25519 for the keys, and a hybrid post-quantum key exchange on Postgres: the first does not work with SCRAM over TLS, and the second is not needed.
 - Key and request made in the CA: it would see every private key.
+- One deploy to turn it on: tried, and the application is rolled back.

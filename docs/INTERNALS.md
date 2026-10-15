@@ -524,6 +524,7 @@ With `PKI_CA=1` the stack has its own CA, step-ca, on a sixth network, `pki`, th
 - **The identity check is not Spring Security's `x509()`**: its filters would be replaced by the bearer and DPoP filters on every `/api` request (each makes a new security context), its extractors read the subject and not the URI names, and an
   authenticated `edge` would become the key of the per-client rate limit for all the public traffic. The certificate names the proxy and not the user, so this is authorization of the connection, not authentication.
 - **Edge to application** is one file, `upstream.conf` (plain HTTP) or `upstream.mtls.conf` (TLS 1.3, the edge's certificate, `proxy_ssl_verify on`), included by the proxy location of `nginx.conf`, so the 160 lines are not repeated.
+- **The database goes first.** Replacing it while the application's new tasks start makes them fail to connect and Swarm rolls the application back to the one with no certificate, which the database then refuses. `deploy.sh` deploys the database overlay (`compose.pki-db.yaml`) alone the first time `PKI=1` is on, and `pki.sh renew` renews the database's certificate alone.
 - **Production does not start with half of it** (`requirePeerIdentityToMatchClientAuth`), and `ComposeStackTest` holds who holds which key, the one-mount-per-secret rule, the networks and the names the CA signs for.
 
 ### Hardening

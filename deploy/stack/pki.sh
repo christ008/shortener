@@ -10,7 +10,7 @@
 #     pki.sh request                               makes a new request for the same key, a month before the issuing CA's year is over
 #     pki.sh install-intermediate CERT ROOT        checks what the root signed and installs it with the root certificate
 #     pki.sh issue ROLE                            makes a key and a request here, has the CA sign the request, and writes the result
-#     pki.sh renew                                 issues again what is two thirds through its life, and deploys. FORCE=1 issues all
+#     pki.sh renew [ROLE...]                       issues again the roles named, or what is two thirds through its life, and deploys. The database's goes alone and first
 #     pki.sh inspect                               what secrets/ holds: identity, validity, key, and whether each key matches its certificate
 #     pki.sh env                                   the variables deploy.sh gives the Compose files: a hash of each secret and the labels of each certificate
 #
@@ -182,18 +182,24 @@ EOF
     ;;
 
   renew)
-    renewed=
-    for role in $roles; do
-      cert=$secrets/pki_${role}_cert
-      [ -e "$cert" ] || continue
-      start=$(epoch "$cert" startdate)
-      end=$(epoch "$cert" enddate)
-      if [ -n "${FORCE:-}" ] || [ "$(date +%s)" -ge $((start + (end - start) * 2 / 3)) ]; then
-        issue_role "$role"
-        renewed=1
-      fi
-    done
-    [ -n "$renewed" ] || { echo "no certificate is two thirds through its life"; exit 0; }
+    shift
+    due=
+    if [ "$#" -gt 0 ]; then
+      due=$*
+    else
+      for role in $roles; do
+        cert=$secrets/pki_${role}_cert
+        [ -e "$cert" ] || continue
+        start=$(epoch "$cert" startdate)
+        end=$(epoch "$cert" enddate)
+        [ "$(date +%s)" -lt $((start + (end - start) * 2 / 3)) ] || due="$due $role"
+      done
+    fi
+    # A new certificate of the database replaces the database, and the application's new tasks, starting while it restarts, cannot connect and fail, and Swarm rolls the
+    # application back. So the database is renewed alone and deployed, and the rest is due still, for the next run, or for the next command.
+    case " $due " in *" postgres "*) due=postgres ;; esac
+    [ -n "${due# }" ] || { echo "no certificate is two thirds through its life"; exit 0; }
+    for role in $due; do issue_role "$role"; done
     version=$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_shortener" 2>/dev/null \
       | sed 's/@.*//; s/.*://' || true)
     [ -n "$version" ] || { echo "the stack $stack is not deployed; the files are in place, deploy.sh will use them" >&2; exit 0; }
