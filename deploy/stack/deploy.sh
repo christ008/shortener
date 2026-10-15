@@ -126,9 +126,10 @@ current=$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Im
 
 tag_of() { docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$1" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
 
-database_has_certificate() {
-  for id in $(docker ps -q --filter "name=${stack}_postgres" --filter health=healthy); do
-    docker exec "$id" test -e /run/secrets/pki_postgres_key 2>/dev/null && return 0
+database_has_certificate() { # a task of the database is running with the certificate's secret, on any node: the swarm's own API, not the containers of this node
+  for task in $(docker service ps -q --filter desired-state=running "${stack}_postgres"); do
+    [ "$(docker inspect --format '{{.Status.State}}' "$task")" = running ] || continue
+    docker inspect --format '{{range .Spec.ContainerSpec.Secrets}}{{.SecretName}} {{end}}' "$task" | grep -q pki_postgres_key && return 0
   done
   return 1
 }
