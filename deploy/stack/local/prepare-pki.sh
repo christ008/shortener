@@ -31,8 +31,11 @@ deploy/stack/pki.sh install-intermediate "$root/ca.pem" "$root/root.crt"
 
 # Compose reads the hashes and labels of the files from the environment, as deploy.sh does.
 pki_env=$(deploy/stack/pki.sh env)
-# shellcheck disable=SC2086
-export $pki_env
+while IFS='=' read -r key value; do
+  export "$key=$value"
+done <<EOF
+$pki_env
+EOF
 docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.pki-ca.yaml up -d --wait stepca
 for role in edge shortener migrator postgres; do
   deploy/stack/pki.sh issue "$role"

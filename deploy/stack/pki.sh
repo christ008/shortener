@@ -232,7 +232,7 @@ EOF
       [ -f "$file" ] || continue
       name=$(basename "$file")
       case "$name" in *[!a-z_]*) continue ;; esac
-      label=$(echo "${name#pki_}" | tr 'a-z' 'A-Z')
+      label=$(echo "${name#pki_}" | tr '[:lower:]' '[:upper:]')
       echo "PKI_${label}_HASH=$(sha256sum "$file" | cut -c1-12)"
       case "$name" in
         pki_root|pki_*_cert)
