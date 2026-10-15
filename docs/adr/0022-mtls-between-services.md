@@ -1,6 +1,6 @@
 # 0022. Mutual TLS between the services
 
-- Status: Accepted, 2026-10-14, optional and off by default. Tried with `docker compose` and under Swarm, on one machine. Not tried on more than one node
+- Status: Accepted, 2026-10-14, optional and off by default. Tried with `docker compose`, and under Swarm on one node and on two. Not tried on more, or under load
 - Evidence: `deploy/stack/overlays/compose.pki-ca.yaml`, `compose.pki-db.yaml`, `compose.pki.yaml`, `deploy/stack/pki.sh`, `PeerIdentityFilter`, `ComposeStackTest`, `PkiScriptTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) F-07, [0021](0021-encrypt-internal-traffic.md)
 
 ## Problem
@@ -38,8 +38,10 @@ Each link gets mutual TLS, with certificates from the stack's own CA, step-ca. `
 - Limit: not with `POSTGRES_HA=1`, which has another image and entrypoint, and for the stack's own Postgres: a managed database has its own way.
 - Limit: the CA logs the certificate and the one-time token of each request. Keep that log with the other sensitive ones.
 - Limit: `docker compose` gives no service its own copy of a secret with an owner and mode, so the rehearsal (`prepare-pki.sh`) makes the files readable instead. pgjdbc refuses a key file that others can read.
-- Cost: turning it on has about a minute in which the application as it was cannot write to the database, which now takes certificates only. Reads come from the cache. Renewing the database's certificate is a few seconds without the database.
-- Not verified: more than one node, and the cost of TLS between the edge and the application under load (the edge keeps connections and reuses TLS sessions, which a load test would show).
+- Cost: turning it on is a short maintenance event. The edge speaks TLS to the application before any replica does, so for about 28 seconds the edges answer `502` or do not answer (116 of 592 requests, 103 of them `502`, on two nodes), and the application as it was cannot write to the database, which now takes certificates only. Renewing is gentler: the edge or the application, about nine unanswered requests of 774 while each edge is replaced, and the database's certificate alone about ten seconds without the database (five of 780).
+- Cost: more than one node needs the CA on a manager, a placement preference for the application's replicas (the stack has none, and both landed on the database's node), and the nodes' security group open to every protocol between them (ESP).
+- Verified on two nodes: the overlays carry ESP and no VXLAN in the clear, both edges reach both replicas over mutual TLS, a replica on the other node from the database connects with its certificate, and stopping the CA for 40 seconds changes nothing.
+- Not verified: the cost of TLS between the edge and the application under load (the edge keeps connections and reuses TLS sessions, which a load test would show).
 
 ## Rejected
 

@@ -22,7 +22,7 @@ only the `data` network was encrypted.
 - Cost: IPsec has CPU and MTU costs, and the ports between nodes must be open.
 - Limit: the overlay encrypts, it does not say who is on the other end. Anything attached to the network can talk to the
   application, which is why 0022 exists.
-- Not verified: more than one node.
+- Verified on two nodes, 2026-10-15: `ingress` and `data` carry ESP between the nodes, 245 packets in ten seconds and no VXLAN in the clear, with Swarm's four security associations installed. The nodes' security group must allow every protocol between them: ESP is protocol 50.
 
 ## Rejected
 

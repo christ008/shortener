@@ -156,7 +156,19 @@ the same machine as a service's key, and the CA never sees a service's private k
 
 The first time, `deploy.sh` does it in two deploys: the database, which restarts to take certificates only, with the application as it runs, and when the database is up, the rest. In one deploy the application's new tasks
 would start while the database is down, fail to connect, and Swarm would roll the application back to the one that has no certificate, which the database then refuses (tried: a rollback in twelve seconds). The application as it
-was cannot reach the database between the two, about a minute of errors on writes while reads come from the cache (`REDIRECT_CACHE_STALE_IF_ERROR`). The edge and the application then take their certificates one instance at a time.
+was cannot reach the database between the two. Turning it on is a short maintenance event: measured on two nodes with a request every 0.3 s to each edge, about 28 seconds in which the edges answered `502` (103 of 592 requests) or did not answer at all (13 more). The edge starts speaking TLS to the application while every replica still speaks plain HTTP, and until the first new replica is up there is nobody to talk to; the other order has the same gap. Do it when that is acceptable.
+
+### More than one node
+
+Tried on two nodes (a manager and a worker, `t3.small` each), with the application's replicas on both:
+
+- **Labels.** The CA runs on the node with `shortener.pki=true`, which must be a **manager**: `pki.sh` runs there (it uses `docker exec` on the CA's container, and `deploy.sh` needs a manager), and the CA's database directory (`PKI_DIR`) exists on that node alone. Do not move the label without moving the directory and the secrets. The database runs on the node with `shortener.postgres=true`.
+- **The overlays are encrypted between nodes**: ESP between their addresses, 245 packets in ten seconds and no VXLAN in the clear. The nodes' security group must let through every protocol between them (ESP is protocol 50, which UDP 4789 alone does not cover).
+- **Both edges reach both replicas** over mutual TLS, and a replica on the other node from the database connects with its certificate. The identity check, the database's certificates and the passwords refused behave as on one node.
+- **The stack does not spread the replicas.** Both landed on the database's node. A preference does it (a file of your own in `COMPOSE_FILES`: `services.shortener.deploy.placement.preferences: [{spread: node.id}]`), and it is soft: a rolling update left both replicas on one node again, and `docker service update --force shortener_shortener` spreads them.
+- **The CA is not needed to serve.** With the CA stopped for 40 seconds, 171 requests to each edge were all answered. Only issuing and renewing wait for it.
+- **Renewing** the edge, the application and the migration job: 387 requests to each edge, no `502`, nine without an answer in all (each edge is replaced in about three seconds, one after the other). Renewing the database's certificate alone: about ten seconds without the database, five of 780 requests unanswered, and the application and the edges untouched.
+- **Turning it on waits for the database through Swarm's API**, and not through the containers of the node it runs on, which see only their own.
 
 ### Renewing
 
@@ -183,7 +195,7 @@ puts it in place and a deploy replaces the CA and the services' trust, the datab
 - The identity check is in the application: a caller with a certificate of the CA that is not the edge's is a `403`, and the event `peer_identity_not_allowed` is logged. Production does not start with a certificate asked for and
   no identity named, or the reverse.
 - The CA logs each request with its serial, the provisioner, the names and the validity, and also the certificate and the one-time token of the request (valid five minutes). Treat that log as sensitive.
-- Tried under Swarm on one node on 2026-10-14, with the image of this version: the CA as a service, turning it on, every identity against the application and the database, and the renewal of the application's certificate. Not tried: more than one node, and the cost of the TLS between the edge and the application under load.
+- Tried under Swarm on one node (2026-10-14) and on two (2026-10-15), with the image of this version: the CA as a service, turning it on, every identity against the application and the database, and the renewals. Not tried: more than two nodes, and the cost of the TLS between the edge and the application under load.
 
 ## Keycloak
 
