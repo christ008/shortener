@@ -64,6 +64,33 @@ class AnalyticsIntegrationTest {
     }
 
     @Test
+    fun `counts where visitors came from and the language they asked for, per day, and nothing of the sort for bots`() {
+        repository.insertIfAbsent(ShortCode("sourced"), URI.create("https://example.com/sourced"), "analytics-test")
+        val browser = "Mozilla/5.0 (X11; Linux x86_64) Chrome/130.0"
+
+        repeat(2) {
+            rest.get().uri("/sourced").header("User-Agent", browser).header("Referer", "https://www.News.example/a?b=1")
+                .header("Accept-Language", "es-UY,es;q=0.9").exchange().expectStatus().isFound()
+        }
+        rest.get().uri("/sourced").header("User-Agent", browser).exchange().expectStatus().isFound()
+        rest.get().uri("/sourced").header("User-Agent", "Slackbot-LinkExpanding 1.0").header("Referer", "https://slack.com/")
+            .header("Accept-Language", "en").exchange().expectStatus().isFound()
+        flusher.flush()
+
+        val daily = jdbc.query(
+            "select dimension, value, sum(clicks) as clicks from link_click_daily where short_code = ? group by 1, 2",
+            { rows, _ -> (rows.getString("dimension") to rows.getString("value")) to rows.getLong("clicks") },
+            "sourced",
+        ).toMap()
+        assertThat(daily).containsOnly(
+            entry("referrer" to "news.example", 2L),
+            entry("referrer" to "(direct)", 1L),
+            entry("language" to "es", 2L),
+            entry("language" to "(unknown)", 1L),
+        )
+    }
+
+    @Test
     fun `counts nothing for a HEAD, an unknown code or a link that was disabled`() {
         repository.insertIfAbsent(ShortCode("notCounted"), URI.create("https://example.com/not-counted"), "analytics-test")
         repository.insertIfAbsent(ShortCode("gone"), URI.create("https://example.com/gone"), "analytics-test")

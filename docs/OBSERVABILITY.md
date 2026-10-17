@@ -81,6 +81,7 @@ A create request in Tempo: the HTTP span, and under it `shortlink.insert`.
 | `shortlink_load_seconds`, `shortlink_insert_seconds` | timer | database read of a redirect, each insert attempt |
 | `analytics_clicks_recorded_total` | counter | clicks counted in memory ([ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md)) |
 | `analytics_clicks_dropped_total` | counter | clicks not counted, by `reason`: `full` (the instance holds its cap), `storage` (a batch that could not be written no longer fits) or `error`. Should be zero |
+| `analytics_referrers_capped_total` | counter | visitors whose referrer host was counted as `other`, because their link already had as many hosts that day as an instance admits. A steady climb on one instance can be a forged `Referer` |
 | `analytics_aggregator_entries` | gauge | counts held in memory until the next flush |
 | `analytics_flush_seconds` | timer | a write of one batch, by `outcome` (`success` or `failure`) |
 | `shortener_security_events_total` | counter | `401`, `403`, `429` and requests for a DPoP nonce (`dpop_nonce_requested`) by `type` |

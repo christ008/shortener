@@ -55,6 +55,13 @@ class AnalyticsConfigurationTest {
     }
 
     @Test
+    fun `takes the referrer cap from the settings`() {
+        runner.withPropertyValues("shortener.analytics.referrers.per-link-and-day=5", "shortener.analytics.referrers.tracked=10").run { context ->
+            assertThat(context.getBean(AnalyticsProperties::class.java).referrers).isEqualTo(AnalyticsProperties.Referrers(5, 10))
+        }
+    }
+
+    @Test
     fun `does not start with a setting that cannot work`() {
         runner.withPropertyValues("shortener.analytics.batch-size=0").run { context ->
             assertThat(context).hasFailed()

@@ -3,9 +3,14 @@ package uy.ct.shortener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.yaml.snakeyaml.Yaml
+import uy.ct.shortener.analytics.internal.web.BreakdownResponse
 import uy.ct.shortener.analytics.internal.web.ClickCountsResponse
 import uy.ct.shortener.analytics.internal.web.ClickPointResponse
 import uy.ct.shortener.analytics.internal.web.ClickStatsResponse
+import uy.ct.shortener.analytics.internal.web.HostVisitorsResponse
+import uy.ct.shortener.analytics.internal.web.LanguageVisitorsResponse
+import uy.ct.shortener.analytics.internal.web.LanguagesResponse
+import uy.ct.shortener.analytics.internal.web.ReferrersResponse
 import uy.ct.shortener.shortlink.internal.web.ClaimShortLinkRequest
 import uy.ct.shortener.shortlink.internal.web.CreateShortLinkRequest
 import uy.ct.shortener.shortlink.internal.web.ShortLinkPageResponse
@@ -119,6 +124,11 @@ class OpenApiDocumentTest {
             "ClickStats" to ClickStatsResponse::class,
             "ClickPoint" to ClickPointResponse::class,
             "ClickCounts" to ClickCountsResponse::class,
+            "ClickBreakdown" to BreakdownResponse::class,
+            "ClickReferrers" to ReferrersResponse::class,
+            "ClickHost" to HostVisitorsResponse::class,
+            "ClickLanguages" to LanguagesResponse::class,
+            "ClickLanguage" to LanguageVisitorsResponse::class,
             "CreateShortLinkRequest" to CreateShortLinkRequest::class,
             "ClaimShortLinkRequest" to ClaimShortLinkRequest::class,
             "UpdateShortLinkRequest" to UpdateShortLinkRequest::class,

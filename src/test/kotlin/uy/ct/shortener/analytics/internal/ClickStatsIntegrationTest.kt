@@ -58,8 +58,10 @@ class ClickStatsIntegrationTest {
         return Regex(""""shortCode":"([^"]+)"""").find(created.text())!!.groupValues[1]
     }
 
-    private fun follow(code: String, userAgent: String, times: Int = 1) =
-        repeat(times) { noRedirects.get().uri("/$code").header("User-Agent", userAgent).exchange().expectStatus().isFound() }
+    private fun follow(code: String, userAgent: String, times: Int = 1, referer: String = "", languages: String = "") = repeat(times) {
+        noRedirects.get().uri("/$code").header("User-Agent", userAgent).header("Referer", referer).header("Accept-Language", languages)
+            .exchange().expectStatus().isFound()
+    }
 
     private fun stats(code: String, client: String?, query: String = "", scopes: String = manage) =
         call(HttpMethod.GET, "/api/short-links/$code/stats$query", client, scopes)
@@ -81,13 +83,34 @@ class ClickStatsIntegrationTest {
     }
 
     @Test
+    fun `the owner reads where its visitors came from and which language they asked for`() {
+        val alice = client()
+        val code = createLink(alice)
+        follow(code, "Mozilla/5.0 (X11; Linux x86_64) Chrome/130.0", times = 2, referer = "https://t.co/xyz", languages = "pt-BR,pt;q=0.9")
+        follow(code, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0) Mobile/15E148", languages = "en-US")
+        follow(code, "Googlebot/2.1", referer = "https://www.google.com/", languages = "en")
+        flusher.flush()
+
+        val body = stats(code, alice, "?granularity=hour").expectStatus().isOk().text()
+
+        assertThat(body).contains(
+            """"referrers":{"direct":1,"hosts":[{"host":"t.co","visitors":2}],"other":0}""",
+            """"languages":{"codes":[{"code":"pt","visitors":2},{"code":"en","visitors":1}],"unknown":0}""",
+        )
+    }
+
+    @Test
     fun `a link nobody followed has zeros, and a series with a point for every bucket`() {
         val alice = client()
         val code = createLink(alice)
 
         val body = stats(code, alice, "?granularity=hour&from=2026-01-01T00:00:00Z&to=2026-01-01T03:00:00Z").expectStatus().isOk().text()
 
-        assertThat(body).contains(""""total":{"visitors":0,"desktop":0,"mobile":0,"bot":0}""")
+        assertThat(body).contains(
+            """"total":{"visitors":0,"desktop":0,"mobile":0,"bot":0}""",
+            """"breakdown":{"from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z","referrers":{"direct":0,"hosts":[],"other":0},""" +
+                """"languages":{"codes":[],"unknown":0}}""",
+        )
         assertThat(Regex(""""start":""").findAll(body).count()).isEqualTo(3)
     }
 

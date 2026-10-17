@@ -114,9 +114,11 @@ class ShortLinkController(
         @PathVariable shortCode: ShortCode,
         method: HttpMethod,
         @RequestHeader(HttpHeaders.USER_AGENT, defaultValue = "") userAgent: String,
+        @RequestHeader(HttpHeaders.REFERER, defaultValue = "") referer: String,
+        @RequestHeader(HttpHeaders.ACCEPT_LANGUAGE, defaultValue = "") acceptLanguage: String,
     ): ResponseEntity<Void> {
         val shortLink = service.resolve(shortCode)
-        if (method == HttpMethod.GET) events.publishEvent(LinkFollowed(shortCode, userAgent))
+        if (method == HttpMethod.GET) events.publishEvent(LinkFollowed(shortCode, userAgent, referer, acceptLanguage))
         return ResponseEntity.status(HttpStatus.FOUND).location(shortLink.targetUrl).build()
     }
 }

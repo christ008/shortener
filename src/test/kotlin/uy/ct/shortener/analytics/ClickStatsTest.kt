@@ -8,6 +8,8 @@ import java.time.Instant
 /** The arithmetic of the counts: visitors are people and never bots, and a total is the sum of its points. */
 class ClickStatsTest {
 
+    private val nothing = Breakdown(Instant.EPOCH, Instant.EPOCH, Referrers(0, emptyList(), 0), Languages(emptyList(), 0))
+
     private val window = StatsWindow.of(Granularity.Hour, Instant.parse("2026-10-12T10:00:00Z"), Instant.parse("2026-10-12T12:00:00Z"))
 
     @Test
@@ -33,7 +35,7 @@ class ClickStatsTest {
     fun `the total is the sum of the points, and nothing for no points`() {
         val points = window.buckets.mapIndexed { index, start -> ClickPoint(start, DeviceCounts(index + 1L, 1, 2)) }
 
-        assertThat(ClickStats(ShortCode("abc1234"), window, points).total).isEqualTo(DeviceCounts(3, 2, 4))
-        assertThat(ClickStats(ShortCode("abc1234"), window, emptyList()).total).isEqualTo(DeviceCounts.NONE)
+        assertThat(ClickStats(ShortCode("abc1234"), window, points, nothing).total).isEqualTo(DeviceCounts(3, 2, 4))
+        assertThat(ClickStats(ShortCode("abc1234"), window, emptyList(), nothing).total).isEqualTo(DeviceCounts.NONE)
     }
 }

@@ -42,4 +42,14 @@ class AnalyticsPropertiesTest {
         assertFailsWith<IllegalArgumentException> { AnalyticsProperties(maxEntries = 10, batchSize = 11) }
         assertThat(AnalyticsProperties(maxEntries = 10, batchSize = 10).batchSize).isEqualTo(10)
     }
+
+    @Test
+    fun `admits 50 referrer hosts per link and day, for 2,000 links and days, and refuses none at all`() {
+        assertThat(AnalyticsProperties().referrers).isEqualTo(AnalyticsProperties.Referrers(50, 2_000))
+        assertThat(AnalyticsProperties().referrers.perLinkAndDay).isEqualTo(50)
+        assertThat(AnalyticsProperties().referrers.tracked).isEqualTo(2_000)
+        assertFailsWith<IllegalArgumentException> { AnalyticsProperties.Referrers(perLinkAndDay = 0) }
+        assertFailsWith<IllegalArgumentException> { AnalyticsProperties.Referrers(tracked = 0) }
+        assertThat(AnalyticsProperties.Referrers(1, 1).tracked).isEqualTo(1)
+    }
 }

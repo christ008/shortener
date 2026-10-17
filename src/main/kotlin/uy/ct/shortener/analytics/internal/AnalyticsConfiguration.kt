@@ -23,7 +23,12 @@ class AnalyticsConfiguration {
     @Bean
     @ConditionalOnProperty("shortener.analytics.enabled", havingValue = "true", matchIfMissing = true)
     fun clickAggregator(properties: AnalyticsProperties, clock: Clock, registry: MeterRegistry): ClickAggregator =
-        ClickAggregator(properties.maxEntries, clock, registry)
+        ClickAggregator(
+            properties.maxEntries,
+            clock,
+            ReferrerAdmission(properties.referrers.perLinkAndDay, properties.referrers.tracked, registry),
+            registry,
+        )
 
     @Bean
     @ConditionalOnProperty("shortener.analytics.enabled", havingValue = "true", matchIfMissing = true)

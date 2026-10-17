@@ -11,7 +11,10 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.analytics.Granularity
+import uy.ct.shortener.analytics.Language
+import uy.ct.shortener.analytics.Referrer
 import uy.ct.shortener.analytics.StatsWindow
+import uy.ct.shortener.analytics.internal.BreakdownRow
 import uy.ct.shortener.analytics.internal.ClickRow
 import uy.ct.shortener.analytics.internal.DeviceClass
 import uy.ct.shortener.shortlink.ShortCode
@@ -46,6 +49,18 @@ class JdbcClickStatsRepositoryTest {
         insert("stats-a", "2026-10-12T11:00:00Z", "mobile", 4)
         insert("stats-a", "2026-10-13T01:00:00Z", "mobile", 6)
         insert("stats-b", "2026-10-12T10:00:00Z", "desktop", 100)
+        daily("stats-a", "2026-10-12", "referrer", "t.co", 4)
+        daily("stats-a", "2026-10-12", "referrer", "(direct)", 2)
+        daily("stats-a", "2026-10-13", "referrer", "t.co", 3)
+        daily("stats-a", "2026-10-13", "referrer", "(other)", 1)
+        daily("stats-a", "2026-10-12", "language", "es", 5)
+        daily("stats-a", "2026-10-13", "language", "(unknown)", 1)
+        daily("stats-a", "2026-10-14", "language", "es", 9)
+        daily("stats-b", "2026-10-12", "referrer", "t.co", 100)
+    }
+
+    private fun daily(code: String, day: String, dimension: String, value: String, clicks: Long) {
+        jdbc.update("insert into link_click_daily (short_code, day, dimension, value, clicks) values (?, ?::date, ?, ?, ?)", code, day, dimension, value, clicks)
     }
 
     private fun hours(from: String, to: String) = StatsWindow.of(Granularity.Hour, at(from), at(to))
@@ -103,5 +118,30 @@ class JdbcClickStatsRepositoryTest {
     fun `a link or a window with no rows reads none`() {
         assertThat(repository.read(ShortCode("never-seen"), days("2026-10-12T00:00:00Z", "2026-10-13T00:00:00Z"))).isEmpty()
         assertThat(repository.read(ShortCode("stats-a"), days("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"))).isEmpty()
+    }
+
+    @Test
+    fun `adds up the visitors of the link by referrer and by language over the days of the window`() {
+        val rows = repository.breakdown(ShortCode("stats-a"), days("2026-10-12T00:00:00Z", "2026-10-14T00:00:00Z"))
+
+        assertThat(rows).containsExactlyInAnyOrder(
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 7),
+            BreakdownRow.FromReferrer(Referrer.Direct, 2),
+            BreakdownRow.FromReferrer(Referrer.Other, 1),
+            BreakdownRow.InLanguage(Language.Code("es"), 5),
+            BreakdownRow.InLanguage(Language.Unknown, 1),
+        )
+    }
+
+    @Test
+    fun `the first day is read and the day the window ends on is not, and another link's never`() {
+        val rows = repository.breakdown(ShortCode("stats-a"), days("2026-10-13T00:00:00Z", "2026-10-14T00:00:00Z"))
+
+        assertThat(rows).containsExactlyInAnyOrder(
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 3),
+            BreakdownRow.FromReferrer(Referrer.Other, 1),
+            BreakdownRow.InLanguage(Language.Unknown, 1),
+        )
+        assertThat(repository.breakdown(ShortCode("never-seen"), days("2026-10-12T00:00:00Z", "2026-10-13T00:00:00Z"))).isEmpty()
     }
 }

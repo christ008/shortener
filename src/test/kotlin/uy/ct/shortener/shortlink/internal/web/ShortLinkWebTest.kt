@@ -119,15 +119,18 @@ class ShortLinkWebTest {
     }
 
     @Test
-    fun `a GET that redirects is published as a followed link, with the visitor's user agent`() {
+    fun `a GET that redirects is published as a followed link, with the visitor's user agent, referer and languages`() {
         create()
 
-        mvc.perform(get("/aaaaaaa").header(HttpHeaders.USER_AGENT, "Mozilla/5.0 (iPhone)")).andReturn()
+        mvc.perform(
+            get("/aaaaaaa").header(HttpHeaders.USER_AGENT, "Mozilla/5.0 (iPhone)").header(HttpHeaders.REFERER, "https://t.co/x")
+                .header(HttpHeaders.ACCEPT_LANGUAGE, "es-UY,es;q=0.9"),
+        ).andReturn()
         mvc.perform(get("/aaaaaaa")).andReturn()
 
         assertThat(published).containsExactly(
-            LinkFollowed(ShortCode("aaaaaaa"), "Mozilla/5.0 (iPhone)"),
-            LinkFollowed(ShortCode("aaaaaaa"), ""),
+            LinkFollowed(ShortCode("aaaaaaa"), "Mozilla/5.0 (iPhone)", "https://t.co/x", "es-UY,es;q=0.9"),
+            LinkFollowed(ShortCode("aaaaaaa"), "", "", ""),
         )
     }
 
