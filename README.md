@@ -43,8 +43,8 @@ A developer becomes a client with an invitation from the operator, in one comman
 - A disabled link answers `410` and keeps its code: a code is never handed out twice. A takedown reaches every instance within
   the cache TTL (30 s).
 
-Not goals: editing a link's target, expiry, teams or shared ownership, several short domains, and billing. Not built yet: where
-a click came from (referrer, language) and a web UI.
+Not goals: editing a link's target, expiry, teams or shared ownership, several short domains, and billing. Not built yet: a web
+UI.
 
 ```mermaid
 flowchart LR
