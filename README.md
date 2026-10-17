@@ -118,7 +118,7 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
 
 ## Evidence
 
-- **Tests:** 479, all passing, 335 of them on the service. Line coverage 97.2%, branch coverage 91.2%.
+- **Tests:** 644, all passing, 479 of them on the service. Line coverage 97.3%, branch coverage 91.7%.
 - **Mutation score:** 92% on the logic of the `shortlink` and `security` modules (249 mutants). [INTERNALS.md#testing](docs/INTERNALS.md#testing)
 - **Security:** the controls, and a STRIDE model with the open findings, their severities and the risks accepted.
   [SECURITY.md](docs/SECURITY.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md)

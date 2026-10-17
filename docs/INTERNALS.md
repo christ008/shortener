@@ -561,34 +561,38 @@ Also:
 ## Testing
 
 > [!NOTE]
-> Measured on 2026-10-11 on one machine, with Docker: `./gradlew test koverHtmlReport koverXmlReport` and `./gradlew mutationTest`, Gradle 9.8.0 on a GraalVM CE 25.0.4.
+> Test counts and coverage: 2026-10-17, one machine, with Docker, `./gradlew test koverXmlReport`. Mutation testing: 2026-10-11, `./gradlew mutationTest`, Gradle 9.8.0 on a GraalVM CE 25.0.4.
 
 | Kind | Tests | Where | Needs Docker |
 |---|--:|---|---|
-| The application: domain, service, cache, policy, web, persistence, security, architecture | 335 | `src/test` | 118 of them, in 24 classes that import `TestcontainersConfiguration` |
-| Infrastructure of the repository | 64 | `src/test` | none |
-| The tools ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 80 | `tools/src/test` | none |
-| **Total** | **479** | | all passed (`./gradlew test` runs the tools' tests too) |
+| The application: domain, service, cache, policy, web, persistence, security, analytics, architecture | 479 | `src/test` | 149 of them, in 31 classes that import `TestcontainersConfiguration` |
+| Infrastructure of the repository: the stack files, the deploy and CA scripts, migrations, the release version, conventions | 83 | `src/test` | none |
+| The tools ([ADR 0029](adr/0029-tools-in-kotlin.md)) | 82 | `tools/src/test` | none |
+| **Total** | **644** | | all passed (`./gradlew test` runs the tools' tests too) |
 
 ### Coverage (Kover)
 
 - Kover 0.9.11. `./gradlew test koverHtmlReport koverXmlReport` writes `build/reports/kover`; CI keeps it as the `coverage` artifact. There is no threshold.
 - SonarCloud: CI runs `./gradlew sonar -x test` with the Kover XML report, for project `christ008_shortener` of organization `christ008`. It needs the
   `SONAR_TOKEN` secret and Automatic Analysis off; without the secret (a pull request from a fork) the step is skipped.
-- Scope: the classes of `uy.ct.shortener`, from the 399 tests of `src/test`. The tools are not measured.
-- Result: lines 97.2% (652 of 671), branches 91.2% (280 of 307), methods 93.9% (217 of 231), classes 94.6% (88 of 93).
+- Scope: the classes of `uy.ct.shortener`, from the 562 tests of `src/test`. The tools are not measured.
+- Result: lines 97.3% (957 of 984), branches 91.7% (429 of 468), methods 95.2% (320 of 336), classes 95.0% (133 of 140).
 
   | Package | Covered | Total | Lines |
   |---|--:|--:|--:|
-  | `shortlink` (the contract) | 70 | 71 | 98.6% |
-  | `shortlink.internal` (service, cache, policy) | 157 | 159 | 98.7% |
-  | `shortlink.internal.web` | 60 | 62 | 96.8% |
-  | `security.internal` | 185 | 189 | 97.9% |
-  | `shortlink.internal.authorization` | 32 | 33 | 97.0% |
+  | `shortlink` (the contract) | 71 | 72 | 98.6% |
+  | `shortlink.internal` (service, cache, policy) | 157 | 160 | 98.1% |
+  | `shortlink.internal.web` | 62 | 64 | 96.9% |
+  | `shortlink.internal.authorization` | 34 | 35 | 97.1% |
   | `shortlink.internal.persistence` | 81 | 85 | 95.3% |
-  | `security` | 60 | 64 | 93.8% |
+  | `security` | 78 | 83 | 94.0% |
+  | `security.internal` | 264 | 270 | 97.8% |
+  | `analytics` (the contract) | 39 | 39 | 100.0% |
+  | `analytics.internal` (counting) | 114 | 115 | 99.1% |
+  | `analytics.internal.web` | 25 | 25 | 100.0% |
+  | `analytics.internal.persistence` | 25 | 28 | 89.3% |
   | `uy.ct.shortener` (the migration runner) | 7 | 8 | 87.5% |
-  | **All** | **652** | **671** | **97.2%** |
+  | **All** | **957** | **984** | **97.3%** |
 
 ### Mutation testing (PIT)
 
