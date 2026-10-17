@@ -189,7 +189,9 @@ kover {
  * Analysis and coverage on SonarCloud, from CI: `./gradlew sonar -x test`, with SONAR_TOKEN in the environment.
  *
  * - Coverage: the XML report of Kover, which has the format of JaCoCo, so run `koverXmlReport` first.
- * - Scope: the application. The tools are a build of their own and are not analysed.
+ * - Scope: every file of the project, from its root, so that the tools, the deployment files, the perf scripts and the docs are analysed
+ *   too. The tests are the `src/test` of the application and of the tools. The build output, the caches, the IDE folders and the raw
+ *   results of the perf runs are left out.
  * - Needs Automatic Analysis switched off on the project, because the two cannot both feed it.
  */
 sonar {
@@ -197,6 +199,14 @@ sonar {
         property("sonar.host.url", "https://sonarcloud.io")
         property("sonar.organization", "christ008")
         property("sonar.projectKey", "christ008_shortener")
+        property("sonar.sources", ".")
+        property("sonar.tests", "src/test,tools/src/test")
+        property(
+            "sonar.exclusions",
+            listOf(
+                "**/build/**", "**/.gradle/**", "**/.kotlin/**", "**/.idea/**", "**/.junie/**", "perf/results/**", "perf/data/**",
+            ).joinToString(","),
+        )
         property("sonar.coverage.jacoco.xmlReportPaths", layout.buildDirectory.file("reports/kover/report.xml").get().asFile.path)
     }
 }
