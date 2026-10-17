@@ -13,14 +13,23 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace
 import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest
 import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import uy.ct.shortener.TestcontainersConfiguration
+import uy.ct.shortener.analytics.Language
+import uy.ct.shortener.analytics.Referrer
+import uy.ct.shortener.analytics.internal.ClickCount
+import uy.ct.shortener.analytics.internal.CountKey
+import uy.ct.shortener.analytics.internal.DeviceClass
+import uy.ct.shortener.analytics.internal.persistence.JdbcClickStore
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
+import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.assertFailsWith
@@ -102,6 +111,7 @@ class DatabaseRolesTest {
         assertThat(owners).containsOnly(
             entry("short_link", "shortener_migrator"),
             entry("link_click_hourly", "shortener_migrator"),
+            entry("link_click_daily", "shortener_migrator"),
             entry("flyway_schema_history", "shortener_migrator"),
         )
     }
@@ -146,6 +156,24 @@ class DatabaseRolesTest {
     }
 
     @Test
+    fun `lets the application role write a batch of hourly and daily counts with the statement the click store uses`() {
+        val store = JdbcClickStore(JdbcTemplate(DriverManagerDataSource(urlOf(database), "shortener_app", passwords.getValue("shortener_app"))))
+        val day = Instant.parse("2026-10-12T10:00:00Z").epochSecond / 86_400
+        val batch = listOf(
+            ClickCount(CountKey.Hourly("store-role", Instant.parse("2026-10-12T10:00:00Z").epochSecond / 3_600, DeviceClass.MOBILE), 2),
+            ClickCount(CountKey.ReferrerDaily("store-role", day, Referrer.Host("t.co")), 2),
+            ClickCount(CountKey.LanguageDaily("store-role", day, Language.Code("es")), 2),
+        )
+
+        repeat(2) { store.add(batch) }
+
+        asRole("shortener_app") { connection ->
+            val daily = connection.createStatement().executeQuery("select sum(clicks) from link_click_daily where short_code = 'store-role'")
+            assertThat(daily.use { it.next(); it.getLong(1) }).isEqualTo(8L)
+        }
+    }
+
+    @Test
     fun `refuses the application role to delete a count or move it to another link or hour`() {
         asRole("shortener_app") { connection ->
             listOf(
@@ -156,6 +184,13 @@ class DatabaseRolesTest {
                 "update link_click_hourly set device_class = 'bot'",
                 "drop table link_click_hourly",
                 "alter table link_click_hourly add column extra int",
+                "delete from link_click_daily",
+                "truncate link_click_daily",
+                "update link_click_daily set short_code = 'y'",
+                "update link_click_daily set day = current_date",
+                "update link_click_daily set value = 'evil.example'",
+                "update link_click_daily set dimension = 'language'",
+                "drop table link_click_daily",
             ).forEach { assertRefused(connection, it) }
         }
     }
@@ -206,6 +241,7 @@ class DatabaseRolesTest {
             assertThat(connection.createStatement().executeQuery("select count(*) from pg_stat_database").use { it.next() }).isTrue()
             assertRefused(connection, "select * from short_link")
             assertRefused(connection, "select * from link_click_hourly")
+            assertRefused(connection, "select * from link_click_daily")
         }
     }
 

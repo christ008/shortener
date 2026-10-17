@@ -213,22 +213,36 @@ An in-process Caffeine cache per instance, in front of the database read that ev
 
 An owner's view of how a link is followed, counted without touching the redirect ([ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md)).
 
-- **Capture.** `ShortLinkController.redirect` publishes `LinkFollowed(code, userAgent)` after `resolve` succeeded, for a `GET` only. A `HEAD`, an
-  unknown code and a disabled link publish nothing. `ClickListener` classifies the `User-Agent` (`DeviceClassifier`: `desktop`, `mobile` or
-  `bot`; no header is a bot) and records it, synchronously in the request's thread. It never throws: a failure is counted in
-  `analytics_clicks_dropped_total{reason="error"}`.
+- **Capture.** `ShortLinkController.redirect` publishes `LinkFollowed(code, userAgent, referer, acceptLanguage)` after `resolve` succeeded, for a
+  `GET` only. A `HEAD`, an unknown code and a disabled link publish nothing. `ClickListener` turns it into a `Click`, synchronously in the
+  request's thread, and records it. It never throws: a failure is counted in `analytics_clicks_dropped_total{reason="error"}`. The headers are
+  read, never kept.
+  - `DeviceClassifier` classifies the `User-Agent`: `desktop`, `mobile` or `bot`, and no header is a bot.
+  - `Referrer.of` keeps the host of the `Referer`, lowercased, without `www.`, a port or user info, or `Direct` when there is none that can be counted.
+  - `Language.of` keeps the ISO 639-1 code of the range the browser weighs highest, or `Unknown`.
+  - Both read their header by hand. `java.net.URI` cost 0.2 to 0.5 µs for a host, and `Locale.LanguageRange.parse` 0.5 to 0.9 µs, and 2.8 µs for
+    an empty header, which it refuses with an exception.
   - Cost, on one warm thread: classifying a browser's header takes about 0.22 µs, because it is lowercased once and then searched. A case-insensitive
-    search for each token took about 5 µs, near 5% of the CPU a request costs ([Performance](#performance)). The whole step, event included, takes about 0.6 µs.
-- **Hold.** `ClickAggregator` keeps a count per (link, hour, class) in a `ConcurrentHashMap`, added to atomically. It holds at most `max-entries` keys
-  (50,000), counted with an atomic counter rather than the map's `size`, which is only an estimate while the map changes: a key already held always
-  counts, and a click that needs a new key past the cap is dropped. A drain takes each key once, adding up a key that was counted again while it
-  walked the map, because the store's statement cannot change a row twice.
+    search for each token took about 5 µs, near 5% of the CPU a request costs ([Performance](#performance)). A referrer takes 0.07 to 0.16 µs and a
+    language 0.14 to 0.27 µs. A visitor's click costs about 1.7 µs in all, event included, and a bot's about 0.45 µs.
+- **Hold.** `ClickAggregator` keeps counts in a `ConcurrentHashMap` keyed by a sealed `CountKey`: `Hourly` (link, hour, class) for every click, and
+  for a visitor, not a bot, `ReferrerDaily` and `LanguageDaily` (link, UTC day, value). Each is added to atomically. It holds at most `max-entries`
+  keys (50,000), counted with an atomic counter rather than the map's `size`, which is only an estimate while the map changes: a key already held
+  always counts, and a count that needs a new key past the cap is dropped. A drain takes each key once, adding up a key that was counted again while
+  it walked the map, because the store's statement cannot change a row twice.
+- **Referrer cap.** `ReferrerAdmission` admits the first 50 hosts of a link in a day (`referrers.per-link-and-day`) and counts any other as `Other`,
+  in `analytics_referrers_capped_total`. The hosts it admitted outlive the flushes, in a Caffeine cache of at most 2,000 (link, day) pairs
+  (`referrers.tracked`), so a forged `Referer` cannot add rows without end. A pair it forgets, or a restart, starts again empty: the table can hold
+  about 50 hosts per link and day per instance and per start. A language needs no cap: only the about 190 ISO 639-1 codes can be counted.
 - **Write.** `ClickFlusher` drains it every `flush-interval` (10 s) in batches of `batch-size` (500). `JdbcClickStore` writes a batch with one
-  statement, `insert ... select from unnest(...) on conflict do update set clicks = clicks + excluded.clicks`, so a batch is atomic and two instances add up.
+  statement: a writable `with` holds an `insert ... select from unnest(...) on conflict do update set clicks = clicks + excluded.clicks` for the
+  hourly table and another for the daily one. So a batch is atomic across both tables and two instances add up. A referrer and a language are
+  stored as a host name or a code, or as `(direct)`, `(other)` or `(unknown)`, which no host name or code can be (`StoredDimension`).
 - **Failure.** A batch that cannot be written goes back into the aggregator, up to the cap, and the flush ends. The first failure of a run and the
   recovery are logged with the exception's type and no statement. Readiness does not depend on it. A restart loses what was not flushed, and a
   shutdown flushes first, after the web server stops.
-- **Role.** `shortener_app` can read and insert rows of `link_click_hourly` and update `clicks`, nothing else (`V7`, `DatabaseRolesTest`).
+- **Role.** `shortener_app` can read and insert rows of `link_click_hourly` and `link_click_daily` and update `clicks`, nothing else (`V7`, `V8`,
+  `DatabaseRolesTest`, which runs the store's own statement as that role).
 - **Off.** `shortener.analytics.enabled=false` swaps in `NoClickRecorder`: no aggregator, no flusher, no write.
 - **Read.** `GET /api/short-links/{code}/stats` takes `granularity` (`hour` or `day`), `from` and `to`.
   - `Granularity` is a sealed type whose variants know where a bucket starts and ends, how wide a window may be (90 days of hours, 366 of days)
@@ -237,7 +251,9 @@ An owner's view of how a link is followed, counted without touching the redirect
   - `DefaultClickStatsService` reads the link through `ShortLinkService.get` first (`404` for another client's link, any for an administrator),
     then the window with one grouped statement over the primary key range, and fills empty buckets with zeros.
   - `visitors` is desktop plus mobile; `bot` is never in it. Counts are read whether or not counting is on.
-- **Not built.** Referrer and language, consolidation of old hours, and the alert on drops.
+  - The breakdown reads the daily rows of the whole UTC days the window touches, in one grouped statement over the primary key range
+    `(short_code, day, dimension, value)`. It shows the 20 hosts with the most visitors, ties by name, adds the rest to `other`, and shows every language.
+- **Not built.** Consolidation of old hours, retention, and the alert on drops. Nothing is deleted yet.
 
 ## Errors
 

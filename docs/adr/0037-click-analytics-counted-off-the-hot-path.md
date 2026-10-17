@@ -1,7 +1,7 @@
 # 0037. Clicks are counted in aggregate, off the redirect's path
 
-- Status: Accepted, 2026-10-17 (proposed 2026-10-12). Built: counting in memory, the batch flush, `V7` and `GET /api/short-links/{code}/stats` for clicks per link and hour. Not built: referrer and language, the retention job, the UI panel
-- Evidence: `ClickAggregator`, `ClickFlusher`, `AnalyticsIntegrationTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) E3 (R), [0011](0011-in-process-redirect-cache.md), [0012](0012-readiness-excludes-the-database.md), [0013](0013-three-database-roles-and-a-migration-job.md), [0028](0028-postgres-backups-and-a-replica.md)
+- Status: Accepted, 2026-10-17 (proposed 2026-10-12). Built: counting in memory, the batch flush, `V7` and `V8`, and `GET /api/short-links/{code}/stats` with clicks per link and hour and the referrer and language per day. Not built: the retention job, the alert on drops, the UI panel
+- Evidence: `ClickAggregator`, `ClickFlusher`, `ReferrerAdmission`, `AnalyticsIntegrationTest`, `ClickStatsIntegrationTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) E3 (R), [0011](0011-in-process-redirect-cache.md), [0012](0012-readiness-excludes-the-database.md), [0013](0013-three-database-roles-and-a-migration-job.md), [0028](0028-postgres-backups-and-a-replica.md)
 - Replaces the threat model's "not recorded, by design: no analytics"
 
 ## Problem
@@ -28,7 +28,7 @@ and must not turn the service into a record of who read what. The public instanc
 - **At most once.** A full aggregator drops and counts what it drops. A flush that cannot reach Postgres keeps its batch up to the bound and then drops;
   it never reaches readiness ([0012](0012-readiness-excludes-the-database.md)) and a redirect served from a stale copy still counts. A restart loses
   what was not flushed, and shutdown flushes first.
-- **Storage.** `link_click_hourly` (V7), and a daily table for the referrer and the language. The application role gets `SELECT`, `INSERT` and `UPDATE (clicks)` on them and no `DELETE`, stated next to
+- **Storage.** `link_click_hourly` (V7) and `link_click_daily` (V8), for the referrer and the language. The application role gets `SELECT`, `INSERT` and `UPDATE (clicks)` on them and no `DELETE`, stated next to
   the schema like V6 ([0013](0013-three-database-roles-and-a-migration-job.md)).
 - **Reading.** `GET /api/short-links/{shortCode}/stats?from=&to=&granularity=hour|day`: the total, the series, the top referrers, devices and languages.
   The owner and an administrator may read it, by reading the link first through `ShortLinkService.get`, so another client's link is a `404` and the rule is not copied.
@@ -44,7 +44,8 @@ and must not turn the service into a record of who read what. The public instanc
 ## Consequences
 
 - Good: the redirect pays a step in memory, in its own thread, with no queue and no database read or write: the event, the classification of the
-  `User-Agent` and an atomic add, about 0.6 µs on one warm thread. In the database the feature costs rows per link and hour.
+  `User-Agent`, the referrer's host and the language, and atomic adds. About 1.7 µs for a visitor's click and 0.45 µs for a bot's, on one warm
+  thread. In the database the feature costs rows per link and hour, and per link, day and referrer or language.
 - Good: no personal data is kept, so there is nothing to disclose or erase for a visitor.
 - Cost: the figures are approximate. A crash, a full aggregator or a database outage loses clicks, and a bot that sends a browser's `User-Agent` counts as one.
   Do not use them to bill, to detect fraud or to settle a dispute.

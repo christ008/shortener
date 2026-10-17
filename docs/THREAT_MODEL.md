@@ -151,9 +151,10 @@ disclosure, **D** denial of service, **E** elevation of privilege.
 | T | Changing the target of an existing link | no endpoint edits a target, and the application role has no `update` on it (`DatabaseRolesTest`) | the migrator role and the operator can |
 | T | Header injection through the target | the target is parsed as a `URI`, which rejects line breaks, and only `http` and `https` are accepted | |
 | T | Stale target after takedown | the disabling instance evicts at once | other instances serve it up to 30 s, and up to 5 minutes if the database is down |
-| R | Who followed a link | no address, user agent or visitor identifier is kept. [ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md) counts clicks per link, hour and device class in aggregate, with no visitor in them | counts are approximate and a client can inflate its own |
+| R | Who followed a link | no address, user agent or visitor identifier is kept. [ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md) counts clicks per link, hour and device class, and a visitor's referrer host and language per day, in aggregate, with no visitor in them. Only the referrer's host is kept, never its path or query | counts are approximate and a client can inflate its own. A referrer host can name an internal site |
 | I | Enumerating codes | generated codes are 7 base62 characters from `SecureRandom`, about $3.5 \times 10^{12}$ | custom codes are guessable by nature. A `410` says a code once existed |
 | D | Random codes to reach the database | the cache answers hot links. A miss is a primary-key read with a 5 s limit. 300 a minute per address. A database failure is `503`, and links already read keep redirecting | many addresses can keep the pool of ten busy and make cold reads fail |
+| D | A forged `Referer` on every request, to grow the daily counts | an instance admits 50 hosts per link and day and counts the rest as `other` (`ReferrerAdmission`, `analytics_referrers_capped_total`). A language is one of about 190 ISO 639-1 codes or unknown | a restart, or a link and day the instance forgot, admits up to 50 more: about 50 rows per link, day, instance and start. Junk admitted first can push real hosts into `other` for that day |
 | E | Redirecting to a non-web scheme | `javascript:` and `data:` are refused | |
 
 ### E4. The identity provider and its keys
