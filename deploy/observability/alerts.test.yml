@@ -223,3 +223,58 @@ tests:
         exp_samples:
           - labels: '{}'
             value: 1
+
+  - name: clicks dropped for ten minutes fire, by reason, and an instance that drops none never does
+    interval: 1m
+    input_series:
+      - series: 'analytics_clicks_dropped_total{application="shortener", instance="a", reason="full"}'
+        values: '0+20x20'
+      - series: 'analytics_clicks_dropped_total{application="shortener", instance="a", reason="storage"}'
+        values: '0+0x20'
+      - series: 'analytics_clicks_dropped_total{application="shortener", instance="b", reason="error"}'
+        values: '0+0x20'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ShortenerClicksDropped", alertstate="firing"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ALERTS{alertname="ShortenerClicksDropped", alertstate="firing"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ShortenerClicksDropped", alertstate="firing", reason="full", severity="warning"}'
+            value: 1
+
+  - name: retention that failed with no successful run for a day fires, and a failure followed by a run that worked does not
+    interval: 1h
+    input_series:
+      - series: 'analytics_retention_seconds_count{application="shortener", instance="a", outcome="failure"}'
+        values: '0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'analytics_retention_seconds_count{application="shortener", instance="a", outcome="done"}'
+        values: '0+0x39'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerAnalyticsRetentionFailing", alertstate="firing"})
+        eval_time: 5h
+        exp_samples:
+          - labels: '{}'
+            value: 1
+
+  - name: retention that failed once and then worked does not fire
+    interval: 1h
+    input_series:
+      - series: 'analytics_retention_seconds_count{application="shortener", instance="a", outcome="failure"}'
+        values: '0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'analytics_retention_seconds_count{application="shortener", instance="b", outcome="done"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerAnalyticsRetentionFailing", alertstate="firing"})
+        eval_time: 10h
+        exp_samples: []
+
+  - name: retention that keeps working never fires
+    interval: 1h
+    input_series:
+      - series: 'analytics_retention_seconds_count{application="shortener", instance="a", outcome="done"}'
+        values: '0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2'
+    promql_expr_test:
+      - expr: count(ALERTS{alertname="ShortenerAnalyticsRetentionFailing", alertstate="firing"})
+        eval_time: 28h
+        exp_samples: []

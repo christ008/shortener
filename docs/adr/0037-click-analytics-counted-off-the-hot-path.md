@@ -1,6 +1,6 @@
 # 0037. Clicks are counted in aggregate, off the redirect's path
 
-- Status: Accepted, 2026-10-17 (proposed 2026-10-12). Built: counting in memory, the batch flush, `V7` and `V8`, and `GET /api/short-links/{code}/stats` with clicks per link and hour and the referrer and language per day. Not built: the retention job, the alert on drops, the UI panel
+- Status: Accepted, 2026-10-17 (proposed 2026-10-12). Built: counting in memory, the batch flush, `V7` and `V8`, and `GET /api/short-links/{code}/stats` with clicks per link and hour and the referrer and language per day. Not built: the UI panel. Retention, the time zone of a day and the alerts are refined by [0043](0043-analytics-retention-in-the-database-days-in-utc.md)
 - Evidence: `ClickAggregator`, `ClickFlusher`, `ReferrerAdmission`, `AnalyticsIntegrationTest`, `ClickStatsIntegrationTest`, [THREAT_MODEL.md](../THREAT_MODEL.md) E3 (R), [0011](0011-in-process-redirect-cache.md), [0012](0012-readiness-excludes-the-database.md), [0013](0013-three-database-roles-and-a-migration-job.md), [0028](0028-postgres-backups-and-a-replica.md)
 - Replaces the threat model's "not recorded, by design: no analytics"
 

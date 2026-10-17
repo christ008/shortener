@@ -270,7 +270,7 @@ does `DpopCalls` in `tools/src/main/kotlin`, which `Smoke` uses.
 | choose the code | `PUT /api/short-links/my-promo` with `{"targetUrl": "..."}`, which needs the `claim` scope |
 | list your links | `GET /api/short-links?page=0&size=20&sort=createdAt,desc` |
 | read one | `GET /api/short-links/<code>` |
-| count its clicks | `GET /api/short-links/<code>/stats?granularity=day`, or `hour`, with `from` and `to` as ISO-8601 instants. Approximate, and bots are counted apart. `breakdown` has the top 20 referrer hosts and the languages, per UTC day |
+| count its clicks | `GET /api/short-links/<code>/stats?granularity=day`, or `hour`, with `from` and `to` as ISO-8601 instants. Approximate, and bots are counted apart. `breakdown` has the top 20 referrer hosts and the languages, per UTC day Days are UTC days; hours are kept for 90 days and days for 730, and an older window is `400` |
 | disable one | `PATCH /api/short-links/<code>` with `{"disabled": true}` |
 | list every client's | `GET /api/short-links` as `admin-client`, or `?createdBy=<client>` |
 

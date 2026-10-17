@@ -3,6 +3,9 @@ package uy.ct.shortener
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
+import org.yaml.snakeyaml.Yaml
+import java.io.File
+import kotlin.test.assertIs
 
 /**
  * Migrations run while the previous version of the application is still serving, against a table that may hold
@@ -27,6 +30,18 @@ class MigrationConventionsTest {
             .flatMap { (name, sql) -> problems(name, sql, migrations["$name.conf"]) }
 
         assertThat(problems).isEmpty()
+    }
+
+    @Test
+    fun `an index built concurrently has Flyway hold its lock outside a transaction, or the migration waits for Flyway forever`() {
+        val concurrent = migrations.filter { (name, sql) -> name.endsWith(".sql") && Regex("(?i)create\\s+(unique\\s+)?index\\s+concurrently").containsMatchIn(sql) }
+
+        assertThat(concurrent).isNotEmpty
+        val settings: Map<String, Any?> = Yaml().load(File("src/main/resources/application.yaml").readText())
+        val lock = listOf("spring", "flyway", "postgresql", "transactional-lock").fold<String, Any?>(settings) { node, key ->
+            assertIs<Map<*, *>>(node, "application.yaml has no $key")[key]
+        }
+        assertThat(lock).describedAs("spring.flyway.postgresql.transactional-lock").isEqualTo(false)
     }
 
     @Test

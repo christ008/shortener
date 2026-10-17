@@ -17,6 +17,9 @@ import uy.ct.shortener.RestTestClientSupport.text
 import uy.ct.shortener.TestIdp
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.WithTestIdp
+import java.time.Duration
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
@@ -104,11 +107,12 @@ class ClickStatsIntegrationTest {
         val alice = client()
         val code = createLink(alice)
 
-        val body = stats(code, alice, "?granularity=hour&from=2026-01-01T00:00:00Z&to=2026-01-01T03:00:00Z").expectStatus().isOk().text()
+        val day = Instant.now().truncatedTo(ChronoUnit.DAYS).minus(Duration.ofDays(1))
+        val body = stats(code, alice, "?granularity=hour&from=$day&to=${day.plus(Duration.ofHours(3))}").expectStatus().isOk().text()
 
         assertThat(body).contains(
             """"total":{"visitors":0,"desktop":0,"mobile":0,"bot":0}""",
-            """"breakdown":{"from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z","referrers":{"direct":0,"hosts":[],"other":0},""" +
+            """"breakdown":{"from":"$day","to":"${day.plus(Duration.ofDays(1))}","referrers":{"direct":0,"hosts":[],"other":0},""" +
                 """"languages":{"codes":[],"unknown":0}}""",
         )
         assertThat(Regex(""""start":""").findAll(body).count()).isEqualTo(3)
@@ -151,5 +155,7 @@ class ClickStatsIntegrationTest {
         assertThat(stats(code, alice, "?granularity=hour&from=2020-01-01T00:00:00Z&to=2026-01-01T00:00:00Z").expectStatus().isBadRequest().text())
             .contains("at most 90 days")
         stats(code, alice, "?from=not-a-time").expectStatus().isBadRequest()
+        assertThat(stats(code, alice, "?granularity=hour&from=2020-01-01T00:00:00Z&to=2020-01-02T00:00:00Z").expectStatus().isBadRequest().text())
+            .contains("Hours are kept for 90 days", "Ask by day for older ones")
     }
 }

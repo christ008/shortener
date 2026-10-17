@@ -16,6 +16,7 @@ fun interface ClickStatsService {
     /**
      * Returns the clicks of the link under [shortCode] over [window], a point for every bucket, zero where there was none.
      *
+     * @throws InvalidStatsWindowException if [window] starts before the oldest bucket its granularity keeps
      * @throws ShortLinkNotFoundException if none exists, or it belongs to another client
      * @throws StorageUnavailableException if storage cannot be reached right now
      */

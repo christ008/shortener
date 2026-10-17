@@ -84,6 +84,8 @@ A create request in Tempo: the HTTP span, and under it `shortlink.insert`.
 | `analytics_referrers_capped_total` | counter | visitors whose referrer host was counted as `other`, because their link already had as many hosts that day as an instance admits. A steady climb on one instance can be a forged `Referer` |
 | `analytics_aggregator_entries` | gauge | counts held in memory until the next flush |
 | `analytics_flush_seconds` | timer | a write of one batch, by `outcome` (`success` or `failure`) |
+| `analytics_retention_seconds` | timer | a run of retention, by `outcome`: `done`, `busy` (another instance was working) or `failure` ([ADR 0043](adr/0043-analytics-retention-in-the-database-days-in-utc.md)) |
+| `analytics_retention_hours_folded_total`, `analytics_retention_rows_deleted_total` | counter | hourly rows folded into days, and daily rows deleted, by retention |
 | `shortener_security_events_total` | counter | `401`, `403`, `429` and requests for a DPoP nonce (`dpop_nonce_requested`) by `type` |
 | `shortener_audit_events_total` | counter | creates, disables, administrator actions by `type` |
 | `jvm_*`, `process_*` | | memory, GC, threads, CPU |
@@ -107,6 +109,8 @@ absorbing load, or the database is slow or gone.
 | `ShortenerWalArchivingFailing` | Postgres failed to archive WAL in the last ten minutes | 5 m | critical |
 | `ShortenerReplicaDisconnected` | the replication slot has no connection | 5 m | warning |
 | `ShortenerReplicaLagging` | the replica is more than 100 MiB behind | 10 m | warning |
+| `ShortenerClicksDropped` | clicks are dropped instead of counted, by `reason` | 10 m | warning |
+| `ShortenerAnalyticsRetentionFailing` | retention failed and no instance completed it in the last 26 hours | 1 h | warning |
 | `ShortenerAdministratorActivity` | more than ten disables or listings of other clients' links in ten minutes | none | warning |
 
 Each rule has a test in `deploy/observability/alerts.test.yml`:

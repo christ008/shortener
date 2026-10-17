@@ -8,20 +8,25 @@ import uy.ct.shortener.analytics.ClickStatsService
 import uy.ct.shortener.analytics.DeviceCounts
 import uy.ct.shortener.analytics.Granularity
 import uy.ct.shortener.analytics.HostVisitors
+import uy.ct.shortener.analytics.InvalidStatsWindowException
 import uy.ct.shortener.analytics.Language
 import uy.ct.shortener.analytics.LanguageVisitors
 import uy.ct.shortener.analytics.Languages
 import uy.ct.shortener.analytics.Referrer
 import uy.ct.shortener.analytics.Referrers
 import uy.ct.shortener.analytics.StatsWindow
+import uy.ct.shortener.analytics.keptSince
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkService
+import java.time.Clock
 
 /**
  * Default [ClickStatsService].
  *
  * - Reads the link through [ShortLinkService.get] first, so the rule of who may see a link is that service's and a link of
  *   another client is not found. Nothing is read from the counts before it passes.
+ * - Refuses a window that starts before the oldest bucket its granularity keeps ([Granularity.keptSince]), rather than answering
+ *   zeros for what was deleted: hours are kept for 90 days, days for 730.
  * - Fills every bucket of the window: one the database has no row for is [DeviceCounts.NONE].
  * - The breakdown covers the whole UTC days the window touches, because it is counted per day.
  * - It shows the [SHOWN_HOSTS] hosts with the most visitors, ties by name, and adds the rest to `other`, with what instances already
@@ -31,9 +36,11 @@ import uy.ct.shortener.shortlink.ShortLinkService
 class DefaultClickStatsService(
     private val shortLinks: ShortLinkService,
     private val repository: ClickStatsRepository,
+    private val clock: Clock,
 ) : ClickStatsService {
 
     override fun stats(shortCode: ShortCode, window: StatsWindow): ClickStats {
+        requireKept(window)
         shortLinks.get(shortCode)
         val counted = repository.read(shortCode, window)
             .groupBy({ it.bucket }, { it })
@@ -41,6 +48,17 @@ class DefaultClickStatsService(
         val points = window.buckets.map { ClickPoint(it, counted.getOrDefault(it, DeviceCounts.NONE)) }
         val days = StatsWindow.of(Granularity.Day, window.start, window.end)
         return ClickStats(shortCode, window, points, breakdown(days, repository.breakdown(shortCode, days)))
+    }
+
+    private fun requireKept(window: StatsWindow) {
+        val granularity = window.granularity
+        val since = granularity.keptSince(clock.instant())
+        if (window.start.isBefore(since)) {
+            throw InvalidStatsWindowException(
+                "${granularity.wire.replaceFirstChar { it.uppercase() }}s are kept for ${granularity.kept.toDays()} days, since $since; " +
+                    "the window starts at ${window.start}. ${granularity.forOlderWindows}",
+            )
+        }
     }
 
     private fun ClickRow.counts() = when (device) {

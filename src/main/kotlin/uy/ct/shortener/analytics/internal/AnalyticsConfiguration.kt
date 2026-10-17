@@ -10,7 +10,8 @@ import java.time.Clock
 
 /**
  * Provides the click counting: a [ClickAggregator] and the [ClickFlusher] that writes it, or [NoClickRecorder] when
- * `shortener.analytics.enabled` is false.
+ * `shortener.analytics.enabled` is false; and the [AnalyticsRetention] that applies the retention of the counts, unless
+ * `shortener.analytics.retention.enabled` is false.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AnalyticsProperties::class)
@@ -38,4 +39,9 @@ class AnalyticsConfiguration {
     @Bean
     @ConditionalOnProperty("shortener.analytics.enabled", havingValue = "false")
     fun noClickRecorder(): ClickRecorder = NoClickRecorder
+
+    @Bean
+    @ConditionalOnProperty("shortener.analytics.retention.enabled", havingValue = "true", matchIfMissing = true)
+    fun analyticsRetention(properties: AnalyticsProperties, store: RetentionStore, registry: MeterRegistry): AnalyticsRetention =
+        AnalyticsRetention(store, properties.retention.initialDelay, properties.retention.interval, registry)
 }

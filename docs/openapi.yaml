@@ -317,8 +317,11 @@ paths:
         `desktop` plus `mobile`; crawlers, link previewers and command line clients are `bot` and never in it.
 
         `breakdown` says where the visitors came from (the host of their `Referer`) and which language they asked for first.
-        It is counted per UTC day, so it covers the whole days that hold the window. Nothing is deleted yet: the retention of
-        ADR 0037 (hours for 90 days, days for 2 years) is not built.
+        It is counted per UTC day, so it covers the whole days that hold the window.
+
+        Every day is a UTC day. Hours are kept for 90 days and days for 730, counted from the start of today in UTC, and a
+        window that starts earlier is refused with `400`, not answered with zeros. For days in another time zone, ask by the
+        hour and group the hours, within the last 90 days.
       security:
         - dpop: ['shortlinks:read']
         - dpop: ['shortlinks:admin']

@@ -70,7 +70,9 @@ class DatabaseRolesTest {
         DriverManager.getConnection(urlOf(database), role, passwords.getValue(role)).use(block)
 
     private fun flywayAs(role: String) =
-        Flyway.configure().dataSource(urlOf(database), role, passwords.getValue(role)).locations("classpath:db/migration").load()
+        Flyway.configure().dataSource(urlOf(database), role, passwords.getValue(role)).locations("classpath:db/migration")
+            .configuration(mapOf("flyway.postgresql.transactional.lock" to "false"))
+            .load()
 
     @BeforeAll
     fun provision() {
@@ -112,6 +114,7 @@ class DatabaseRolesTest {
             entry("short_link", "shortener_migrator"),
             entry("link_click_hourly", "shortener_migrator"),
             entry("link_click_daily", "shortener_migrator"),
+            entry("link_click_daily_device", "shortener_migrator"),
             entry("flyway_schema_history", "shortener_migrator"),
         )
     }
@@ -170,6 +173,42 @@ class DatabaseRolesTest {
         asRole("shortener_app") { connection ->
             val daily = connection.createStatement().executeQuery("select sum(clicks) from link_click_daily where short_code = 'store-role'")
             assertThat(daily.use { it.next(); it.getLong(1) }).isEqualTo(8L)
+        }
+    }
+
+    @Test
+    fun `lets the application role fold and delete old counts only by running the retention function, with its fixed rules`() {
+        asAdmin { connection ->
+            connection.createStatement().execute(
+                "insert into link_click_hourly (short_code, hour, device_class, clicks) " +
+                    "values ('retained', ((now() at time zone 'UTC')::date - 100)::timestamp at time zone 'UTC', 'desktop', 4), " +
+                    "('retained', now(), 'desktop', 1)",
+            )
+        }
+
+        asRole("shortener_app") { connection ->
+            val step = connection.createStatement().executeQuery("select busy, hours_folded, rows_deleted from analytics_retention()")
+            assertThat(step.use { it.next(); it.getBoolean(1) to it.getLong(2) }).isEqualTo(false to 1L)
+            val folded = connection.createStatement().executeQuery("select sum(clicks) from link_click_daily_device where short_code = 'retained'")
+            assertThat(folded.use { it.next(); it.getLong(1) }).isEqualTo(4L)
+            val left = connection.createStatement().executeQuery("select count(*) from link_click_hourly where short_code = 'retained'")
+            assertThat(left.use { it.next(); it.getLong(1) }).isEqualTo(1L)
+        }
+    }
+
+    @Test
+    fun `refuses the application role to write the folded days itself, or to change the retention function`() {
+        asRole("shortener_app") { connection ->
+            listOf(
+                "insert into link_click_daily_device (short_code, day, device_class, clicks) values ('x', current_date, 'desktop', 1)",
+                "update link_click_daily_device set clicks = 0",
+                "delete from link_click_daily_device",
+                "truncate link_click_daily_device",
+                "create or replace function analytics_retention(out busy boolean, out hours_folded bigint, out rows_deleted bigint) " +
+                    "language sql as 'select false, 0::bigint, 0::bigint'",
+                "alter function analytics_retention() security invoker",
+                "drop function analytics_retention()",
+            ).forEach { assertRefused(connection, it) }
         }
     }
 
@@ -242,6 +281,8 @@ class DatabaseRolesTest {
             assertRefused(connection, "select * from short_link")
             assertRefused(connection, "select * from link_click_hourly")
             assertRefused(connection, "select * from link_click_daily")
+            assertRefused(connection, "select * from link_click_daily_device")
+            assertRefused(connection, "select * from analytics_retention()")
         }
     }
 

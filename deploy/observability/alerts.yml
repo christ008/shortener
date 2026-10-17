@@ -125,3 +125,29 @@ groups:
     annotations:
       summary: The Postgres replica is more than 100 MiB behind
       description: A replica that far behind is a primary lost with that much unreplicated. Look at the load on the replica's node and the network between them.
+- name: shortener-analytics
+  rules:
+  - alert: ShortenerClicksDropped
+    expr: sum by (reason) (rate(analytics_clicks_dropped_total{application="shortener"}[5m])) > 0
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: 'Clicks are being dropped instead of counted ({{ $labels.reason }})'
+      description: 'The click counts are approximate by design (ADR 0037), but none should be lost in normal operation. full: an
+        instance holds as many counts as shortener.analytics.max-entries allows, because flushes are not keeping up or cannot
+        write. storage: a batch that could not be written no longer fit when it went back. error: counting itself failed; the
+        log of uy.ct.shortener.analytics.internal.ClickListener has the type. Look at analytics_flush_seconds_count by outcome,
+        and at the database. Redirects are not affected.'
+  - alert: ShortenerAnalyticsRetentionFailing
+    expr: sum(increase(analytics_retention_seconds_count{application="shortener", outcome="failure"}[26h])) > 0
+      unless on() sum(increase(analytics_retention_seconds_count{application="shortener", outcome="done"}[26h])) > 0
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: The retention of the click counts has failed, and no instance has applied it for a day
+      description: 'Hours older than 90 days are not being folded into days, and days older than 730 are not being deleted
+        (ADR 0043), so the tables grow and the stats refuse windows they could answer. The log of
+        uy.ct.shortener.analytics.internal.AnalyticsRetention has the type of the failure. Run it by hand with
+        `select * from analytics_retention()` as shortener_app until it reports nothing folded and nothing deleted.'

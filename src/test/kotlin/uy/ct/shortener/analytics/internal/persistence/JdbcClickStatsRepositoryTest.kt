@@ -144,4 +144,28 @@ class JdbcClickStatsRepositoryTest {
         )
         assertThat(repository.breakdown(ShortCode("never-seen"), days("2026-10-12T00:00:00Z", "2026-10-13T00:00:00Z"))).isEmpty()
     }
+
+    @Test
+    fun `a window of days adds the days that retention folded to the ones still in hours`() {
+        jdbc.update("insert into link_click_daily_device (short_code, day, device_class, clicks) values ('stats-a', date '2026-10-11', 'desktop', 9), ('stats-a', date '2026-10-11', 'bot', 1)")
+
+        val rows = repository.read(ShortCode("stats-a"), days("2026-10-11T00:00:00Z", "2026-10-13T00:00:00Z"))
+
+        assertThat(rows).containsExactlyInAnyOrder(
+            ClickRow(at("2026-10-11T00:00:00Z"), DeviceClass.DESKTOP, 9),
+            ClickRow(at("2026-10-11T00:00:00Z"), DeviceClass.BOT, 1),
+            ClickRow(at("2026-10-12T00:00:00Z"), DeviceClass.DESKTOP, 8),
+            ClickRow(at("2026-10-12T00:00:00Z"), DeviceClass.BOT, 2),
+            ClickRow(at("2026-10-12T00:00:00Z"), DeviceClass.MOBILE, 4),
+        )
+    }
+
+    @Test
+    fun `a window of hours never reads the folded days`() {
+        jdbc.update("insert into link_click_daily_device (short_code, day, device_class, clicks) values ('stats-a', date '2026-10-12', 'desktop', 50)")
+
+        val rows = repository.read(ShortCode("stats-a"), hours("2026-10-12T00:00:00Z", "2026-10-12T12:00:00Z"))
+
+        assertThat(rows.sumOf { it.clicks }).isEqualTo(14L)
+    }
 }

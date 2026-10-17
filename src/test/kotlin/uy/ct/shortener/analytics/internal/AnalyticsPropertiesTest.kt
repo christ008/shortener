@@ -52,4 +52,17 @@ class AnalyticsPropertiesTest {
         assertFailsWith<IllegalArgumentException> { AnalyticsProperties.Referrers(tracked = 0) }
         assertThat(AnalyticsProperties.Referrers(1, 1).tracked).isEqualTo(1)
     }
+
+    @Test
+    fun `applies retention a minute after the start and then every day, and refuses a timing that cannot work`() {
+        assertThat(AnalyticsProperties().retention).isEqualTo(AnalyticsProperties.Retention(true, Duration.ofMinutes(1), Duration.ofHours(24)))
+        assertThat(AnalyticsProperties().retention.enabled).isTrue()
+        assertThat(AnalyticsProperties.Retention(enabled = false).enabled).isFalse()
+        assertThat(AnalyticsProperties(enabled = false).enabled).isFalse()
+        assertThat(AnalyticsProperties.Retention(initialDelay = Duration.ZERO).initialDelay).isZero()
+        assertFailsWith<IllegalArgumentException> { AnalyticsProperties.Retention(initialDelay = Duration.ofSeconds(-1)) }
+        assertFailsWith<IllegalArgumentException> { AnalyticsProperties.Retention(interval = Duration.ZERO) }
+        assertFailsWith<IllegalArgumentException> { AnalyticsProperties.Retention(interval = Duration.ofSeconds(-1)) }
+        assertThat(AnalyticsProperties.Retention(interval = Duration.ofMillis(1)).interval).isEqualTo(Duration.ofMillis(1))
+    }
 }

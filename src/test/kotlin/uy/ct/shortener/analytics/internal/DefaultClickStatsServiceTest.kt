@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable
 import uy.ct.shortener.analytics.DeviceCounts
 import uy.ct.shortener.analytics.Granularity
 import uy.ct.shortener.analytics.HostVisitors
+import uy.ct.shortener.analytics.InvalidStatsWindowException
 import uy.ct.shortener.analytics.Language
 import uy.ct.shortener.analytics.LanguageVisitors
 import uy.ct.shortener.analytics.Languages
@@ -64,7 +65,9 @@ class DefaultClickStatsServiceTest {
         override fun disable(shortCode: ShortCode, disabledBy: Actor.Client): ShortLink = error("not used")
     }
 
-    private val service = DefaultClickStatsService(links, repository)
+    private val clock = MutableClock(Instant.parse("2026-10-14T09:30:00Z"))
+
+    private val service = DefaultClickStatsService(links, repository, clock)
 
     private fun at(text: String) = Instant.parse(text)
 
@@ -204,6 +207,41 @@ class DefaultClickStatsServiceTest {
     fun `reads no breakdown for a link the caller may not see`() {
         assertFailsWith<ShortLinkNotFoundException> { service.stats(ShortCode("other-code"), window) }
 
+        assertThat(breakdownReads).isEmpty()
+    }
+
+    @Test
+    fun `hours are kept for 90 days from the start of today, and a window that starts earlier is refused before anything is read`() {
+        val keptSince = at("2026-07-16T00:00:00Z")
+
+        assertThat(service.stats(known, StatsWindow(Granularity.Hour, keptSince, keptSince.plusSeconds(3_600))).points).hasSize(1)
+        val failure = assertFailsWith<InvalidStatsWindowException> {
+            service.stats(known, StatsWindow(Granularity.Hour, keptSince.minusSeconds(3_600), keptSince.plusSeconds(3_600)))
+        }
+
+        assertThat(failure.body.detail).contains("Hours are kept for 90 days, since 2026-07-16T00:00:00Z", "Ask by day for older ones")
+        assertThat(reads).hasSize(1)
+    }
+
+    @Test
+    fun `days are kept for 730 days, and a window that starts earlier is refused`() {
+        val keptSince = at("2024-10-14T00:00:00Z")
+
+        assertThat(service.stats(known, StatsWindow(Granularity.Day, keptSince, keptSince.plusSeconds(86_400))).points).hasSize(1)
+        val failure = assertFailsWith<InvalidStatsWindowException> {
+            service.stats(known, StatsWindow(Granularity.Day, keptSince.minusSeconds(86_400), keptSince.plusSeconds(86_400)))
+        }
+
+        assertThat(failure.body.detail).contains("Days are kept for 730 days, since 2024-10-14T00:00:00Z", "Older ones are not kept")
+    }
+
+    @Test
+    fun `a refused window says nothing about the link, which is not even read`() {
+        assertFailsWith<InvalidStatsWindowException> {
+            service.stats(ShortCode("other-code"), StatsWindow(Granularity.Hour, at("2026-01-01T00:00:00Z"), at("2026-01-01T01:00:00Z")))
+        }
+
+        assertThat(reads).isEmpty()
         assertThat(breakdownReads).isEmpty()
     }
 }

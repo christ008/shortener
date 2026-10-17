@@ -28,6 +28,9 @@ class AnalyticsConfigurationTest {
         fun store(): ClickStore = object : ClickStore {
             override fun add(counts: List<ClickCount>) = Unit
         }
+
+        @Bean
+        fun retentionStore(): RetentionStore = RetentionStore { RetentionStep.Done }
     }
 
     @Test
@@ -58,6 +61,29 @@ class AnalyticsConfigurationTest {
     fun `takes the referrer cap from the settings`() {
         runner.withPropertyValues("shortener.analytics.referrers.per-link-and-day=5", "shortener.analytics.referrers.tracked=10").run { context ->
             assertThat(context.getBean(AnalyticsProperties::class.java).referrers).isEqualTo(AnalyticsProperties.Referrers(5, 10))
+        }
+    }
+
+    @Test
+    fun `applies retention by default, and also when counting is switched off, because what was counted still has to go`() {
+        runner.run { context -> assertThat(context).hasSingleBean(AnalyticsRetention::class.java) }
+        runner.withPropertyValues("shortener.analytics.enabled=false").run { context ->
+            assertThat(context).hasSingleBean(AnalyticsRetention::class.java)
+        }
+    }
+
+    @Test
+    fun `applies no retention when its own switch is off`() {
+        runner.withPropertyValues("shortener.analytics.retention.enabled=false").run { context ->
+            assertThat(context).doesNotHaveBean(AnalyticsRetention::class.java)
+        }
+    }
+
+    @Test
+    fun `takes the retention's timing from the settings`() {
+        runner.withPropertyValues("shortener.analytics.retention.initial-delay=5s", "shortener.analytics.retention.interval=6h").run { context ->
+            assertThat(context.getBean(AnalyticsProperties::class.java).retention)
+                .isEqualTo(AnalyticsProperties.Retention(true, Duration.ofSeconds(5), Duration.ofHours(6)))
         }
     }
 

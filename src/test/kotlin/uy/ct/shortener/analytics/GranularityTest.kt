@@ -58,4 +58,21 @@ class GranularityTest {
             assertThat(failure.body.detail).contains("'hour'", "'day'")
         }
     }
+
+    @Test
+    fun `hours are kept for 90 days and days for 730, counted from the start of today in UTC`() {
+        val now = Instant.parse("2026-10-14T23:59:59Z")
+
+        assertThat(Granularity.Hour.kept).isEqualTo(Duration.ofDays(90))
+        assertThat(Granularity.Day.kept).isEqualTo(Duration.ofDays(730))
+        assertThat(Granularity.Hour.keptSince(now)).isEqualTo(Instant.parse("2026-07-16T00:00:00Z"))
+        assertThat(Granularity.Day.keptSince(now)).isEqualTo(Instant.parse("2024-10-14T00:00:00Z"))
+        Granularity.all.forEach { assertThat(it.maxSpan).describedAs(it.wire).isLessThanOrEqualTo(it.kept) }
+    }
+
+    @Test
+    fun `each says what to do about a window older than it keeps`() {
+        assertThat(Granularity.Hour.forOlderWindows).contains("by day")
+        assertThat(Granularity.Day.forOlderWindows).contains("not kept")
+    }
 }
