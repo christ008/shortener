@@ -165,8 +165,55 @@ class ClickAggregatorTest {
         drained += aggregator.drain(Int.MAX_VALUE).sumOf { it.clicks }
         pool.shutdown()
 
-        assertThat(drained).isEqualTo(threads.toLong() * perThread)
+        assertThat(dropped("full")).describedAs("clicks dropped as if the aggregator were full: it never holds more than 50 keys").isZero()
         assertThat(recorded()).isEqualTo((threads * perThread).toDouble())
+        assertThat(drained).isEqualTo(threads.toLong() * perThread)
+    }
+
+    @Test
+    fun `a drain never returns a key twice, though the walk can meet a key that was counted again`() {
+        val aggregator = aggregator()
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(8)
+        val recording = (0 until 8).map {
+            pool.submit {
+                start.await()
+                repeat(20_000) { n -> aggregator.record("code${n % 50}") }
+            }
+        }
+
+        start.countDown()
+        val batches = mutableListOf<List<ClickCount>>()
+        while (recording.any { !it.isDone }) batches += aggregator.drain(Int.MAX_VALUE)
+        recording.forEach { it.get(30, TimeUnit.SECONDS) }
+        batches += aggregator.drain(Int.MAX_VALUE)
+        pool.shutdown()
+
+        batches.forEach { batch -> assertThat(batch.map { it.key }).doesNotHaveDuplicates() }
+        assertThat(batches.sumOf { batch -> batch.sumOf { it.clicks } }).isEqualTo(160_000L)
+    }
+
+    @Test
+    fun `holds exactly the cap when many threads bring new keys at once`() {
+        val aggregator = aggregator(maxEntries = 10)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(8)
+        val recording = (0 until 8).map { thread ->
+            pool.submit {
+                start.await()
+                repeat(500) { n -> aggregator.record("t$thread-$n") }
+            }
+        }
+
+        start.countDown()
+        recording.forEach { it.get(30, TimeUnit.SECONDS) }
+        pool.shutdown()
+
+        assertThat(aggregator.size).isEqualTo(10)
+        assertThat(aggregator.drain(Int.MAX_VALUE)).hasSize(10)
+        assertThat(recorded()).isEqualTo(10.0)
+        assertThat(dropped("full")).isEqualTo(3_990.0)
+        assertThat(aggregator.size).isZero()
     }
 
     @Test

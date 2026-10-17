@@ -52,6 +52,13 @@ class DeviceClassifierTest {
     }
 
     @Test
+    fun `case does not matter`() {
+        assertThat(classify("MOZILLA/5.0 (IPHONE; CPU IPHONE OS 18_0 LIKE MAC OS X) MOBILE/15E148")).isEqualTo(DeviceClass.MOBILE)
+        assertThat(classify("MOZILLA/5.0 (COMPATIBLE; GOOGLEBOT/2.1)")).isEqualTo(DeviceClass.BOT)
+        assertThat(classify("MOZILLA/5.0 (WINDOWS NT 10.0; WIN64; X64) CHROME/130.0")).isEqualTo(DeviceClass.DESKTOP)
+    }
+
+    @Test
     fun `reads only the start of a long header`() {
         val padding = "x".repeat(600)
 
