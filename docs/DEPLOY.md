@@ -152,16 +152,37 @@ the same machine as a service's key, and the CA never sees a service's private k
 6. **Turn it on.** Put `PKI=1` in `.env` and `deploy/stack/deploy.sh <version>`. Services take their certificates as secrets named after a hash of their contents, so the edge, the application and the database are replaced
    with them, and `docker secret inspect pki_edge_cert_<hash>` shows its labels: the role, the identity, the serial, the SHA-256 fingerprint, and when it expires and is renewed.
 
-The first time, the application and the job restart until the database has accepted their certificates, as they do for a first deploy without them.
+Turning it on:
+
+- The first time, `deploy.sh` deploys twice: the database first, restarting to take certificates only while the application runs as it is, and when the database is up, the rest.
+  In one deploy the application's new tasks would start while the database is down, fail to connect, and Swarm would roll the application back to the version with no certificate, which the database then refuses.
+- The application as it was cannot reach the database between the two deploys.
+- It is a short maintenance event: on two nodes, with a request every 0.3 s to each edge, about 28 s in which the edges answered `502` (103 of 592 requests) or did not answer (13 more).
+  The edge speaks TLS to the application while every replica still speaks plain HTTP, and until the first new replica is up there is nobody to talk to; the other order has the same gap.
+
+### More than one node
+
+Verified on two nodes (a manager and a worker, `t3.small` each), with the application's replicas on both:
+
+- **Labels.** The CA runs on the node with `shortener.pki=true`, which must be a **manager**: `pki.sh` runs there (it uses `docker exec` on the CA's container, and `deploy.sh` needs a manager), and the CA's database directory (`PKI_DIR`) exists on that node alone. Do not move the label without moving the directory and the secrets. The database runs on the node with `shortener.postgres=true`.
+- **The overlays are encrypted between nodes**: ESP between their addresses, 245 packets in ten seconds and no VXLAN in the clear. The nodes' security group must let through every protocol between them (ESP is protocol 50, which UDP 4789 alone does not cover).
+- **Both edges reach both replicas** over mutual TLS, and a replica on the other node from the database connects with its certificate. The identity check, the database's certificates and the passwords refused behave as on one node.
+- **The stack does not spread the replicas.** Both landed on the database's node. A preference does it (a file of your own in `COMPOSE_FILES`: `services.shortener.deploy.placement.preferences: [{spread: node.id}]`), and it is soft: a rolling update left both replicas on one node again, and `docker service update --force shortener_shortener` spreads them.
+- **The CA is not needed to serve.** With the CA stopped for 40 seconds, 171 requests to each edge were all answered. Only issuing and renewing wait for it.
+- **Renewing** the edge, the application and the migration job: 387 requests to each edge, no `502`, nine without an answer in all (each edge is replaced in about three seconds, one after the other). Renewing the database's certificate alone: about ten seconds without the database, five of 780 requests unanswered, and the application and the edges untouched.
+- **Turning it on waits for the database through Swarm's API**, and not through the containers of the node it runs on, which see only their own.
 
 ### Renewing
 
-`sudo deploy/stack/pki.sh renew` issues again what is two thirds through its life and deploys with the running version, as `certificate.sh install` does. Run it daily:
-`17 4 * * * root /srv/shortener/deploy/stack/pki.sh renew` in `/etc/cron.d/shortener-pki`. The edge is replaced in a few seconds, the application one instance at a time with the new one up first,
-and Postgres, whose certificate lives a year, restarts for a few seconds when its renewal comes: that one is better done by hand at a quiet time (`FORCE=1` issues all).
-
-The issuing CA's certificate lasts a year, and `pki.sh inspect` counts the days. A month before: `deploy/stack/pki.sh request` makes a new request for the same key, the root signs it as in step 3, `install-intermediate`
-puts it in place and a deploy replaces the CA and the services' trust. The services trust the root, so no certificate has to be issued again. If a certificate expires, the service that holds it stops being served: renew early.
+- `sudo deploy/stack/pki.sh renew` issues again what is two thirds through its life and deploys with the running version, as `certificate.sh install` does. Run it daily:
+  `17 4 * * * root /srv/shortener/deploy/stack/pki.sh renew` in `/etc/cron.d/shortener-pki`. Name roles to renew those whatever their age: `pki.sh renew edge shortener`.
+- The edge is replaced in a few seconds, and the application one instance at a time with the new one up first (renewing the application's certificate under Swarm, with a request every 200 ms from outside: 505 requests, none failed).
+- The database's certificate, which lives a year, goes **alone and first**: it replaces the database, which restarts for a few seconds, and an application updated at the same time would fail to connect and be rolled back by Swarm
+  (the rollback leaves the new certificates in `secrets/` and the old ones in use). When the database is due, `renew` renews only it and deploys; the others stay due for the next run.
+- To renew all by hand: `pki.sh renew postgres`, then `pki.sh renew edge shortener migrator`. If a deploy leaves the application at `rollback_completed` (`docker service inspect shortener_shortener`), run `deploy.sh` again: the database is up by then.
+- The issuing CA's certificate lasts a year, and `pki.sh inspect` counts the days. A month before: `deploy/stack/pki.sh request` makes a new request for the same key, the root signs it as in step 3, `install-intermediate`
+  puts it in place, and a deploy replaces the CA and the services' trust, the database among them (check the application afterwards). The services trust the root, so no certificate has to be issued again.
+- A certificate that expires stops its service being served: renew early.
 
 ### Trying it on one machine
 
@@ -175,7 +196,7 @@ puts it in place and a deploy replaces the CA and the services' trust. The servi
 - The identity check is in the application: a caller with a certificate of the CA that is not the edge's is a `403`, and the event `peer_identity_not_allowed` is logged. Production does not start with a certificate asked for and
   no identity named, or the reverse.
 - The CA logs each request with its serial, the provisioner, the names and the validity, and also the certificate and the one-time token of the request (valid five minutes). Treat that log as sensitive.
-- Tried with `docker compose` on one machine on 2026-10-14, with the image of this version. Not tried: Swarm, more than one node, and the cost of the TLS between the edge and the application under load.
+- Verified under Swarm on one node and on two: the CA as a service, turning it on, every identity against the application and the database, and the renewals. Not tried: more than two nodes, and the cost of the TLS between the edge and the application under load.
 
 ## Keycloak
 

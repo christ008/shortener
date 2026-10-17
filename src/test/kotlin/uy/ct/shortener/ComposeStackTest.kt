@@ -39,6 +39,7 @@ class ComposeStackTest {
         "deploy/stack/overlays/compose.postgres-ha.yaml",
         "deploy/stack/overlays/compose.console.yaml",
         "deploy/stack/overlays/compose.pki-ca.yaml",
+        "deploy/stack/overlays/compose.pki-db.yaml",
         "deploy/stack/overlays/compose.pki.yaml",
     ).map(::load)
 
@@ -576,6 +577,15 @@ class ComposeStackTest {
     }
 
     @Test
+    fun `the database has an overlay of its own, which deploy sh deploys before the one of the services that call it`() {
+        assertThat(load("deploy/stack/overlays/compose.pki-db.yaml").map("services").keys).containsExactly("postgres")
+        assertThat(load("deploy/stack/overlays/compose.pki.yaml").map("services").keys).containsExactlyInAnyOrder("edge", "shortener", "migrate")
+        val deploy = Files.readString(Path.of("deploy/stack/deploy.sh"))
+        assertThat(deploy).containsSubsequence("compose.pki-db.yaml", "database_files=\$files", "compose.pki.yaml", "turning on mutual TLS: the database first", "deploy \"\$database_args\"")
+        assertThat(deploy).describedAs("a rollback of the application to the one with no certificate is what that order avoids").contains("rolls the application back")
+    }
+
+    @Test
     fun `the names the CA signs for are the ones pki sh asks for, in its policy and in the constraints of the issuing certificate`() {
         val policy = Files.readString(Path.of("deploy/pki/ca-config"))
         val allowed = Regex("""allow: \{dns: \[([^]]*)]""").find(policy)!!.groupValues[1].split(",").map { it.trim().trim('"') }
@@ -589,7 +599,7 @@ class ComposeStackTest {
 
     @Test
     fun `every secret of the CA overlays is named after a hash of its contents, because a secret is immutable`() {
-        listOf("deploy/stack/overlays/compose.pki-ca.yaml", "deploy/stack/overlays/compose.pki.yaml").forEach { path ->
+        listOf("deploy/stack/overlays/compose.pki-ca.yaml", "deploy/stack/overlays/compose.pki-db.yaml", "deploy/stack/overlays/compose.pki.yaml").forEach { path ->
             val secrets = load(path).map("secrets")
             assertThat(secrets).isNotEmpty
             secrets.forEach { (name, secret) -> assertThat(secret.asMap()["name"].toString()).describedAs("the name of secret $name in $path").contains("_HASH") }
@@ -602,6 +612,7 @@ class ComposeStackTest {
         "deploy/stack/overlays/compose.keycloak.yaml",
         "deploy/stack/overlays/compose.postgres-ha.yaml",
         "deploy/stack/overlays/compose.pki-ca.yaml",
+        "deploy/stack/overlays/compose.pki-db.yaml",
         "deploy/stack/overlays/compose.pki.yaml",
     )
 
@@ -611,6 +622,17 @@ class ComposeStackTest {
             val configs = load(path).map("configs")
             configs.forEach { (name, config) ->
                 assertThat(config.asMap()["name"].toString()).describedAs("the name of config $name in $path").contains("_HASH")
+            }
+        }
+    }
+
+    @Test
+    fun `the message of a required variable has none of the characters that the stack loader reads as an operator`() {
+        (composePaths + "deploy/stack/overlays/compose.console.yaml").forEach { path ->
+            Regex("""\$\{[A-Z][A-Z0-9_]*:\?([^}]*)}""").findAll(Files.readString(Path.of(path))).forEach {
+                assertThat(it.groupValues[1])
+                    .describedAs("docker stack deploy takes what follows a dash in the message of a required variable as its default, so a name built from it never changes: $path")
+                    .doesNotContain("-", "+", "?")
             }
         }
     }

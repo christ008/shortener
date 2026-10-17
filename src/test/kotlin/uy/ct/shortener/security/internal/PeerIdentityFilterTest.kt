@@ -41,8 +41,10 @@ class PeerIdentityFilterTest {
 
     private val filter = PeerIdentityFilter(setOf(edge), responder)
 
-    private fun certificate(name: String): X509Certificate =
-        javaClass.getResourceAsStream("/mtls/$name.pem")!!.use { assertIs<X509Certificate>(CertificateFactory.getInstance("X.509").generateCertificate(it)) }
+    private fun certificate(name: String): X509Certificate {
+        val certificate = javaClass.getResourceAsStream("/mtls/$name.pem")!!.use { CertificateFactory.getInstance("X.509").generateCertificate(it) }
+        return assertIs<X509Certificate>(certificate)
+    }
 
     private fun call(vararg chain: Any): MockFilterChain {
         val request = MockHttpServletRequest("GET", "/abc1234")

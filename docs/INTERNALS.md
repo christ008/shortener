@@ -353,7 +353,7 @@ Services:
   - `compose.keycloak.yaml`: Keycloak ([DEPLOY.md](DEPLOY.md#keycloak), [ADR 0025](adr/0025-keycloak-in-the-stack.md)).
   - `compose.console.yaml`: Keycloak's console at the site's address for connections from the node ([ADR 0041](adr/0041-keycloaks-console-through-an-ssh-tunnel.md)).
   - `compose.acme.yaml`: the challenge directory in the edge, for `certificate.sh`.
-  - `compose.pki-ca.yaml`, `compose.pki.yaml`: the stack's CA, and mutual TLS between the services.
+  - `compose.pki-ca.yaml`, `compose.pki-db.yaml`, `compose.pki.yaml`: the stack's CA, the database's certificates alone (the first deploy with `PKI=1`), and mutual TLS between the services.
 
 ```mermaid
 flowchart LR
@@ -447,6 +447,8 @@ With `PKI_CA=1` the stack has its own CA, step-ca, on a sixth network, `pki`, th
 - **The identity check is `PeerIdentityFilter`, not Spring Security's `x509()`**: the certificate names the proxy and not the user, so this
   authorizes the connection and does not authenticate a user.
 - **Edge to application** is one included file, `upstream.conf` (plain HTTP) or `upstream.mtls.conf` (TLS 1.3, the edge's certificate, `proxy_ssl_verify on`).
+- **More than one node** (verified on two): the CA's node is a manager and the only one with its database directory; the overlays carry ESP between nodes; `deploy.sh` asks Swarm's API, not `docker ps`, whether the database has its certificate, since its container is on another node. Nothing at run time depends on the CA.
+- **The database goes first.** `deploy.sh` deploys the database overlay (`compose.pki-db.yaml`) alone the first time `PKI=1` is on, and `pki.sh renew` renews the database's certificate alone, because replacing it while the application's new tasks start makes them fail to connect and Swarm roll the application back.
 - Production does not start with half of it (`requirePeerIdentityToMatchClientAuth`). `ComposeStackTest` holds who holds which key, the one-mount-per-secret rule, the networks and the names the CA signs for.
 
 ### Hardening
@@ -533,7 +535,7 @@ Docker 29.8, a single-node swarm and plain Compose.
 | The development stack | Keycloak 26.8.0, Prometheus 3.15.0, Grafana 13.2.3, Tempo 3.1.0 | a DPoP-bound token accepted by the nonce flow, the 21-check smoke test, the 25 queries of the dashboard returning data, traces in Tempo |
 | The migration job under the `production` profile | | completes; it sets `allow-any`, since it checks no link ([ADR 0023](adr/0023-production-must-decide-its-targets.md)) |
 | Redirects with Postgres stopped | native binary | a link read earlier kept redirecting; an unread code got `503` with `Retry-After`; readiness and liveness stayed up; recovery when Postgres returned; with the window at zero the same link answered `503` |
-| Mutual TLS | Compose, one machine | works; not tried under Swarm |
+| Mutual TLS | Compose on one machine; Swarm on one node and on two | works; turning it on is about 28 s of `502` at the edges |
 
 What was not verified is in [Limitations](#limitations).
 

@@ -1,0 +1,59 @@
+# The database of the stack with mutual TLS, with the stack's own CA (ADR 0022): TLS 1.3, and the application and the migration job let in with a client certificate
+# alone. The third of the overlays PKI=1 adds, with compose.pki-ca.yaml and compose.pki.yaml, and the one deploy.sh deploys first:
+#
+# - Why first: the database restarts with a pg_hba.conf that takes those two roles with a certificate only. If the application's new tasks started while it was down,
+#   they would not connect, they would fail, and Swarm would roll the application back to the one that has no certificate, which the database now refuses.
+#   deploy/stack/deploy.sh deploys the database with the application as it runs, waits for it, and then the rest (docs/DEPLOY.md#mutual-tls-between-the-services).
+# - pg_hba.mtls.conf says who may connect, and pg_ident.mtls.conf maps the certificate's name to the role. The other roles keep their passwords, over TLS or not.
+# - Postgres installs its own key from the secret with its command, since it wants the file private to its user and a secret is not.
+# - Not with POSTGRES_HA=1 (the image and its entrypoint are another), and for the stack's own Postgres: a managed database has its own way.
+services:
+  postgres:
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        set -eu
+        tls=/var/run/postgresql/tls
+        install -d -m 0755 "$$tls"
+        install -m 0400 -o postgres -g postgres /run/secrets/pki_postgres_key "$$tls/server.key"
+        install -m 0444 /run/secrets/pki_postgres_cert "$$tls/server.crt"
+        install -m 0444 /run/secrets/pki_chain "$$tls/ca.crt"
+        exec docker-entrypoint.sh postgres \
+          -c hba_file=/etc/postgresql/pg_hba.conf -c ident_file=/etc/postgresql/pg_ident.conf \
+          -c ssl=on -c ssl_cert_file="$$tls/server.crt" -c ssl_key_file="$$tls/server.key" -c ssl_ca_file="$$tls/ca.crt" \
+          -c ssl_min_protocol_version=TLSv1.3
+    configs:
+      - {source: postgres-hba, target: /etc/postgresql/pg_hba.conf, mode: 0444}
+      - {source: postgres-ident, target: /etc/postgresql/pg_ident.conf, mode: 0444}
+    secrets: [pki_postgres_key, pki_postgres_cert, pki_chain]
+
+configs:
+  postgres-hba:
+    name: 'shortener-postgres-hba-${POSTGRES_CONF_HASH:-local}'
+    file: ../postgres/pg_hba.mtls.conf
+  postgres-ident:
+    name: 'shortener-postgres-ident-${POSTGRES_CONF_HASH:-local}'
+    file: ../postgres/pg_ident.mtls.conf
+
+# Files under ${SECRETS_DIR}, made by deploy/stack/pki.sh. The name carries a hash of the contents, so a renewed certificate is a new secret and a deploy replaces the database.
+# The chain is here because the database needs it first, and the other services of compose.pki.yaml use it.
+secrets:
+  pki_chain:
+    name: 'pki_chain_${PKI_CHAIN_HASH:?install the issuing CA with deploy/stack/pki.sh}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_chain'
+    labels:
+      shortener.pki.role: trust-anchors
+  pki_postgres_cert:
+    name: 'pki_postgres_cert_${PKI_POSTGRES_CERT_HASH:?run deploy/stack/pki.sh issue postgres}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_postgres_cert'
+    labels: &postgres
+      shortener.pki.role: postgres
+      shortener.pki.identity: spiffe://shortener.internal/prod/postgres
+      shortener.pki.serial: '${PKI_POSTGRES_CERT_SERIAL:-}'
+      shortener.pki.sha256: '${PKI_POSTGRES_CERT_SHA256:-}'
+      shortener.pki.not-after: '${PKI_POSTGRES_CERT_NOT_AFTER:-}'
+      shortener.pki.renew-after: '${PKI_POSTGRES_CERT_RENEW_AFTER:-}'
+  pki_postgres_key:
+    name: 'pki_postgres_key_${PKI_POSTGRES_KEY_HASH:?run deploy/stack/pki.sh issue postgres}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_postgres_key'
+    labels: *postgres

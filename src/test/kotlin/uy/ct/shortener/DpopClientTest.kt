@@ -55,7 +55,7 @@ import javax.tools.ToolProvider
  *
  * - Every test starts a JVM for the client, which is most of the time of the suite, so the tests of this class run concurrently.
  * - Each has its own stand-in server, key file and temporary directory, and nothing else in the suite runs at the same time.
- * - The client runs with the C1 compiler only: it lives under a second, and the C2 threads were more than half of its CPU time,
+ * - The client runs with the C1 compiler only: it lives under a second, and the C2 threads would take more than half of its CPU time,
  *   which is what limited how many could run together.
  */
 @Execution(ExecutionMode.CONCURRENT)
@@ -638,7 +638,7 @@ class DpopClientTest {
     private fun Any.invokeMethod(name: String, vararg arguments: Any?): Any? = Loaded(javaClass).invokeOn(this, name, *arguments)
 
     private val compiled: Compiled by lazy {
-        val classes = Files.createDirectories(Path.of("build/tmp/dpop-client-classes"))
+        val classes = Files.createDirectories(directory.resolve("client-classes"))
         val problems = compileForJdk17(classes)
         check(problems.isEmpty()) { "DpopClient.java does not compile for JDK 17:\n" + problems.joinToString("\n") }
         Compiled(classes)

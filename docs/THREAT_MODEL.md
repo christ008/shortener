@@ -295,9 +295,9 @@ What is open, ordered by severity for a public instance. None is a known exploit
 
 ### F-07. Peers are authenticated only with `PKI=1`
 
-- **State:** the overlay networks between services are encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). With `PKI=1` the application serves only the edge's certificate and the database admits the application and the migration job with a certificate alone ([DEPLOY.md](DEPLOY.md#mutual-tls-between-the-services), [ADR 0022](adr/0022-mtls-between-services.md)). It is off by default, an external database needs `sslmode=verify-full` set by the operator, and it was tried with `docker compose` on one machine (*known*), not under Swarm or on more than one node.
+- **State:** the overlay networks between services are encrypted ([ADR 0021](adr/0021-encrypt-internal-traffic.md), `ComposeStackTest`). With `PKI=1` the application serves only the edge's certificate and the database admits the application and the migration job with a certificate alone ([DEPLOY.md](DEPLOY.md#mutual-tls-between-the-services), [ADR 0022](adr/0022-mtls-between-services.md)). It is off by default, an external database needs `sslmode=verify-full` set by the operator, it was tried with `docker compose` and under Swarm on one node and on two (*known*), not on more, and turning it on is a short maintenance event (about 28 s of `502` at the edges).
 - **Impact:** without it a container on a stack network can call the application, but the application does not believe forwarded headers unless it shares `ingress`, which only the edge does ([ADR 0038](adr/0038-segment-the-stack-networks.md)).
-- **Recommendation:** turn `PKI=1` on when there is more than one node or something untrusted can attach, after trying it under Swarm. Keep the root off the node, and treat the CA's log (each certificate and one-time token) as sensitive.
+- **Recommendation:** turn `PKI=1` on when there is more than one node or something untrusted can attach, and try it on the nodes first. Keep the root off the node, and treat the CA's log (each certificate and one-time token) as sensitive.
 
 ### F-08. The edge accepts any `Host`
 

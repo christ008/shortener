@@ -1,14 +1,14 @@
-# Mutual TLS between the services, with the stack's own CA (ADR 0022). Add it with a third file, after compose.pki-ca.yaml has been deployed
-# and deploy/stack/pki.sh has issued the four identities:
-#   PKI=1 deploy/stack/deploy.sh <version>        (PKI=1 includes the CA's overlay)
-#   docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.pki-ca.yaml -f deploy/stack/overlays/compose.pki.yaml up -d
+# Mutual TLS between the services that call the database and the edge, with the stack's own CA (ADR 0022). It is the last of three files, after compose.pki-ca.yaml
+# (the CA) and compose.pki-db.yaml (the database), and deploy/stack/pki.sh has issued the four identities:
+#   PKI=1 deploy/stack/deploy.sh <version>        (PKI=1 includes the other two, and deploys the database before this)
+#   docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.pki-ca.yaml -f deploy/stack/overlays/compose.pki-db.yaml \
+#     -f deploy/stack/overlays/compose.pki.yaml up -d
 # docs/DEPLOY.md#mutual-tls-between-the-services has the order, and what renewing does.
 #
 # - Edge to application: TLS 1.3 with the edge's certificate (deploy/edge/upstream.mtls.conf). The application asks for one (server.ssl.client-auth=need) and
 #   serves only the edge's identity (shortener.security.mtls.allowed-identities). The management port stays plain HTTP, for the health check.
 # - Application and migration job to Postgres: TLS 1.3 and a client certificate, whose name is mapped to the role (deploy/postgres/pg_ident.mtls.conf).
-#   pg_hba.mtls.conf refuses those two roles with anything else. Their passwords are still in the stack, and no connection can use them.
-# - Postgres: its own key is installed from the secret by its command, since Postgres wants the file private to its user and a secret is not.
+#   The database takes nothing else from those two roles (compose.pki-db.yaml). Their passwords are still in the stack, and no connection can use them.
 # - Not with POSTGRES_HA=1 (the image and its entrypoint are another), and for the stack's own Postgres: a managed database has its own way.
 # - Key files: Swarm gives each service its own copy with the owner and mode asked for. `docker compose` does not, so deploy/stack/local/prepare-pki.sh
 #   makes the files readable for it. pgjdbc refuses a key file that others can read, hence the 0400 of the two DER keys.
@@ -50,45 +50,15 @@ services:
       - {source: pki_migrator_key_der, uid: '1000', gid: '1000', mode: 0400}
       - {source: pki_root}
 
-  postgres:
-    entrypoint: ['sh', '-c']
-    command:
-      - |
-        set -eu
-        tls=/var/run/postgresql/tls
-        install -d -m 0755 "$$tls"
-        install -m 0400 -o postgres -g postgres /run/secrets/pki_postgres_key "$$tls/server.key"
-        install -m 0444 /run/secrets/pki_postgres_cert "$$tls/server.crt"
-        install -m 0444 /run/secrets/pki_chain "$$tls/ca.crt"
-        exec docker-entrypoint.sh postgres \
-          -c hba_file=/etc/postgresql/pg_hba.conf -c ident_file=/etc/postgresql/pg_ident.conf \
-          -c ssl=on -c ssl_cert_file="$$tls/server.crt" -c ssl_key_file="$$tls/server.key" -c ssl_ca_file="$$tls/ca.crt" \
-          -c ssl_min_protocol_version=TLSv1.3
-    configs:
-      - {source: postgres-hba, target: /etc/postgresql/pg_hba.conf, mode: 0444}
-      - {source: postgres-ident, target: /etc/postgresql/pg_ident.conf, mode: 0444}
-    secrets: [pki_postgres_key, pki_postgres_cert, pki_chain]
-
 configs:
   # How the edge reaches the application, the one with TLS (the file the base stack names `edge-upstream` is replaced).
   edge-upstream:
     name: 'shortener-edge-upstream-${EDGE_UPSTREAM_CONF_HASH:-local}'
     file: ../edge/upstream.mtls.conf
-  postgres-hba:
-    name: 'shortener-postgres-hba-${POSTGRES_CONF_HASH:-local}'
-    file: ../postgres/pg_hba.mtls.conf
-  postgres-ident:
-    name: 'shortener-postgres-ident-${POSTGRES_CONF_HASH:-local}'
-    file: ../postgres/pg_ident.mtls.conf
 
 # Files under ${SECRETS_DIR}, made by deploy/stack/pki.sh issue. The name carries a hash of the contents, so a renewed certificate is a new secret and a deploy replaces
 # the services that hold it. The labels are what `docker secret inspect` shows: who the identity is and until when (set by deploy.sh from pki.sh env).
 secrets:
-  pki_chain:
-    name: 'pki_chain_${PKI_CHAIN_HASH:?run deploy/stack/pki.sh install-intermediate}'
-    file: '${SECRETS_DIR:-../../secrets}/pki_chain'
-    labels:
-      shortener.pki.role: trust-anchors
   pki_edge_cert:
     name: 'pki_edge_cert_${PKI_EDGE_CERT_HASH:?run deploy/stack/pki.sh issue edge}'
     file: '${SECRETS_DIR:-../../secrets}/pki_edge_cert'
@@ -135,17 +105,3 @@ secrets:
     name: 'pki_migrator_key_der_${PKI_MIGRATOR_KEY_DER_HASH:?run deploy/stack/pki.sh issue migrator}'
     file: '${SECRETS_DIR:-../../secrets}/pki_migrator_key_der'
     labels: *migrator
-  pki_postgres_cert:
-    name: 'pki_postgres_cert_${PKI_POSTGRES_CERT_HASH:?run deploy/stack/pki.sh issue postgres}'
-    file: '${SECRETS_DIR:-../../secrets}/pki_postgres_cert'
-    labels: &postgres
-      shortener.pki.role: postgres
-      shortener.pki.identity: spiffe://shortener.internal/prod/postgres
-      shortener.pki.serial: '${PKI_POSTGRES_CERT_SERIAL:-}'
-      shortener.pki.sha256: '${PKI_POSTGRES_CERT_SHA256:-}'
-      shortener.pki.not-after: '${PKI_POSTGRES_CERT_NOT_AFTER:-}'
-      shortener.pki.renew-after: '${PKI_POSTGRES_CERT_RENEW_AFTER:-}'
-  pki_postgres_key:
-    name: 'pki_postgres_key_${PKI_POSTGRES_KEY_HASH:?run deploy/stack/pki.sh issue postgres}'
-    file: '${SECRETS_DIR:-../../secrets}/pki_postgres_key'
-    labels: *postgres
