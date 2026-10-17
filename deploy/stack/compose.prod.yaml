@@ -51,6 +51,8 @@ services:
     configs:
       - source: nginx
         target: /etc/nginx/nginx.conf
+      - source: edge-upstream
+        target: /etc/nginx/upstream.conf
     secrets: [tls_cert, tls_key]
     networks:
       edge: {}
@@ -233,6 +235,10 @@ configs:
   nginx:
     name: 'shortener-nginx-${NGINX_CONF_HASH:-local}'
     file: ../edge/nginx.conf
+  # How the edge reaches the application. The CA overlay (PKI=1) replaces the file with the one that speaks TLS.
+  edge-upstream:
+    name: 'shortener-edge-upstream-${EDGE_UPSTREAM_CONF_HASH:-local}'
+    file: ../edge/upstream.conf
   postgres-bootstrap:
     name: 'shortener-postgres-bootstrap-${POSTGRES_CONF_HASH:-local}'
     file: ../postgres/bootstrap.sql

@@ -18,6 +18,7 @@ import java.time.Duration
  *   section 9). The nonce is an HMAC of the current [Nonce.interval] (five minutes unless set) and is good for that one and the
  *   next. [Nonce.secret] must be the same on every instance, and in `production` it is required; elsewhere a blank one is a random
  *   secret for each process.
+ * - [mtls]: [Mtls.allowedIdentities] are the URI names (`spiffe://shortener.internal/prod/edge`) a TLS client certificate may carry for its request to be served. Empty serves every caller.
  * - [accessTokenType]: the JOSE type access tokens must carry (RFC 9068). Blank skips the check.
  * - [admin]: what a token with the administrator scope must show. Its person signed in with a second factor, meaning an `acr` claim that
  *   is a number of at least [Admin.minLevel] (2) or one of [Admin.acrValues] (names a realm gives such levels, none by default), unless its
@@ -33,7 +34,10 @@ data class SecurityProperties(
     val accessTokenType: String = "at+jwt",
     val accessTokenClaimTypes: List<String> = listOf("Bearer", "DPoP"),
     val admin: Admin = Admin(),
+    val mtls: Mtls = Mtls(),
 ) {
+
+    data class Mtls(val allowedIdentities: List<String> = emptyList())
 
     data class Admin(
         val scope: String = "shortlinks:admin",

@@ -1,0 +1,107 @@
+# Mutual TLS between the services that call the database and the edge, with the stack's own CA (ADR 0022). It is the last of three files, after compose.pki-ca.yaml
+# (the CA) and compose.pki-db.yaml (the database), and deploy/stack/pki.sh has issued the four identities:
+#   PKI=1 deploy/stack/deploy.sh <version>        (PKI=1 includes the other two, and deploys the database before this)
+#   docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.pki-ca.yaml -f deploy/stack/overlays/compose.pki-db.yaml \
+#     -f deploy/stack/overlays/compose.pki.yaml up -d
+# docs/DEPLOY.md#mutual-tls-between-the-services has the order, and what renewing does.
+#
+# - Edge to application: TLS 1.3 with the edge's certificate (deploy/edge/upstream.mtls.conf). The application asks for one (server.ssl.client-auth=need) and
+#   serves only the edge's identity (shortener.security.mtls.allowed-identities). The management port stays plain HTTP, for the health check.
+# - Application and migration job to Postgres: TLS 1.3 and a client certificate, whose name is mapped to the role (deploy/postgres/pg_ident.mtls.conf).
+#   The database takes nothing else from those two roles (compose.pki-db.yaml). Their passwords are still in the stack, and no connection can use them.
+# - Not with POSTGRES_HA=1 (the image and its entrypoint are another), and for the stack's own Postgres: a managed database has its own way.
+# - Key files: Swarm gives each service its own copy with the owner and mode asked for. `docker compose` does not, so deploy/stack/local/prepare-pki.sh
+#   makes the files readable for it. pgjdbc refuses a key file that others can read, hence the 0400 of the two DER keys.
+services:
+  edge:
+    secrets:
+      - {source: pki_edge_cert, target: mtls_cert}
+      - {source: pki_edge_key, target: mtls_key}
+      - {source: pki_chain, target: mtls_ca}
+
+  shortener:
+    environment:
+      SPRING_DATASOURCE_URL: 'jdbc:postgresql://postgres:5432/shortener?sslmode=verify-full&sslrootcert=/run/secrets/pki_root&sslcert=/run/secrets/pki_shortener_cert&sslkey=/run/secrets/pki_shortener_key_der'
+      SERVER_SSL_BUNDLE: server
+      SERVER_SSL_CLIENTAUTH: need
+      # The bundle reads the files where the secrets are, so that each secret is mounted once: a service that names one twice, with two targets, keeps only the last.
+      SPRING_SSL_BUNDLE_PEM_SERVER_KEYSTORE_CERTIFICATE: file:/run/secrets/pki_shortener_cert
+      SPRING_SSL_BUNDLE_PEM_SERVER_KEYSTORE_PRIVATEKEY: file:/run/secrets/pki_shortener_key
+      SPRING_SSL_BUNDLE_PEM_SERVER_TRUSTSTORE_CERTIFICATE: file:/run/secrets/pki_chain
+      SPRING_SSL_BUNDLE_PEM_SERVER_OPTIONS_ENABLEDPROTOCOLS: TLSv1.3
+      # The management port shares the server's TLS settings unless told otherwise, and the health check speaks plain HTTP.
+      MANAGEMENT_SERVER_SSL_ENABLED: 'false'
+      SHORTENER_SECURITY_MTLS_ALLOWEDIDENTITIES: spiffe://shortener.internal/prod/edge
+    secrets:
+      - {source: pki_shortener_cert}
+      - {source: pki_shortener_key}
+      - {source: pki_chain}
+      - {source: pki_shortener_key_der, uid: '1000', gid: '1000', mode: 0400}
+      - {source: pki_root}
+
+  migrate:
+    environment:
+      SPRING_DATASOURCE_URL: 'jdbc:postgresql://postgres:5432/shortener?sslmode=verify-full&sslrootcert=/run/secrets/pki_root&sslcert=/run/secrets/pki_shortener_cert&sslkey=/run/secrets/pki_shortener_key_der'
+      SPRING_FLYWAY_URL: 'jdbc:postgresql://postgres:5432/shortener?sslmode=verify-full&sslrootcert=/run/secrets/pki_root&sslcert=/run/secrets/pki_migrator_cert&sslkey=/run/secrets/pki_migrator_key_der'
+    secrets:
+      - {source: pki_shortener_cert}
+      - {source: pki_shortener_key_der, uid: '1000', gid: '1000', mode: 0400}
+      - {source: pki_migrator_cert}
+      - {source: pki_migrator_key_der, uid: '1000', gid: '1000', mode: 0400}
+      - {source: pki_root}
+
+configs:
+  # How the edge reaches the application, the one with TLS (the file the base stack names `edge-upstream` is replaced).
+  edge-upstream:
+    name: 'shortener-edge-upstream-${EDGE_UPSTREAM_CONF_HASH:-local}'
+    file: ../edge/upstream.mtls.conf
+
+# Files under ${SECRETS_DIR}, made by deploy/stack/pki.sh issue. The name carries a hash of the contents, so a renewed certificate is a new secret and a deploy replaces
+# the services that hold it. The labels are what `docker secret inspect` shows: who the identity is and until when (set by deploy.sh from pki.sh env).
+secrets:
+  pki_edge_cert:
+    name: 'pki_edge_cert_${PKI_EDGE_CERT_HASH:?run deploy/stack/pki.sh issue edge}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_edge_cert'
+    labels: &edge
+      shortener.pki.role: edge
+      shortener.pki.identity: spiffe://shortener.internal/prod/edge
+      shortener.pki.serial: '${PKI_EDGE_CERT_SERIAL:-}'
+      shortener.pki.sha256: '${PKI_EDGE_CERT_SHA256:-}'
+      shortener.pki.not-after: '${PKI_EDGE_CERT_NOT_AFTER:-}'
+      shortener.pki.renew-after: '${PKI_EDGE_CERT_RENEW_AFTER:-}'
+  pki_edge_key:
+    name: 'pki_edge_key_${PKI_EDGE_KEY_HASH:?run deploy/stack/pki.sh issue edge}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_edge_key'
+    labels: *edge
+  pki_shortener_cert:
+    name: 'pki_shortener_cert_${PKI_SHORTENER_CERT_HASH:?run deploy/stack/pki.sh issue shortener}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_shortener_cert'
+    labels: &shortener
+      shortener.pki.role: shortener
+      shortener.pki.identity: spiffe://shortener.internal/prod/shortener
+      shortener.pki.serial: '${PKI_SHORTENER_CERT_SERIAL:-}'
+      shortener.pki.sha256: '${PKI_SHORTENER_CERT_SHA256:-}'
+      shortener.pki.not-after: '${PKI_SHORTENER_CERT_NOT_AFTER:-}'
+      shortener.pki.renew-after: '${PKI_SHORTENER_CERT_RENEW_AFTER:-}'
+  pki_shortener_key:
+    name: 'pki_shortener_key_${PKI_SHORTENER_KEY_HASH:?run deploy/stack/pki.sh issue shortener}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_shortener_key'
+    labels: *shortener
+  pki_shortener_key_der:
+    name: 'pki_shortener_key_der_${PKI_SHORTENER_KEY_DER_HASH:?run deploy/stack/pki.sh issue shortener}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_shortener_key_der'
+    labels: *shortener
+  pki_migrator_cert:
+    name: 'pki_migrator_cert_${PKI_MIGRATOR_CERT_HASH:?run deploy/stack/pki.sh issue migrator}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_migrator_cert'
+    labels: &migrator
+      shortener.pki.role: migrator
+      shortener.pki.identity: spiffe://shortener.internal/prod/migrator
+      shortener.pki.serial: '${PKI_MIGRATOR_CERT_SERIAL:-}'
+      shortener.pki.sha256: '${PKI_MIGRATOR_CERT_SHA256:-}'
+      shortener.pki.not-after: '${PKI_MIGRATOR_CERT_NOT_AFTER:-}'
+      shortener.pki.renew-after: '${PKI_MIGRATOR_CERT_RENEW_AFTER:-}'
+  pki_migrator_key_der:
+    name: 'pki_migrator_key_der_${PKI_MIGRATOR_KEY_DER_HASH:?run deploy/stack/pki.sh issue migrator}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_migrator_key_der'
+    labels: *migrator

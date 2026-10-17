@@ -25,6 +25,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver
  *   the same, with that error.
  * - The challenge names `DPoP` with the accepted proof algorithms (RFC 9449), and `Bearer` as well unless [dpopRequired] or
  *   the request already used one scheme.
+ * - A `403` for a caller whose TLS client certificate is not one the application serves ([peerNotAllowed]) carries no challenge, since no token would change it.
  * - A `429` carries `Retry-After`.
  * - Each failure is reported to [events], when there is one, with the OAuth error code and never the exception's message.
  */
@@ -71,6 +72,11 @@ class SecurityProblemResponder(
         )
     }
 
+    fun peerNotAllowed(request: HttpServletRequest, response: HttpServletResponse) {
+        events?.forbidden(request, null, PEER_NOT_ALLOWED)
+        respond(request, response, SecurityProblem(HttpStatus.FORBIDDEN, "This caller is not served", HttpHeaders()))
+    }
+
     fun tooManyRequests(request: HttpServletRequest, response: HttpServletResponse, retryAfterSeconds: Long, limit: String = "", key: String = "") {
         events?.rateLimited(request, limit, key)
         val headers = HttpHeaders().apply { set(HttpHeaders.RETRY_AFTER, retryAfterSeconds.toString()) }
@@ -96,6 +102,7 @@ class SecurityProblemResponder(
     }
 
     private companion object {
+        const val PEER_NOT_ALLOWED = "peer_identity_not_allowed"
         const val DPOP_ALGORITHMS = "RS256 RS384 RS512 PS256 PS384 PS512 ES256 ES384 ES512"
     }
 }

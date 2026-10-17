@@ -81,19 +81,42 @@ jobs:
           docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.keycloak.yaml config --quiet
           docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.postgres-ha.yaml config --quiet
           docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/local/compose.local.yaml config --quiet
+          # The CA and mutual TLS: the hashes that deploy.sh takes from pki.sh env are set to `ci`. `docker stack deploy` reads the files with another loader than Compose,
+          # which read a dash in the message of a required variable as an operator and named three secrets the same whatever they held, so that loader checks the names too.
+          for hash in CA_JSON CA_PASS CA_KEY PROVISIONER_PASS CA_CERT ROOT CHAIN EDGE_CERT EDGE_KEY SHORTENER_CERT SHORTENER_KEY SHORTENER_KEY_DER MIGRATOR_CERT MIGRATOR_KEY_DER POSTGRES_CERT POSTGRES_KEY; do
+            export "PKI_${hash}_HASH=ci"
+          done
+          docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.pki-ca.yaml config --quiet
+          docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.pki-ca.yaml -f deploy/stack/overlays/compose.pki-db.yaml -f deploy/stack/overlays/compose.pki.yaml config --quiet
+          SHORTENER_VERSION=ci SHORTENER_MIGRATE_VERSION=ci ISSUER_URI=https://idp.example.com/realms/shortener JWKS_URI=https://idp.example.com/jwks \
+            docker stack config -c deploy/stack/compose.prod.yaml -c deploy/stack/overlays/compose.pki-ca.yaml -c deploy/stack/overlays/compose.pki-db.yaml -c deploy/stack/overlays/compose.pki.yaml > "$RUNNER_TEMP/stack.yaml"
+          if grep -E '^\s+name: pki_' "$RUNNER_TEMP/stack.yaml" | grep -v -E '_ci$'; then echo "a secret of the CA overlays is not named after its hash"; exit 1; fi
+          test "$(grep -c -E '^\s+name: pki_.*_ci$' "$RUNNER_TEMP/stack.yaml")" = 16
       - name: Check the edge configuration
         run: |
           deploy/stack/local/prepare.sh
           docker run --rm \
             -v "$PWD/deploy/edge/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/deploy/edge/upstream.conf:/etc/nginx/upstream.conf:ro" \
             -v "$PWD/secrets/tls_cert:/run/secrets/tls_cert:ro" \
             -v "$PWD/secrets/tls_key:/run/secrets/tls_key:ro" \
             nginxinc/nginx-unprivileged:1.30.4-alpine nginx -t
           docker run --rm \
             -v "$PWD/deploy/edge/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/deploy/edge/upstream.conf:/etc/nginx/upstream.conf:ro" \
             -v "$PWD/deploy/edge/keycloak.conf:/etc/nginx/locations/keycloak.conf:ro" \
             -v "$PWD/secrets/tls_cert:/run/secrets/tls_cert:ro" \
             -v "$PWD/secrets/tls_key:/run/secrets/tls_key:ro" \
+            nginxinc/nginx-unprivileged:1.30.4-alpine nginx -t
+          # With the CA the edge speaks TLS to the application, and nginx reads its certificate, key and the CA's when it tests the file: the certificate of the test stands for all three.
+          docker run --rm \
+            -v "$PWD/deploy/edge/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/deploy/edge/upstream.mtls.conf:/etc/nginx/upstream.conf:ro" \
+            -v "$PWD/secrets/tls_cert:/run/secrets/tls_cert:ro" \
+            -v "$PWD/secrets/tls_key:/run/secrets/tls_key:ro" \
+            -v "$PWD/secrets/tls_cert:/run/secrets/mtls_cert:ro" \
+            -v "$PWD/secrets/tls_key:/run/secrets/mtls_key:ro" \
+            -v "$PWD/secrets/tls_cert:/run/secrets/mtls_ca:ro" \
             nginxinc/nginx-unprivileged:1.30.4-alpine nginx -t
       - name: Build the Keycloak and Postgres images
         run: |
@@ -106,4 +129,4 @@ jobs:
           promtool test rules alerts.test.yml
       - name: Check the shell scripts
         run: |
-          shellcheck --shell=sh deploy/stack/deploy.sh deploy/stack/local/prepare.sh deploy/keycloak/dev-setup deploy/keycloak/entrypoint.sh deploy/postgres/*.sh deploy/postgres/backup tools/run perf/*.sh perf/builds/*.sh
+          shellcheck --shell=sh deploy/stack/deploy.sh deploy/stack/pki.sh deploy/stack/local/prepare.sh deploy/stack/local/prepare-pki.sh deploy/pki/ca-config deploy/keycloak/dev-setup deploy/keycloak/entrypoint.sh deploy/postgres/*.sh deploy/postgres/backup tools/run perf/*.sh perf/builds/*.sh

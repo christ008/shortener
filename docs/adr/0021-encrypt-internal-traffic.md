@@ -14,7 +14,7 @@ only the `data` network was encrypted.
 - The overlay networks between services, `ingress`, `data` and (with Keycloak) `idp-front`, are created with `encrypted: 'true'` (`edge` and `egress`, which carry no traffic between services, are not; before [0038](0038-segment-the-stack-networks.md) they were `edge` and `data`). On Swarm that is IPsec between nodes: the
   operator opens UDP 4789 and ESP between them. `ComposeStackTest` fails if either loses it.
 - A database outside the stack is reached with `sslmode=verify-full`, as [DEPLOY.md](../DEPLOY.md#managed-database) says.
-- Authenticating the peers, not only encrypting, is [0022](0022-mtls-between-services.md), proposed.
+- Authenticating the peers, not only encrypting, is [0022](0022-mtls-between-services.md), optional with `PKI=1`.
 
 ## Consequences
 
@@ -22,7 +22,7 @@ only the `data` network was encrypted.
 - Cost: IPsec has CPU and MTU costs, and the ports between nodes must be open.
 - Limit: the overlay encrypts, it does not say who is on the other end. Anything attached to the network can talk to the
   application, which is why 0022 exists.
-- Not verified: more than one node.
+- Verified on two nodes, 2026-10-15: `ingress` and `data` carry ESP between the nodes, 245 packets in ten seconds and no VXLAN in the clear, with Swarm's four security associations installed. The nodes' security group must allow every protocol between them: ESP is protocol 50.
 
 ## Rejected
 
