@@ -192,7 +192,7 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
         if (Files.exists(file)) {
             for (line in Files.readAllLines(file)) {
                 val equals = line.indexOf('=')
-                if (equals > 0 && !line.startsWith("#")) env[line.substring(0, equals)] = line.substring(equals + 1).replace(Regex("^'|'$"), "")
+                if (equals > 0 && !line.startsWith("#")) env[line.substring(0, equals)] = line.substring(equals + 1).replace(Regex("(?:^'|'$)"), "")
             }
         }
         return env

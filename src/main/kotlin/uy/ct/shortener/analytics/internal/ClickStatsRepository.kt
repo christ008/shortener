@@ -10,7 +10,7 @@ data class ClickRow(val bucket: Instant, val device: DeviceClass, val clicks: Lo
 /**
  * Reads the counts [ClickStore] wrote.
  */
-interface ClickStatsRepository {
+fun interface ClickStatsRepository {
 
     /**
      * Returns what was counted for [shortCode] inside [window], grouped by its buckets and classes. A bucket with nothing counted has no row.

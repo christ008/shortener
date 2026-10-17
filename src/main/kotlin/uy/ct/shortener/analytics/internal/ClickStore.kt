@@ -3,7 +3,7 @@ package uy.ct.shortener.analytics.internal
 /**
  * Where counts of clicks are kept.
  */
-interface ClickStore {
+fun interface ClickStore {
 
     /**
      * Adds each count to the one stored under its key, creating it if there is none, all or nothing.
