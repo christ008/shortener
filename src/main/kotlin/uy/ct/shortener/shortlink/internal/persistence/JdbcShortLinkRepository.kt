@@ -26,10 +26,10 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * [ShortLinkRepository] on plain JDBC through Spring's [JdbcClient].
  *
- * - `INSERT ... ON CONFLICT DO NOTHING RETURNING` claims a code and reads the row back in one atomic statement. The database
+ * - `insert ... on conflict do nothing returning` claims a code and reads the row back in one atomic statement. The database
  *   assigns `created_at`.
- * - Lists with `LIMIT`/`OFFSET` on indexed columns. One extra row tells whether another page follows.
- * - Sorts codes in byte order (`COLLATE "C"`).
+ * - Lists with `limit`/`offset` on indexed columns. One extra row tells whether another page follows.
+ * - Sorts codes in byte order (`collate "C"`).
  * - The schema, including the constraints that mirror [ShortCode] and [ShortLink], is in the Flyway migrations.
  * - Storage that cannot serve the request becomes [StorageUnavailableException]: a failure to get a connection, a statement
  *   past `statement_timeout`, or a lock not obtained within `lock_timeout` (recognised by SQLSTATE, which Spring leaves
@@ -63,7 +63,7 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
         require(pageable.isPaged) { "an unpaged request would load every link" }
         val statement = when (filter) {
             CreatedByFilter.Anyone -> jdbc.sql(listSql(where = "", pageable.sort))
-            is CreatedByFilter.Only -> jdbc.sql(listSql(where = "WHERE created_by = :createdBy", pageable.sort)).param("createdBy", filter.client)
+            is CreatedByFilter.Only -> jdbc.sql(listSql(where = "where created_by = :createdBy", pageable.sort)).param("createdBy", filter.client)
         }
         val fetched = statement
             .param("fetch", pageable.pageSize + 1)
@@ -85,7 +85,7 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
     }
 
     private fun listSql(where: String, sort: Sort) =
-        "SELECT $COLUMNS FROM short_link $where ORDER BY ${orderBy(sort)} LIMIT :fetch OFFSET :offset"
+        "select $COLUMNS from short_link $where order by ${orderBy(sort)} limit :fetch offset :offset"
 
     /**
      * The total number of matches. The page already knows it when it ends the listing, because it then holds
@@ -107,10 +107,10 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
         val requested = sort.map { order ->
             val column = SORT_COLUMNS[order.property]
                 ?: throw InvalidSortException(order.property, ShortLinkRepository.SORTABLE_PROPERTIES)
-            "$column ${if (order.isAscending) "ASC" else "DESC"}"
+            "$column ${if (order.isAscending) "asc" else "desc"}"
         }.toList()
         val direction = sort.firstOrNull()?.direction ?: Sort.Direction.DESC
-        return (requested.ifEmpty { listOf("created_at DESC") } + "$SHORT_CODE_IN_BYTE_ORDER ${direction.name}").joinToString()
+        return (requested.ifEmpty { listOf("created_at desc") } + "$SHORT_CODE_IN_BYTE_ORDER ${direction.name.lowercase()}").joinToString()
     }
 
     private val lastUnavailableLogged = AtomicLong(System.nanoTime() - UNAVAILABLE_LOG_INTERVAL_NANOS)
@@ -144,30 +144,30 @@ class JdbcShortLinkRepository(private val jdbc: JdbcClient) : ShortLinkRepositor
         /** `lock_not_available`, what Postgres reports for a lock that `lock_timeout` gave up on. */
         const val LOCK_NOT_AVAILABLE = "55P03"
 
-        const val SHORT_CODE_IN_BYTE_ORDER = "short_code COLLATE \"C\""
+        const val SHORT_CODE_IN_BYTE_ORDER = "short_code collate \"C\""
 
         val SORT_COLUMNS = mapOf("createdAt" to "created_at", "shortCode" to SHORT_CODE_IN_BYTE_ORDER)
 
         const val COLUMNS = "short_code, target_url, created_by, created_at, disabled_at, disabled_by"
 
-        const val COUNT_ALL = "SELECT count(*) FROM short_link"
+        const val COUNT_ALL = "select count(*) from short_link"
 
-        const val COUNT_BY_CREATOR = "SELECT count(*) FROM short_link WHERE created_by = :createdBy"
+        const val COUNT_BY_CREATOR = "select count(*) from short_link where created_by = :createdBy"
 
-        const val FIND = "SELECT $COLUMNS FROM short_link WHERE short_code = :shortCode"
+        const val FIND = "select $COLUMNS from short_link where short_code = :shortCode"
 
         const val INSERT_IF_ABSENT = """
-            INSERT INTO short_link (short_code, target_url, created_by)
-            VALUES (:shortCode, :targetUrl, :createdBy)
-            ON CONFLICT (short_code) DO NOTHING
-            RETURNING $COLUMNS
+            insert into short_link (short_code, target_url, created_by)
+            values (:shortCode, :targetUrl, :createdBy)
+            on conflict (short_code) do nothing
+            returning $COLUMNS
         """
 
         const val DISABLE = """
-            UPDATE short_link
-            SET disabled_at = COALESCE(disabled_at, now()), disabled_by = COALESCE(disabled_by, :disabledBy)
-            WHERE short_code = :shortCode
-            RETURNING $COLUMNS
+            update short_link
+            set disabled_at = coalesce(disabled_at, now()), disabled_by = coalesce(disabled_by, :disabledBy)
+            where short_code = :shortCode
+            returning $COLUMNS
         """
 
         val TO_SHORT_LINK = ShortLinkRowMapper

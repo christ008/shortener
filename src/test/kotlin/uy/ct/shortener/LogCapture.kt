@@ -12,7 +12,10 @@ import org.slf4j.LoggerFactory
  */
 class LogCapture(loggerName: String) : AutoCloseable {
 
-    private val logger = LoggerFactory.getLogger(loggerName) as Logger
+    private val logger: Logger = LoggerFactory.getLogger(loggerName).let {
+        check(it is Logger) { "the logger $loggerName is not a Logback logger: ${it::class.qualifiedName}" }
+        it
+    }
 
     private val appender = ListAppender<ILoggingEvent>().also {
         it.start()

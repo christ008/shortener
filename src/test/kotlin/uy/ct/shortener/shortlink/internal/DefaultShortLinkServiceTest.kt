@@ -6,8 +6,10 @@ import io.micrometer.observation.tck.TestObservationRegistry
 import io.micrometer.observation.tck.TestObservationRegistryAssert
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.data.domain.PageRequest
 import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.ClaimResult
+import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.InvalidTargetUrlException
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeExhaustionException
@@ -20,6 +22,7 @@ import uy.ct.shortener.shortlink.internal.authorization.ManageableLinks
 import java.net.URI
 import java.time.Duration
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /**
  * Unit tests of how [DefaultShortLinkService] allocates codes and resolves links, using
@@ -94,7 +97,7 @@ class DefaultShortLinkServiceTest {
         val (service, generator) = serviceWith("aaaaaaa")
 
         val claimed = service.claim(ShortCode("my-promo"), "https://example.com/promo", owner)
-        val link = (claimed as ClaimResult.Created).link
+        val link = assertIs<ClaimResult.Created>(claimed).link
 
         assertThat(link.shortCode).isEqualTo(ShortCode("my-promo"))
         assertThat(generator.calls).isZero()
@@ -391,7 +394,7 @@ class DefaultShortLinkServiceTest {
         service.claim(ShortCode("custom1"), "https://example.com/b", owner)
         assertFailsWith<TargetUrlNotAllowedException> { service.shorten("https://evil.test/", owner) }
         service.disable(ShortCode("custom1"), owner)
-        service.list(uy.ct.shortener.shortlink.CreatedByFilter.Anyone, org.springframework.data.domain.PageRequest.of(0, 10))
+        service.list(CreatedByFilter.Anyone, PageRequest.of(0, 10))
 
         assertThat(audit.calls).containsExactly(
             "created aaaaaaa custom=false",

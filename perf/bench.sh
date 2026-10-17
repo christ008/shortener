@@ -139,7 +139,7 @@ if [ -n "${PG_CPUS:-}${PG_MEMORY:-}" ]; then
   docker update ${PG_CPUS:+--cpus "$PG_CPUS"} ${PG_MEMORY:+--memory "$PG_MEMORY" --memory-swap "$PG_MEMORY"} "$PG_CONTAINER" >/dev/null
   PG_LIMITED=1
   # Lowering the memory limit below the page cache the container holds makes the kernel reclaim the difference, and Postgres stalls
-  # for seconds meanwhile: the first reads of the run answered 504.
+  # for seconds meanwhile.
   [ -z "${PG_MEMORY:-}" ] || sleep 30
 fi
 docker rm -f bench-app bench-edge >/dev/null 2>&1 || true
@@ -200,9 +200,9 @@ DATASET_FILE=${DATASET_FILE:-}
 if [ -n "$DATASET_FILE" ]; then
   [ -r "$DATASET_FILE" ] || { echo "cannot read $DATASET_FILE" >&2; exit 1; }
   DATASET_FILE=$(cd "$(dirname "$DATASET_FILE")" && pwd)/$(basename "$DATASET_FILE")
-  say "dataset $DATASET_FILE: short_link is kept, with $(docker exec "$PG_CONTAINER" psql -At -U myuser -d mydatabase -c 'SELECT count(*) FROM short_link') rows"
+  say "dataset $DATASET_FILE: short_link is kept, with $(docker exec "$PG_CONTAINER" psql -At -U myuser -d mydatabase -c 'select count(*) from short_link') rows"
 else
-  docker exec "$PG_CONTAINER" psql -q -U myuser -d mydatabase -c 'TRUNCATE short_link' >/dev/null 2>&1 || true
+  docker exec "$PG_CONTAINER" psql -q -U myuser -d mydatabase -c 'truncate short_link' >/dev/null 2>&1 || true
 fi
 
 SEEDS=300
@@ -243,21 +243,19 @@ k6() { # name rate duration share
   "$HERE/scrub-k6-summary.sh" "$OUT/$1.k6.json"
 }
 
-sampler() { while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-app 2>/dev/null)"; done; }
-sampler >"$OUT/docker-stats.txt" &
-SAMPLER=$!
-k6_sampler() {
+sampler() { # CONTAINER: a line of CPU and memory with the time, whenever it is running
   while true; do
-    reading=$(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-k6 2>/dev/null || true)
+    reading=$(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' "$1" 2>/dev/null || true)
     if [ -n "$reading" ]; then echo "$(date +%s) $reading"; else sleep 1; fi
   done
 }
-k6_sampler >"$OUT/docker-stats-k6.txt" &
+sampler bench-app >"$OUT/docker-stats.txt" &
+SAMPLER=$!
+sampler bench-k6 >"$OUT/docker-stats-k6.txt" &
 SAMPLER_K6=$!
 SAMPLER_EDGE=
 if [ "$EDGE" = 1 ]; then
-  edge_sampler() { while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' bench-edge 2>/dev/null)"; done; }
-  edge_sampler >"$OUT/docker-stats-edge.txt" &
+  sampler bench-edge >"$OUT/docker-stats-edge.txt" &
   SAMPLER_EDGE=$!
 fi
 cleanup() {

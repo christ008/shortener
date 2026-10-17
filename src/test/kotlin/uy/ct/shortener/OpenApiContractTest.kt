@@ -29,16 +29,13 @@ class OpenApiContractTest {
 
     private val spec: Map<String, Any?> = Yaml().load(File("docs/openapi.yaml").readText())
 
-    @Suppress("UNCHECKED_CAST")
-    private fun section(vararg path: String): Map<String, Any?> =
-        path.fold(spec) { node, key -> node[key] as Map<String, Any?> }
+    private fun section(vararg path: String): Map<String, Any?> = path.fold(spec) { node, key -> node.map(key) }
 
     @Test
     fun `documents exactly the operations the application serves`() {
         val methods = setOf("get", "post", "put", "patch", "delete")
         val documented = section("paths").flatMap { (path, item) ->
-            @Suppress("UNCHECKED_CAST")
-            (item as Map<String, Any?>).keys.filter { it in methods }.map { "${it.uppercase()} $path" }
+            item.asMap().keys.filter { it in methods }.map { "${it.uppercase()} $path" }
         }.toSet()
 
         val served = handlerMapping.handlerMethods.flatMap { (info, handler) ->

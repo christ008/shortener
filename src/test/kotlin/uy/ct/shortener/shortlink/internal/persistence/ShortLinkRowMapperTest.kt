@@ -36,12 +36,12 @@ class ShortLinkRowMapperTest {
         val row = mapOf(
             "short_code" to "'abc1234'",
             "target_url" to "'https://example.com'",
-            "created_by" to "NULL::text",
-            "created_at" to "TIMESTAMPTZ '2026-01-01 00:00:00+00'",
-            "disabled_at" to "NULL::timestamptz",
-            "disabled_by" to "NULL::text",
+            "created_by" to "null::text",
+            "created_at" to "timestamptz '2026-01-01 00:00:00+00'",
+            "disabled_at" to "null::timestamptz",
+            "disabled_by" to "null::text",
         ) + columns
-        val select = row.entries.joinToString(prefix = "SELECT ") { (name, expression) -> "$expression AS $name" }
+        val select = row.entries.joinToString(prefix = "select ") { (name, expression) -> "$expression as $name" }
         return jdbc.sql(select).query(ShortLinkRowMapper).single()
     }
 
@@ -57,7 +57,7 @@ class ShortLinkRowMapperTest {
 
     @Test
     fun `names the column when a NOT NULL column comes back NULL`() {
-        mapOf("short_code" to "NULL::text", "target_url" to "NULL::text", "created_at" to "NULL::timestamptz").forEach { (column, expression) ->
+        mapOf("short_code" to "null::text", "target_url" to "null::text", "created_at" to "null::timestamptz").forEach { (column, expression) ->
             val failure = assertFailsWith<IllegalStateException>("expected a NULL $column to be reported") {
                 mapped(column to expression)
             }

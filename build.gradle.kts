@@ -1,3 +1,5 @@
+import org.springframework.boot.gradle.tasks.aot.ProcessAot
+
 plugins {
     kotlin("jvm") version "2.4.20"
     kotlin("plugin.spring") version "2.4.20"
@@ -7,6 +9,7 @@ plugins {
     id("org.jetbrains.kotlinx.kover") version "0.9.11"
     id("info.solidsoft.pitest") version "1.19.0"
     id("org.sonarqube") version "7.5.0.8588"
+    id("com.diffplug.spotless") version "8.10.0"
 }
 
 group = "uy.ct"
@@ -31,6 +34,39 @@ val native = providers.gradleProperty("native").isPresent
 if (native) apply(plugin = "org.graalvm.buildtools.native")
 
 apply(from = "gradle/tooling.gradle.kts")
+
+/**
+ * Lint with Spotless: `./gradlew spotlessCheck` reports, `./gradlew spotlessApply` fixes. `check` runs the report.
+ *
+ * - Kotlin and Gradle scripts: ktlint, with the style of `.editorconfig`. It covers `tools/` too, a build of its own.
+ * - The reference client `DpopClient.java`: unused imports, trailing spaces, final newline.
+ * - Scripts, SQL, YAML and Markdown: trailing spaces and final newline.
+ */
+spotless {
+    kotlin {
+        target("src/**/*.kt", "tools/src/**/*.kt")
+        ktlint("1.8.0")
+    }
+    kotlinGradle {
+        target("*.gradle.kts", "gradle/*.gradle.kts", "tools/*.gradle.kts")
+        ktlint("1.8.0")
+    }
+    java {
+        target("deploy/**/*.java")
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    format("text") {
+        target(
+            "**/*.sh", "**/*.sql", "**/*.yaml", "**/*.yml", "**/*.conf",
+            "deploy/keycloak/dev-setup", "deploy/keycloak/admin-user", "deploy/postgres/backup", "tools/run",
+        )
+        targetExclude("**/build/**", "**/.gradle/**", "perf/results/**", "secrets/**", "github/**", "github.pub/**")
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
 
 extra["springModulithVersion"] = "2.1.1"
 extra["testcontainersVersion"] = "2.0.5"
@@ -257,7 +293,7 @@ tasks.bootRun {
 }
 
 if (native) {
-    tasks.named<org.springframework.boot.gradle.tasks.aot.ProcessAot>("processAot") {
+    tasks.named<ProcessAot>("processAot") {
         args("--spring.profiles.active=production")
     }
 }

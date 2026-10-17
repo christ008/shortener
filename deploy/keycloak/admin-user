@@ -45,7 +45,8 @@ docker exec "$container" sh -c '/opt/keycloak/bin/kcadm.sh config credentials --
   --realm master --user "$2" --password "$(cat "$3")"' _ "$config" "$bootstrap" "$password_file" >/dev/null \
   || { echo "could not sign in as $bootstrap with $password_file: is it already retired?" >&2; exit 1; }
 
-user_id() { kc get users -r master -q "username=$1" -q exact=true --fields id --format csv --noquotes | head -n 1; }
+kc_csv() { kc get "$@" -r master --format csv --noquotes; }
+user_id() { kc_csv users -q "username=$1" -q exact=true --fields id | head -n 1; }
 
 case "$command" in
   create)
@@ -70,9 +71,9 @@ case "$command" in
   retire)
     id=$(user_id "$name")
     [ -n "$id" ] || { echo "$name does not exist" >&2; exit 1; }
-    kc get "users/$id/credentials" -r master --fields type --format csv --noquotes | grep -qx otp \
+    kc_csv "users/$id/credentials" --fields type | grep -qx otp \
       || { echo "$name has not set up an authenticator app: sign in as $name first, and nothing was changed" >&2; exit 1; }
-    kc get "users/$id/role-mappings/realm/composite" -r master --fields name --format csv --noquotes | grep -qx admin \
+    kc_csv "users/$id/role-mappings/realm/composite" --fields name | grep -qx admin \
       || { echo "$name is not an administrator: nothing was changed" >&2; exit 1; }
     kc update "users/$(user_id "$bootstrap")" -r master -s enabled=false
     echo "$bootstrap is disabled. Delete it, once you are sure, in the console: Users, $bootstrap."

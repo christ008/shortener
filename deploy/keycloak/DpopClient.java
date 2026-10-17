@@ -9,6 +9,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.AlgorithmParameters;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
@@ -33,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -174,7 +178,7 @@ public final class DpopClient {
     /** A new client key as a private JWK and a public one, in that order. */
     private static List<Map<String, Object>> newJwks(String clientId) {
         KeyPair pair = newKey();
-        ECPublicKey pub = (ECPublicKey) pair.getPublic();
+        ECPublicKey pub = ecPublic(pair);
         Map<String, Object> publicJwk = new LinkedHashMap<>();
         publicJwk.put("kty", "EC");
         publicJwk.put("crv", "P-256");
@@ -184,7 +188,7 @@ public final class DpopClient {
         publicJwk.put("x", coordinate(pub.getW().getAffineX()));
         publicJwk.put("y", coordinate(pub.getW().getAffineY()));
         Map<String, Object> privateJwk = new LinkedHashMap<>(publicJwk);
-        privateJwk.put("d", coordinate(((ECPrivateKey) pair.getPrivate()).getS()));
+        privateJwk.put("d", coordinate(ecPrivate(pair).getS()));
         return List.of(privateJwk, publicJwk);
     }
 
@@ -198,9 +202,9 @@ public final class DpopClient {
         if (Files.exists(keyFile)) throw new Failure(keyFile + " exists already: it is not overwritten, name another file");
         List<Map<String, Object>> jwks = newJwks(name);
         try {
-            Files.writeString(keyFile, Json.write(jwks.get(0)) + "\n", java.nio.file.StandardOpenOption.CREATE_NEW);
+            Files.writeString(keyFile, Json.write(jwks.get(0)) + "\n", StandardOpenOption.CREATE_NEW);
             try {
-                Files.setPosixFilePermissions(keyFile, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+                Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
             } catch (UnsupportedOperationException ignored) {
                 // not a POSIX file system: nothing more can be done here
             }
@@ -338,7 +342,7 @@ public final class DpopClient {
      * Posts a form to the token endpoint with a proof of {@code dpopKey}, and returns the body of the 200 it must answer. The form
      * is made again for a request that is repeated with a nonce.
      */
-    private String postToken(java.util.function.Supplier<String> form, KeyPair dpopKey) throws Exception {
+    private String postToken(Supplier<String> form, KeyPair dpopKey) throws Exception {
         HttpResponse<String> response = sendProved(tokenUrl, nonce -> HttpRequest.newBuilder(uri(tokenUrl))
                 .timeout(TIMEOUT)
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -439,7 +443,7 @@ public final class DpopClient {
      * handed none), and keeps the nonce of the answer. When the answer asks for a nonce and gives one, the request is made again
      * once, with a new proof that carries it.
      */
-    private HttpResponse<String> sendProved(String url, java.util.function.Function<String, HttpRequest> build) throws Exception {
+    private HttpResponse<String> sendProved(String url, Function<String, HttpRequest> build) throws Exception {
         String origin = origin(url);
         HttpResponse<String> response = send(build.apply(nonces.get(origin)));
         response.headers().firstValue("DPoP-Nonce").ifPresent(nonce -> nonces.put(origin, nonce));
@@ -516,8 +520,18 @@ public final class DpopClient {
         }
     }
 
+    private static ECPublicKey ecPublic(KeyPair pair) {
+        if (pair.getPublic() instanceof ECPublicKey key) return key;
+        throw new Failure("the key pair is not an EC key: " + pair.getPublic().getAlgorithm());
+    }
+
+    private static ECPrivateKey ecPrivate(KeyPair pair) {
+        if (pair.getPrivate() instanceof ECPrivateKey key) return key;
+        throw new Failure("the key pair is not an EC key: " + pair.getPrivate().getAlgorithm());
+    }
+
     private static Map<String, Object> publicJwk(KeyPair key) {
-        ECPublicKey pub = (ECPublicKey) key.getPublic();
+        ECPublicKey pub = ecPublic(key);
         Map<String, Object> jwk = new LinkedHashMap<>();
         jwk.put("kty", "EC");
         jwk.put("crv", "P-256");
@@ -683,7 +697,7 @@ public final class DpopClient {
             Object value = new Reader(text).readDocument();
             if (value instanceof Map<?, ?> map) {
                 Map<String, Object> members = new LinkedHashMap<>();
-                map.forEach((name, member) -> members.put((String) name, member));
+                map.forEach((name, member) -> members.put(String.valueOf(name), member));
                 return new Json(members);
             }
             throw new Failure("expected a JSON object, got: " + excerpt(text, 200));
@@ -722,7 +736,7 @@ public final class DpopClient {
                 for (Map.Entry<?, ?> entry : map.entrySet()) {
                     if (!first) out.append(',');
                     first = false;
-                    writeString(out, (String) entry.getKey());
+                    writeString(out, String.valueOf(entry.getKey()));
                     out.append(':');
                     write(out, entry.getValue());
                 }

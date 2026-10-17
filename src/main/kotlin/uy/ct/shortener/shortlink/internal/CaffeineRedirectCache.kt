@@ -37,13 +37,13 @@ class CaffeineRedirectCache(
     executor: Executor = ForkJoinPool.commonPool(),
 ) : RedirectCache {
 
-    private val cache: Cache<ShortCode, ShortLink> = Caffeine.newBuilder()
+    private val cache: Cache<ShortCode, ShortLink?> = Caffeine.newBuilder()
         .maximumSize(properties.maxEntries)
         .expireAfterWrite(properties.ttl)
         .ticker(ticker)
         .executor(executor)
         .recordStats()
-        .build<ShortCode, ShortLink>()
+        .build<ShortCode, ShortLink?>()
         .also { CaffeineCacheMetrics.monitor(registry, it, CACHE_NAME) }
 
     // With `stale-if-error` at zero the size is 0 and nothing is kept. The expiry still has to be positive, so it falls back to the TTL.
@@ -62,7 +62,7 @@ class CaffeineRedirectCache(
         var loadedHere = false
         var loaded: LinkLookup = LinkLookup.Missing
         val cached = try {
-            nullableValues(cache).get(shortCode) {
+            cache.get(shortCode) {
                 loadedHere = true
                 loaded = load(it)
                 remember(it, loaded)
@@ -96,13 +96,6 @@ class CaffeineRedirectCache(
         is LinkLookup.Found -> link.takeIf(ShortLink::isActive)
         LinkLookup.Missing -> null
     }
-
-    /**
-     * Caffeine treats a loader that returns null as "keep nothing", which its Kotlin types cannot
-     * express, hence the cast.
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun nullableValues(cache: Cache<ShortCode, ShortLink>) = cache as Cache<ShortCode, ShortLink?>
 
     private companion object {
         const val CACHE_NAME = "shortlink.redirect"

@@ -39,7 +39,7 @@ class JdbcShortLinkRepositoryUnavailableTest {
         private val refusing = Proxy.newProxyInstance(javaClass.classLoader, arrayOf(Connection::class.java)) { _, method, _ ->
             when {
                 method.name == "prepareStatement" -> throw failure
-                method.returnType == java.lang.Boolean.TYPE -> false
+                method.returnType == Boolean::class.javaPrimitiveType -> false
                 method.returnType == Integer.TYPE -> 0
                 else -> null
             }

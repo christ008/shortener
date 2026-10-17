@@ -3,6 +3,7 @@ package uy.ct.shortener.security.internal
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Duration
+import kotlin.test.assertIs
 
 class RateLimiterTest {
 
@@ -15,8 +16,7 @@ class RateLimiterTest {
 
         val decision = limiter.tryAcquire("client")
 
-        assertThat(decision).isInstanceOf(RateLimitDecision.Limited::class.java)
-        assertThat((decision as RateLimitDecision.Limited).retryAfter).isPositive.isLessThanOrEqualTo(Duration.ofMinutes(1))
+        assertThat(assertIs<RateLimitDecision.Limited>(decision).retryAfter).isPositive.isLessThanOrEqualTo(Duration.ofMinutes(1))
     }
 
     @Test

@@ -20,7 +20,7 @@ exporter=$(password EXPORTER)
 
 psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -v app="$app" -v migrator="$migrator" -v exporter="$exporter" <<'SQL'
-ALTER ROLE shortener_app PASSWORD :'app';
-ALTER ROLE shortener_migrator PASSWORD :'migrator';
-ALTER ROLE shortener_exporter PASSWORD :'exporter';
+alter role shortener_app password :'app';
+alter role shortener_migrator password :'migrator';
+alter role shortener_exporter password :'exporter';
 SQL

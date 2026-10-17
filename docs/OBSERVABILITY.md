@@ -47,7 +47,6 @@ the connection pool stays idle.
 | Redirect cache size and evictions | `cache_size`, `cache_evictions_total` |
 
 - A panel stays empty until its event happens.
-- The old native image had no JVM GC beans, so its GC panel was empty and its heap maximum read zero. The JVM image has them.
 - Request series are labelled by route template, never by short code.
 
 ## Traces

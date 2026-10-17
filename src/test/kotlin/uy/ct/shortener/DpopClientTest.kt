@@ -41,10 +41,9 @@ import javax.tools.JavaFileObject
 import javax.tools.ToolProvider
 
 /**
- * `deploy/keycloak/DpopClient.java` is not part of the application, but the local setup, `dev-setup`, the smoke test of
- * the native image and the README all depend on it, and a call that failed before sending anything went unnoticed because
- * the one script that exercises it only runs on demand. This runs the real file as a subprocess, as the scripts do,
- * against a stand-in for Keycloak and the API, and checks what it sent with a different implementation (Nimbus): the
+ * `deploy/keycloak/DpopClient.java` is not part of the application; the local setup, `dev-setup`, the smoke test and the README depend on it.
+ * This runs the real file as a subprocess, as the scripts do, against a stand-in for Keycloak and the API, and checks what it sent
+ * with a different implementation (Nimbus): the
  * proof is a valid signature by the key it embeds, made for this method and URL and this token, and the client assertion
  * verifies against the client's public key. The stand-in also plays the login of a single-page app, with PKCE, a
  * DPoP-bound code and a rotating, key-bound refresh token, so that `login` is exercised too.
@@ -431,8 +430,7 @@ class DpopClientTest {
             .containsExactlyInAnyOrder("client_name", "token_endpoint_auth_method", "token_endpoint_auth_signing_alg", "grant_types", "jwks")
         assertThat(sent["token_endpoint_auth_method"]).isEqualTo("private_key_jwt")
         val kept = ECKey.parse(Files.readString(keyPath))
-        @Suppress("UNCHECKED_CAST")
-        val published = ECKey.parse(((sent["jwks"] as Map<String, Any?>)["keys"] as List<Map<String, Any?>>).single())
+        val published = ECKey.parse(sent["jwks"].asMap().list("keys").single().asMap())
         assertThat(kept.isPrivate).isTrue
         assertThat(published.isPrivate).describedAs("only the public half is sent").isFalse
         assertThat(published.computeThumbprint()).isEqualTo(kept.computeThumbprint())

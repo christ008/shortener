@@ -38,6 +38,8 @@ class ComposeStackTest {
         "deploy/stack/overlays/compose.keycloak.yaml",
         "deploy/stack/overlays/compose.postgres-ha.yaml",
         "deploy/stack/overlays/compose.console.yaml",
+        "deploy/stack/overlays/compose.pki-ca.yaml",
+        "deploy/stack/overlays/compose.pki.yaml",
     ).map(::load)
 
     private val services: Map<String, Map<String, Any?>> = files
@@ -46,7 +48,6 @@ class ComposeStackTest {
         .mapValues { (_, parts) -> parts.reduce(::merged) }
 
     /** What Compose does with a service named in two files: maps merge, lists add up, and the later scalar wins. */
-    @Suppress("UNCHECKED_CAST")
     private fun merged(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> =
         (base.keys + overlay.keys).associateWith { key ->
             val a = base[key]
@@ -54,22 +55,13 @@ class ComposeStackTest {
             when {
                 a == null -> b
                 b == null -> a
-                a is Map<*, *> && b is Map<*, *> -> merged(a as Map<String, Any?>, b as Map<String, Any?>)
+                a is Map<*, *> && b is Map<*, *> -> merged(a.asMap(), b.asMap())
                 a is List<*> && b is List<*> -> a + b
                 else -> b
             }
         }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun load(path: String): Map<String, Any?> = Yaml().load<Map<String, Any?>>(Files.readString(Path.of(path)))
-
-    @Suppress("UNCHECKED_CAST")
-    private fun Any?.asMap(): Map<String, Any?> = this as? Map<String, Any?> ?: emptyMap()
-
-    private fun Map<String, Any?>.map(key: String): Map<String, Any?> = this[key].asMap()
-
-    @Suppress("UNCHECKED_CAST")
-    private fun Map<String, Any?>.list(key: String): List<Any?> = this[key] as? List<Any?> ?: emptyList()
+    private fun load(path: String): Map<String, Any?> = Yaml().load<Any?>(Files.readString(Path.of(path))).asMap()
 
     private val networks: Map<String, Map<String, Any?>> = files
         .flatMap { it.map("networks").entries }
@@ -77,12 +69,21 @@ class ComposeStackTest {
         .mapValues { (_, parts) -> parts.reduce(::merged) }
 
     private fun networksOf(service: String): Set<String> =
-        services.getValue(service).let { it.list("networks").map(Any?::toString).ifEmpty { it.map("networks").keys.toList() } }.toSet()
+        when (val networks = services.getValue(service)["networks"]) {
+            is List<*> -> networks.map(Any?::toString).toSet()
+            else -> networks.asMap().keys
+        }
 
     private fun membersOf(network: String): Set<String> = services.keys.filter { network in networksOf(it) }.toSet()
 
     private fun secretsOf(service: Map<String, Any?>): Set<String> =
-        service.list("secrets").map { if (it is Map<*, *>) it["source"] as String else it as String }.toSet()
+        service.list("secrets").map(::sourceOf).toSet()
+
+    /** A secret of a service is named by a string, or by a map whose `source` is the name. */
+    private fun sourceOf(secret: Any?): String = when (secret) {
+        is String -> secret
+        else -> secret.asMap().text("source")
+    }
 
     private fun environmentOf(service: Map<String, Any?>) = service.map("environment").mapValues { it.value.toString() }
 
@@ -106,19 +107,20 @@ class ComposeStackTest {
     }
 
     @Test
-    fun `only the database adds capabilities, and only those its entrypoint needs to hand over to the postgres user`() {
-        assertThat(services.filter { it.value.list("cap_add").isNotEmpty() }.keys).containsExactlyInAnyOrder("postgres", "postgres-replica")
+    fun `only the database and the CA add capabilities, and only those their entrypoints need`() {
+        assertThat(services.filter { it.value.list("cap_add").isNotEmpty() }.keys).containsExactlyInAnyOrder("postgres", "postgres-replica", "stepca")
         listOf("postgres", "postgres-replica").forEach {
             assertThat(services.getValue(it).list("cap_add")).describedAs("$it cap_add").containsExactlyInAnyOrder("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID")
         }
+        assertThat(services.getValue("stepca").list("cap_add")).describedAs("the binary has the file capability, and does not start without it").containsExactly("NET_BIND_SERVICE")
     }
 
     @Test
     fun `only the edge publishes ports, in host mode so that it sees the client's address`() {
         val publishing = services.filter { it.value.list("ports").isNotEmpty() }
         assertThat(publishing.keys).containsExactly("edge")
-        publishing.getValue("edge").list("ports").forEach { assertThat((it as Map<*, *>)["mode"]).isEqualTo("host") }
-        assertThat(publishing.getValue("edge").list("ports").map { (it as Map<*, *>)["published"] }).containsExactlyInAnyOrder(80, 443)
+        publishing.getValue("edge").list("ports").maps().forEach { assertThat(it["mode"]).isEqualTo("host") }
+        assertThat(publishing.getValue("edge").list("ports").maps().map { it["published"] }).containsExactlyInAnyOrder(80, 443)
     }
 
     @Test
@@ -136,11 +138,11 @@ class ComposeStackTest {
     fun `writable memory is mounted with the long volumes syntax, which Swarm honours, and never with tmpfs`() {
         services.forEach { (name, service) ->
             assertThat(service).describedAs("$name must not use the short tmpfs key").doesNotContainKey("tmpfs")
-            val tmpfs = service.list("volumes").filterIsInstance<Map<*, *>>().filter { it["type"] == "tmpfs" }
-            tmpfs.forEach { assertThat((it["tmpfs"] as Map<*, *>)["size"]).describedAs("$name tmpfs size").isNotNull }
+            val tmpfs = service.list("volumes").maps().filter { it["type"] == "tmpfs" }
+            tmpfs.forEach { assertThat(it.map("tmpfs")["size"]).describedAs("$name tmpfs size").isNotNull }
         }
-        assertThat(services.getValue("edge").list("volumes").map { (it as Map<*, *>)["target"] }).contains("/tmp")
-        assertThat(services.getValue("shortener").list("volumes").map { (it as Map<*, *>)["target"] }).contains("/tmp")
+        assertThat(services.getValue("edge").list("volumes").maps().map { it["target"] }).contains("/tmp")
+        assertThat(services.getValue("shortener").list("volumes").maps().map { it["target"] }).contains("/tmp")
     }
 
     @Test
@@ -155,13 +157,18 @@ class ComposeStackTest {
         services.filterKeys { it != "migrate" && it != "postgres" }.forEach { (name, service) ->
             assertThat(secretsOf(service)).describedAs("secrets of $name").doesNotContain(migratorSecret)
         }
+        assertThat(secretsOf(services.getValue("migrate"))).contains("pki_migrator_cert", "pki_migrator_key_der")
+        services.filterKeys { it != "migrate" }.forEach { (name, service) ->
+            assertThat(secretsOf(service)).describedAs("the migrator's identity is the job's alone, as $name shows").noneMatch { it.startsWith("pki_migrator") }
+        }
     }
 
     @Test
     fun `the application gets no Flyway settings of its own`() {
         assertThat(environmentOf(services.getValue("shortener")).keys).noneMatch { it.startsWith("SPRING_FLYWAY_") }
-        val targets = services.getValue("shortener").list("secrets").filterIsInstance<Map<*, *>>().map { it["target"] }
-        assertThat(targets).containsExactlyInAnyOrder("spring.datasource.password", "shortener.security.dpop.nonce.secret")
+        val targets = services.getValue("shortener").list("secrets").filterIsInstance<Map<*, *>>().mapNotNull { it["target"] }
+        assertThat(targets).contains("spring.datasource.password", "shortener.security.dpop.nonce.secret").noneMatch { it.toString().startsWith("spring.flyway") }
+        assertThat(secretsOf(services.getValue("shortener"))).noneMatch { it.startsWith("pki_migrator") }
     }
 
     @Test
@@ -201,10 +208,8 @@ class ComposeStackTest {
     fun `the database has no route out and only the stack's own services attach to it`() {
         val data = files.first().map("networks").map("data")
         assertThat(data["internal"]).isEqualTo(true)
-        assertThat(services.getValue("edge").list("networks").ifEmpty { services.getValue("edge").map("networks").keys.toList() })
-            .doesNotContain("data")
-        assertThat(services.getValue("migrate").map("networks").keys.ifEmpty { services.getValue("migrate").list("networks").toSet() })
-            .containsExactly("data")
+        assertThat(networksOf("edge")).doesNotContain("data")
+        assertThat(networksOf("migrate")).containsExactly("data")
     }
 
     @Test
@@ -213,8 +218,9 @@ class ComposeStackTest {
             assertThat(networks.getValue(name).map("driver_opts")["encrypted"]).describedAs("$name network encrypted").isEqualTo("true")
             assertThat(networks.getValue(name)["internal"]).describedAs("$name network internal").isEqualTo(true)
         }
-        assertThat(networks.keys).containsExactlyInAnyOrder("edge", "ingress", "idp-front", "data", "egress")
+        assertThat(networks.keys).containsExactlyInAnyOrder("edge", "ingress", "idp-front", "data", "egress", "pki")
         listOf("edge", "egress").forEach { assertThat(networks.getValue(it)["internal"]).describedAs("$it network internal").isNull() }
+        assertThat(networks.getValue("pki")["internal"]).describedAs("the CA's network has no route out").isEqualTo(true)
     }
 
     @Test
@@ -407,9 +413,9 @@ class ComposeStackTest {
 
     @Test
     fun `every proxied location replaces the forwarded headers the application reads and empties the ones it does not`() {
-        val confs = Files.list(Path.of("deploy/edge")).use { files -> files.filter { it.toString().endsWith(".conf") }.toList() }
+        val confs = Files.list(Path.of("deploy/edge")).use { files -> files.filter { it.toString().endsWith(".conf") && !it.fileName.toString().startsWith("upstream") }.toList() }
         val lines = confs.flatMap { Files.readAllLines(it) }.filterNot { it.trimStart().startsWith("#") }.map { it.trim() }
-        val proxied = lines.count { it.startsWith("proxy_pass ") }
+        val proxied = lines.count { it.startsWith("proxy_pass ") || it == "include /etc/nginx/upstream.conf;" }
 
         assertThat(proxied).isGreaterThan(0)
         mapOf(
@@ -462,19 +468,149 @@ class ComposeStackTest {
         assertThat(environmentOf(services.getValue("postgres-replica")).keys).noneMatch { it.endsWith("PASSWORD") }
     }
 
+    private val pkiScript = Files.readString(Path.of("deploy/stack/pki.sh"))
+
+    private fun pkiRoles(): Map<String, String> =
+        Regex("""(?m)^\s+(edge|shortener|migrator|postgres)\)\s+cn=([a-z-]+);""").findAll(pkiScript).associate { it.groupValues[1] to it.groupValues[2] }
+
+    @Test
+    fun `a service names a secret once, since a stack deploy keeps only the last of two mounts with one source`() {
+        services.forEach { (name, service) ->
+            val sources = service.list("secrets").map(::sourceOf)
+            assertThat(sources).describedAs("secrets of $name").doesNotHaveDuplicates()
+        }
+    }
+
+    @Test
+    fun `the CA is on a network of its own, is not published, and its keys and passwords are its alone`() {
+        val ca = services.getValue("stepca")
+        val own = setOf("pki_ca_key", "pki_ca_pass", "pki_ca_json", "pki_provisioner_pass")
+
+        assertThat(ca.list("ports")).isEmpty()
+        assertThat(networksOf("stepca")).containsExactly("pki")
+        assertThat(membersOf("pki")).containsExactly("stepca")
+        assertThat(secretsOf(ca)).containsAll(own)
+        services.filterKeys { it != "stepca" }.forEach { (name, service) ->
+            assertThat(secretsOf(service)).describedAs("secrets of $name").doesNotContainAnyElementsOf(own)
+        }
+        ca.list("secrets").filterIsInstance<Map<*, *>>().filter { it["source"] in own }.forEach {
+            assertThat(it["mode"]).describedAs("mode of ${it["source"]}").isEqualTo(256)
+            assertThat(it["uid"].toString()).describedAs("owner of ${it["source"]}").isEqualTo("1000")
+        }
+        assertThat(ca.map("deploy").map("placement").list("constraints")).describedAs("the CA stays on the node that runs pki.sh")
+            .containsExactly("node.labels.shortener.pki == true")
+    }
+
+    @Test
+    fun `the CA's image is the one pki sh makes its configuration with`() {
+        val overlay = Files.readString(Path.of("deploy/stack/overlays/compose.pki-ca.yaml"))
+
+        val inOverlay = Regex("""\$\{STEPCA_IMAGE:-([^}]+)}""").find(overlay)!!.groupValues[1]
+        val inScript = Regex("""STEPCA_IMAGE:-([^}]+)}""").find(pkiScript)!!.groupValues[1]
+        assertThat(inScript).isEqualTo(inOverlay)
+        assertThat(inOverlay).describedAs("pinned").matches("[^:]+:\\d+\\.\\d+\\.\\d+")
+    }
+
+    @Test
+    fun `with the CA the application asks for the edge's certificate in TLS 1_3, serves the edge's identity alone, and keeps the management port plain`() {
+        val application = environmentOf(services.getValue("shortener"))
+
+        assertThat(application).containsEntry("SERVER_SSL_CLIENTAUTH", "need")
+            .containsEntry("SPRING_SSL_BUNDLE_PEM_SERVER_OPTIONS_ENABLEDPROTOCOLS", "TLSv1.3")
+            .describedAs("the management port shares the server's TLS settings, and the health check speaks plain HTTP")
+            .containsEntry("MANAGEMENT_SERVER_SSL_ENABLED", "false")
+        assertThat(application["SHORTENER_SECURITY_MTLS_ALLOWEDIDENTITIES"]).isEqualTo("spiffe://shortener.internal/prod/edge")
+        assertThat(pkiScript).contains("domain=shortener.internal", "environment=prod", "spiffe://\$domain/\$environment/\$role")
+        assertThat(application["SPRING_DATASOURCE_URL"]).contains("sslmode=verify-full", "sslrootcert=/run/secrets/pki_root", "sslkey=/run/secrets/pki_shortener_key_der")
+        assertThat(environmentOf(services.getValue("migrate"))["SPRING_FLYWAY_URL"]).contains("sslmode=verify-full", "sslcert=/run/secrets/pki_migrator_cert")
+    }
+
+    @Test
+    fun `a private key is held by the service that is that identity, and the DER keys are private to their user`() {
+        mapOf(
+            "pki_edge_key" to setOf("edge"),
+            "pki_shortener_key" to setOf("shortener"),
+            "pki_shortener_key_der" to setOf("shortener", "migrate"),
+            "pki_migrator_key_der" to setOf("migrate"),
+            "pki_postgres_key" to setOf("postgres"),
+        ).forEach { (secret, holders) ->
+            assertThat(services.filter { secret in secretsOf(it.value) }.keys).describedAs("who holds $secret").isEqualTo(holders)
+        }
+        services.values.flatMap { it.list("secrets").maps() }.filter { it.text("source").endsWith("_key_der") }.forEach {
+            assertThat(it["mode"]).describedAs("pgjdbc refuses a key others can read: ${it["source"]}").isEqualTo(256)
+            assertThat(it["uid"].toString()).isEqualTo("1000")
+        }
+    }
+
+    @Test
+    fun `the edge speaks TLS 1_3 to the application, verifies it and shows its own certificate, and plain HTTP stays the default`() {
+        val tls = Files.readAllLines(Path.of("deploy/edge/upstream.mtls.conf")).filterNot { it.trimStart().startsWith("#") }.map { it.trim() }
+        val plain = Files.readAllLines(Path.of("deploy/edge/upstream.conf")).filterNot { it.trimStart().startsWith("#") }.map { it.trim() }
+
+        assertThat(plain).containsExactly("proxy_pass http://application;")
+        assertThat(tls).contains(
+            "proxy_pass https://application;", "proxy_ssl_protocols TLSv1.3;", "proxy_ssl_verify on;", "proxy_ssl_name shortener;",
+            "proxy_ssl_certificate /run/secrets/mtls_cert;", "proxy_ssl_certificate_key /run/secrets/mtls_key;", "proxy_ssl_trusted_certificate /run/secrets/mtls_ca;",
+        )
+        assertThat(tls.count { it.startsWith("proxy_pass ") }).isEqualTo(1)
+        val edge = services.getValue("edge").list("secrets").maps().filter { it.text("source").startsWith("pki_") }
+        assertThat(edge.map { it["target"] }).containsExactlyInAnyOrder("mtls_cert", "mtls_key", "mtls_ca")
+        assertThat(load("deploy/stack/compose.prod.yaml").map("configs").map("edge-upstream")["file"]).isEqualTo("../edge/upstream.conf")
+        assertThat(load("deploy/stack/overlays/compose.pki.yaml").map("configs").map("edge-upstream")["file"]).isEqualTo("../edge/upstream.mtls.conf")
+    }
+
+    @Test
+    fun `the database lets the application and the migration job in with a certificate alone, and maps its name to the role`() {
+        val hba = Files.readAllLines(Path.of("deploy/postgres/pg_hba.mtls.conf")).filterNot { it.startsWith("#") || it.isBlank() }.map { it.trim().replace(Regex("\\s+"), " ") }
+        val ident = Files.readAllLines(Path.of("deploy/postgres/pg_ident.mtls.conf")).filterNot { it.startsWith("#") || it.isBlank() }.map { it.trim().replace(Regex("\\s+"), " ") }
+
+        assertThat(hba).containsSubsequence(
+            "hostssl shortener shortener_app,shortener_migrator all cert map=pki",
+            "host shortener shortener_app,shortener_migrator all reject",
+            "host all all all scram-sha-256",
+        )
+        assertThat(ident).containsExactly("pki shortener-app shortener_app", "pki shortener-migrator shortener_migrator")
+        assertThat(pkiRoles()).containsEntry("shortener", "shortener-app").containsEntry("migrator", "shortener-migrator")
+        val command = services.getValue("postgres").list("command").joinToString("\n")
+        assertThat(command).contains("install -m 0400 -o postgres -g postgres /run/secrets/pki_postgres_key", "ssl_min_protocol_version=TLSv1.3", "hba_file=/etc/postgresql/pg_hba.conf")
+    }
+
+    @Test
+    fun `the names the CA signs for are the ones pki sh asks for, in its policy and in the constraints of the issuing certificate`() {
+        val policy = Files.readString(Path.of("deploy/pki/ca-config"))
+        val allowed = Regex("""allow: \{dns: \[([^]]*)]""").find(policy)!!.groupValues[1].split(",").map { it.trim().trim('"') }
+        val constraints = Regex("""permitted;DNS:([a-z]+)""").findAll(pkiScript).map { it.groupValues[1] }.toList()
+        val asked = Regex("""DNS:([a-z]+),""").findAll(pkiScript).map { it.groupValues[1] }.toSet()
+
+        assertThat(allowed).contains("stepca").containsAll(pkiRoles().values).containsAll(constraints).containsAll(asked)
+        assertThat(constraints).describedAs("what an identity may be named, and the CA itself").containsExactlyInAnyOrder("shortener", "postgres", "edge", "stepca")
+        assertThat(policy).contains("dnsNames: [\"stepca\"]", "minVersion: 1.3")
+    }
+
+    @Test
+    fun `every secret of the CA overlays is named after a hash of its contents, because a secret is immutable`() {
+        listOf("deploy/stack/overlays/compose.pki-ca.yaml", "deploy/stack/overlays/compose.pki.yaml").forEach { path ->
+            val secrets = load(path).map("secrets")
+            assertThat(secrets).isNotEmpty
+            secrets.forEach { (name, secret) -> assertThat(secret.asMap()["name"].toString()).describedAs("the name of secret $name in $path").contains("_HASH") }
+        }
+    }
+
     private val composePaths = listOf(
         "deploy/stack/compose.prod.yaml",
         "deploy/stack/overlays/compose.observability.yaml",
         "deploy/stack/overlays/compose.keycloak.yaml",
         "deploy/stack/overlays/compose.postgres-ha.yaml",
+        "deploy/stack/overlays/compose.pki-ca.yaml",
+        "deploy/stack/overlays/compose.pki.yaml",
     )
 
     @Test
     fun `every config is named after a hash of its file, because Swarm does not update one in place`() {
         (composePaths + "deploy/stack/overlays/compose.console.yaml").forEach { path ->
-            val configs = Yaml().load<Map<String, Any?>>(Files.readString(Path.of(path)))["configs"] as Map<*, *>? ?: emptyMap<String, Any?>()
+            val configs = load(path).map("configs")
             configs.forEach { (name, config) ->
-                assertThat((config as Map<*, *>)["name"].toString()).describedAs("the name of config $name in $path").contains("_HASH")
+                assertThat(config.asMap()["name"].toString()).describedAs("the name of config $name in $path").contains("_HASH")
             }
         }
     }
@@ -485,7 +621,7 @@ class ComposeStackTest {
         val listed = Regex("""(?m)^#?\s*([A-Z][A-Z0-9_]*)=""").findAll(example).map { it.groupValues[1] }.toSet()
         val read = composePaths
             .flatMap { Regex("""\$\{([A-Z][A-Z0-9_]*)""").findAll(Files.readString(Path.of(it))).map { match -> match.groupValues[1] }.toList() }
-            .filterNot { it.endsWith("_HASH") }
+            .filterNot { it.endsWith("_HASH") || Regex("PKI_[A-Z0-9_]+_(SERIAL|SHA256|NOT_AFTER|RENEW_AFTER)").matches(it) }
             .toSet()
 
         assertThat(read - listed).describedAs("read by the files and missing from .env.example").isEmpty()
@@ -515,6 +651,6 @@ class ComposeStackTest {
     fun `the application's health check waits for a cold start on a small host before its failures count`() {
         val healthcheck = services.getValue("shortener").map("healthcheck")
 
-        assertThat((healthcheck["start_period"] as String).removeSuffix("s").toInt()).describedAs("start_period in seconds").isGreaterThanOrEqualTo(45)
+        assertThat(healthcheck.text("start_period").removeSuffix("s").toInt()).describedAs("start_period in seconds").isGreaterThanOrEqualTo(45)
     }
 }

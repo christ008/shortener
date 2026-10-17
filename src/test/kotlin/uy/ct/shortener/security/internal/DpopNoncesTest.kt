@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.concurrent.atomic.AtomicReference
 
@@ -20,7 +21,7 @@ class DpopNoncesTest {
     private val clock = object : Clock() {
         override fun getZone() = ZoneOffset.UTC
 
-        override fun withZone(zone: java.time.ZoneId) = this
+        override fun withZone(zone: ZoneId) = this
 
         override fun instant(): Instant = now.get()
     }

@@ -8,11 +8,10 @@ import org.springframework.boot.tomcat.autoconfigure.TomcatServerProperties
 import org.springframework.context.annotation.Import
 
 /**
- * Tomcat accepts a bounded number of connections, because every open connection keeps about 150 KB
- * of buffers on the heap and an unbounded number made the native image run out of memory under
- * overload. The excess waits in the accept queue and then is refused, which sheds load instead of
- * exhausting memory. Both limits can be changed through `SERVER_TOMCAT_MAXCONNECTIONS` and
- * `SERVER_TOMCAT_ACCEPTCOUNT`.
+ * Tomcat accepts a bounded number of connections; every open connection keeps about 150 KB of buffers on the heap.
+ *
+ * - The excess waits in the accept queue and then is refused, which sheds load instead of exhausting memory.
+ * - Both limits can be changed through `SERVER_TOMCAT_MAXCONNECTIONS` and `SERVER_TOMCAT_ACCEPTCOUNT`.
  */
 @WithTestIdp
 @SpringBootTest

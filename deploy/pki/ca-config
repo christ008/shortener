@@ -1,0 +1,46 @@
+#!/bin/sh
+# Runs inside the CA's image, started by deploy/stack/pki.sh init, with the secrets directory mounted at /work. It makes the keys of the two provisioners and writes the
+# CA's configuration, pki_ca_json, there.
+#
+# - The provisioners are the two ways the node asks for a certificate: `pki`, for what lives a month at most, and `pki-db`, for what lives a year, which is the database's.
+#   Each has a key that signs the one-time token of a request, and its password is pki_provisioner_pass. Only the node, which holds it, can ask.
+# - The policy is the names the CA signs for, and is the same as the name constraints in the issuing CA's certificate (pki.sh sign-intermediate): the policy refuses a request
+#   with a message, and the constraints are what a client checks. The identities of the roles (pki.sh issue) are the common names, which are names too.
+# - TLS 1.3 only, for the CA's own listener, which nobody can reach from outside it.
+set -eu
+
+work=/work
+for name in pki pki-db; do
+  step crypto jwk create "/tmp/$name.pub.json" "/tmp/$name.priv.json" --kty EC --crv P-256 \
+    --password-file "$work/pki_provisioner_pass" --force >/dev/null 2>&1
+done
+
+# The private key comes as a JWE in its JSON form, and the configuration wants its compact form: the five parts, joined by dots.
+jq -n \
+  --slurpfile pub1 /tmp/pki.pub.json --slurpfile priv1 /tmp/pki.priv.json \
+  --slurpfile pub2 /tmp/pki-db.pub.json --slurpfile priv2 /tmp/pki-db.priv.json '
+  def provisioner($name; $pub; $priv; $max; $default): {
+    type: "JWK",
+    name: $name,
+    key: $pub,
+    encryptedKey: ([$priv.protected, ($priv.encrypted_key // ""), $priv.iv, $priv.ciphertext, $priv.tag] | join(".")),
+    claims: {minTLSCertDuration: "5m", maxTLSCertDuration: $max, defaultTLSCertDuration: $default, disableRenewal: false},
+    options: {x509: {templateFile: "/home/step/templates/leaf.tpl"}}
+  };
+  {
+    root: "/home/step/certs/root_ca.crt",
+    crt: "/home/step/certs/intermediate_ca.crt",
+    key: "/home/step/secrets/intermediate_ca_key",
+    address: ":9000",
+    dnsNames: ["stepca"],
+    logger: {format: "json"},
+    db: {type: "badgerv2", dataSource: "/home/step/db"},
+    authority: {
+      provisioners: [provisioner("pki"; $pub1[0]; $priv1[0]; "720h"; "720h"), provisioner("pki-db"; $pub2[0]; $priv2[0]; "8800h"; "8760h")],
+      policy: {x509: {
+        allow: {dns: ["shortener", "postgres", "edge", "stepca", "shortener-app", "shortener-migrator"], uri: ["shortener.internal"]},
+        allowWildcardNames: false
+      }}
+    },
+    tls: {minVersion: 1.3, maxVersion: 1.3, renegotiation: false}
+  }' > "$work/pki_ca_json"

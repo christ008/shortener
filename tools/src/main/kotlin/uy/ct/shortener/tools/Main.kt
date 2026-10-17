@@ -1,6 +1,5 @@
 package uy.ct.shortener.tools
 
-import java.io.Console
 import java.nio.file.Path
 import kotlin.system.exitProcess
 
@@ -25,13 +24,7 @@ fun main(arguments: Array<String>) {
 /** The person at the terminal, or null when the tool's input or output is a file or a pipe. */
 private fun terminal(): Prompt? {
     val console = System.console() ?: return null
-    // Console.isTerminal exists from JDK 22. Before it, there is a console only when there is a terminal.
-    val isTerminal = try {
-        Console::class.java.getMethod("isTerminal").invoke(console) as Boolean
-    } catch (_: NoSuchMethodException) {
-        true
-    }
-    if (!isTerminal) return null
+    if (!console.isTerminal) return null
     return object : Prompt {
         override fun line(question: String): String? = console.readLine("%s: ", question)
 

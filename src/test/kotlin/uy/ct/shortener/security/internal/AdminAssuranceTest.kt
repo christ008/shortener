@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.oauth2.jwt.Jwt
 import java.time.Instant
+import kotlin.test.assertIs
 
 /**
  * A token with the administrator scope is accepted when it shows a sign-in with a second factor (an `acr` of level 2 or higher, or a name the
@@ -44,7 +45,7 @@ class AdminAssuranceTest {
         listOf("pwd", "silver", "two").forEach {
             assertThatThrownBy { named.require(jwt("shortener-ui", it), admin) }.describedAs(it).isInstanceOf(InsufficientUserAuthenticationException::class.java)
         }
-        assertThat((runCatching { named.require(jwt("shortener-ui", "1"), admin) }.exceptionOrNull() as InsufficientUserAuthenticationException).acrValues)
+        assertThat(assertIs<InsufficientUserAuthenticationException>(runCatching { named.require(jwt("shortener-ui", "1"), admin) }.exceptionOrNull()).acrValues)
             .describedAs("it asks for the name the realm uses").containsExactly("mfa")
     }
 

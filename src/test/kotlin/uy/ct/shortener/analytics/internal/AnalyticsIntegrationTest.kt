@@ -41,8 +41,11 @@ class AnalyticsIntegrationTest {
     @Autowired
     lateinit var jdbc: JdbcTemplate
 
-    private fun clicks(code: String) = jdbc.queryForList("SELECT device_class, sum(clicks) AS clicks FROM link_click_hourly WHERE short_code = ? GROUP BY 1", code)
-        .associate { it["device_class"] as String to (it["clicks"] as Number).toLong() }
+    private fun clicks(code: String) = jdbc.query(
+        "select device_class, sum(clicks) as clicks from link_click_hourly where short_code = ? group by 1",
+        { rows, _ -> rows.getString("device_class") to rows.getLong("clicks") },
+        code,
+    ).toMap()
 
     @Test
     fun `counts the redirects a link served, by class of device, once they are flushed`() {

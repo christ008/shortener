@@ -21,22 +21,22 @@ say "generating $COUNT codes, seed $SEED, into $FILE"
 "$ROOT/tools/run" Dataset "$COUNT" --seed "$SEED" --out "$FILE"
 LINES=$(wc -l <"$FILE")
 
-say "short_link before: $(psql -At -c 'SELECT count(*) FROM short_link') rows"
+say "short_link before: $(psql -At -c 'select count(*) from short_link') rows"
 say "copying $LINES rows into $PG_CONTAINER, every index maintained as the application's inserts do"
 start=$(date +%s%N)
-awk '{ printf "%s\thttps://example.com/dataset/%s\n", $1, $1 }' "$FILE" | psql -c 'COPY short_link (short_code, target_url) FROM STDIN'
+awk '{ printf "%s\thttps://example.com/dataset/%s\n", $1, $1 }' "$FILE" | psql -c 'copy short_link (short_code, target_url) from stdin'
 elapsed_ms=$((($(date +%s%N) - start) / 1000000))
 say "copied in $((elapsed_ms / 1000)).$((elapsed_ms % 1000 / 100)) s: $((LINES * 1000 / (elapsed_ms + 1))) rows/s"
 
 say "analyzing"
-psql -c 'ANALYZE short_link'
-psql -c "SELECT 'rows' AS what, count(*)::text AS value FROM short_link
-         UNION ALL SELECT 'table', pg_size_pretty(pg_table_size('short_link'))
-         UNION ALL SELECT 'indexes', pg_size_pretty(pg_indexes_size('short_link'))
-         UNION ALL SELECT 'primary key', pg_size_pretty(pg_relation_size('short_link_pkey'))"
+psql -c 'analyze short_link'
+psql -c "select 'rows' as what, count(*)::text as value from short_link
+         union all select 'table', pg_size_pretty(pg_table_size('short_link'))
+         union all select 'indexes', pg_size_pretty(pg_indexes_size('short_link'))
+         union all select 'primary key', pg_size_pretty(pg_relation_size('short_link_pkey'))"
 
 say "a read by primary key, as a redirect miss does it"
 CODE=$(sed -n "$((LINES / 2))p" "$FILE")
-psql -c "EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING ON) SELECT target_url FROM short_link WHERE short_code = '$CODE'"
+psql -c "explain (analyze, buffers, costs off, timing on) select target_url from short_link where short_code = '$CODE'"
 
 say "to read them under load: DATASET_FILE=$FILE perf/bench.sh VARIANT IMAGE OUT_DIR"

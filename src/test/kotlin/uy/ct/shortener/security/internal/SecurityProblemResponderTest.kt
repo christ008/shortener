@@ -18,6 +18,7 @@ import org.springframework.security.oauth2.core.OAuth2Error
 import org.springframework.web.servlet.HandlerExceptionResolver
 import org.springframework.web.servlet.ModelAndView
 import uy.ct.shortener.LogCapture
+import kotlin.test.assertIs
 
 /**
  * What a client is told when the security chain turns it away, and what the operator is told about it, with no Spring context
@@ -32,7 +33,7 @@ class SecurityProblemResponderTest {
         val problems = mutableListOf<SecurityProblem>()
 
         override fun resolveException(request: HttpServletRequest, response: HttpServletResponse, handler: Any?, ex: Exception): ModelAndView? {
-            problems += ex as SecurityProblem
+            problems += assertIs<SecurityProblem>(ex)
             return null
         }
     }

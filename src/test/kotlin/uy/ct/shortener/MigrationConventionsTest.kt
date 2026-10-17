@@ -43,54 +43,59 @@ class MigrationConventionsTest {
 
     @Test
     fun `an index must be built concurrently, in a migration that does not run in a transaction`() {
-        assertThat(problems("V9__x.sql", "CREATE INDEX x_idx ON short_link (target_url);", null)).hasSize(1).first().asString()
-            .contains("CONCURRENTLY")
-        assertThat(problems("V9__x.sql", "CREATE UNIQUE INDEX x_idx ON short_link (target_url);", null)).hasSize(1)
-        assertThat(problems("V9__x.sql", "CREATE INDEX CONCURRENTLY x_idx ON short_link (target_url);", "executeInTransaction=false")).isEmpty()
-        assertThat(problems("V9__x.sql", "CREATE INDEX CONCURRENTLY x_idx ON short_link (target_url);", null)).hasSize(1).first().asString()
+        assertThat(problems("V9__x.sql", "create index x_idx on short_link (target_url);", null)).hasSize(1).first().asString()
+            .contains("concurrently")
+        assertThat(problems("V9__x.sql", "create unique index x_idx on short_link (target_url);", null)).hasSize(1)
+        assertThat(problems("V9__x.sql", "create index concurrently x_idx on short_link (target_url);", "executeInTransaction=false")).isEmpty()
+        assertThat(problems("V9__x.sql", "create index concurrently x_idx on short_link (target_url);", null)).hasSize(1).first().asString()
             .contains("executeInTransaction=false")
     }
 
     @Test
     fun `a check or a foreign key is added as not valid and validated by a later migration`() {
-        assertThat(problems("V9__x.sql", "ALTER TABLE short_link ADD CONSTRAINT c CHECK (length(target_url) < 2048);", null)).hasSize(1).first()
-            .asString().contains("NOT VALID")
-        assertThat(problems("V9__x.sql", "ALTER TABLE a ADD CONSTRAINT f FOREIGN KEY (b) REFERENCES b (id);", null)).hasSize(1)
-        assertThat(problems("V9__x.sql", "ALTER TABLE short_link ADD CONSTRAINT c CHECK (length(target_url) < 2048) NOT VALID;", null)).isEmpty()
-        assertThat(problems("V10__x.sql", "ALTER TABLE short_link VALIDATE CONSTRAINT c;", null)).isEmpty()
-        assertThat(problems("V9__x.sql", "ALTER TABLE t ADD CONSTRAINT c CHECK (a > 0) NOT VALID; ALTER TABLE t VALIDATE CONSTRAINT c;", null))
+        assertThat(problems("V9__x.sql", "alter table short_link add constraint c check (length(target_url) < 2048);", null)).hasSize(1).first()
+            .asString().contains("not valid")
+        assertThat(problems("V9__x.sql", "alter table a add constraint f foreign key (b) references b (id);", null)).hasSize(1)
+        assertThat(problems("V9__x.sql", "alter table short_link add constraint c check (length(target_url) < 2048) not valid;", null)).isEmpty()
+        assertThat(problems("V10__x.sql", "alter table short_link validate constraint c;", null)).isEmpty()
+        assertThat(problems("V9__x.sql", "alter table t add constraint c check (a > 0) not valid; alter table t validate constraint c;", null))
             .hasSize(1).first().asString().contains("own migration")
     }
 
     @Test
     fun `a unique key or primary key is attached to an index that already exists`() {
-        assertThat(problems("V9__x.sql", "ALTER TABLE t ADD CONSTRAINT u UNIQUE (a);", null)).hasSize(1).first().asString().contains("USING INDEX")
-        assertThat(problems("V9__x.sql", "ALTER TABLE t ADD PRIMARY KEY (a);", null)).hasSize(1)
-        assertThat(problems("V9__x.sql", "ALTER TABLE t ADD CONSTRAINT u UNIQUE USING INDEX t_a_idx;", null)).isEmpty()
+        assertThat(problems("V9__x.sql", "alter table t add constraint u unique (a);", null)).hasSize(1).first().asString().contains("using index")
+        assertThat(problems("V9__x.sql", "alter table t add primary key (a);", null)).hasSize(1)
+        assertThat(problems("V9__x.sql", "alter table t add constraint u unique using index t_a_idx;", null)).isEmpty()
     }
 
     @Test
     fun `a column is not made not null, retyped or dropped, and a table is not dropped or renamed, without saying why it is safe`() {
         listOf(
-            "ALTER TABLE t ALTER COLUMN a SET NOT NULL;",
-            "ALTER TABLE t ALTER COLUMN a TYPE bigint;",
-            "ALTER TABLE t DROP COLUMN a;",
-            "ALTER TABLE t RENAME COLUMN a TO b;",
-            "ALTER TABLE t RENAME TO u;",
-            "DROP TABLE t;",
+            "alter table t alter column a set not null;",
+            "alter table t alter column a type bigint;",
+            "alter table t drop column a;",
+            "alter table t rename column a to b;",
+            "alter table t rename to u;",
+            "drop table t;",
         ).forEach { assertThat(problems("V9__x.sql", it, null)).describedAs(it).hasSize(1) }
     }
 
     @Test
     fun `a migration can state that it is safe, and has to give the reason`() {
-        assertThat(problems("V9__x.sql", "-- unsafe-ok: the table was created in V8 and is empty\nCREATE INDEX x ON t (a);", null)).isEmpty()
-        assertThat(problems("V9__x.sql", "-- unsafe-ok:\nCREATE INDEX x ON t (a);", null)).isNotEmpty()
+        assertThat(problems("V9__x.sql", "-- unsafe-ok: the table was created in V8 and is empty\ncreate index x on t (a);", null)).isEmpty()
+        assertThat(problems("V9__x.sql", "-- unsafe-ok:\ncreate index x on t (a);", null)).isNotEmpty()
+    }
+
+    @Test
+    fun `the statements are read whatever their case`() {
+        assertThat(problems("V9__x.sql", "CREATE INDEX x_idx ON short_link (target_url);", null)).hasSize(1)
     }
 
     @Test
     fun `statements in comments and ordinary changes are left alone`() {
-        assertThat(problems("V9__x.sql", "-- CREATE INDEX x ON t (a)\n/* DROP TABLE t */\nALTER TABLE t ADD COLUMN b text;", null)).isEmpty()
-        assertThat(problems("V9__x.sql", "CREATE TABLE t (a int NOT NULL, CONSTRAINT c CHECK (a > 0));", null)).isEmpty()
+        assertThat(problems("V9__x.sql", "-- create index x on t (a)\n/* drop table t */\nalter table t add column b text;", null)).isEmpty()
+        assertThat(problems("V9__x.sql", "create table t (a int not null, constraint c check (a > 0));", null)).isEmpty()
     }
 
     private fun problems(name: String, sql: String, conf: String?): List<String> {
@@ -104,13 +109,13 @@ class MigrationConventionsTest {
         statements.forEach { statement ->
             when {
                 matches(statement, "^create\\s+(unique\\s+)?index\\s+(?!concurrently\\b)") ->
-                    flag("CREATE INDEX blocks writes while it builds; use CREATE INDEX CONCURRENTLY (in its own migration without a transaction)")
+                    flag("create index blocks writes while it builds; use create index concurrently (in its own migration without a transaction)")
                 matches(statement, "\\badd\\s+(constraint\\s+\\S+\\s+)?(check|foreign\\s+key)\\b") && !matches(statement, "\\bnot\\s+valid\\b") ->
-                    flag("adding a CHECK or FOREIGN KEY scans the table under an exclusive lock; add it NOT VALID and VALIDATE CONSTRAINT in a later migration")
+                    flag("adding a check or foreign key scans the table under an exclusive lock; add it not valid and validate constraint in a later migration")
                 matches(statement, "\\badd\\s+(constraint\\s+\\S+\\s+)?(unique|primary\\s+key)\\b") && !matches(statement, "\\busing\\s+index\\b") ->
-                    flag("adding a UNIQUE or PRIMARY KEY builds an index under an exclusive lock; create the index CONCURRENTLY and add the constraint USING INDEX")
+                    flag("adding a unique or primary key builds an index under an exclusive lock; create the index concurrently and add the constraint using index")
                 matches(statement, "\\bset\\s+not\\s+null\\b") ->
-                    flag("SET NOT NULL scans the table under an exclusive lock; validate a CHECK (col IS NOT NULL) first, or state why it is safe")
+                    flag("set not null scans the table under an exclusive lock; validate a check (col is not null) first, or state why it is safe")
                 matches(statement, "\\balter\\s+column\\b.*\\btype\\b") ->
                     flag("changing a column type can rewrite the table under an exclusive lock; add a new column and move to it instead")
                 matches(statement, "\\bdrop\\s+column\\b|\\brename\\b|^drop\\s+table\\b") ->
@@ -118,10 +123,10 @@ class MigrationConventionsTest {
             }
         }
         if (statements.any { matches(it, "\\bvalidate\\s+constraint\\b") } && statements.any { matches(it, "\\badd\\s+(constraint|check|foreign|unique|primary)") }) {
-            flag("VALIDATE CONSTRAINT must be in its own migration, or the lock taken by the statement that added the constraint is held through it")
+            flag("validate constraint must be in its own migration, or the lock taken by the statement that added the constraint is held through it")
         }
         if (statements.any { matches(it, "^create\\s+(unique\\s+)?index\\s+concurrently\\b") } && conf?.contains("executeInTransaction=false") != true) {
-            flag("CREATE INDEX CONCURRENTLY cannot run in a transaction; add a $name.conf file containing executeInTransaction=false")
+            flag("create index concurrently cannot run in a transaction; add a $name.conf file containing executeInTransaction=false")
         }
         return found
     }

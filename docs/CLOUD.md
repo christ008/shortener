@@ -1,13 +1,13 @@
 # A public instance in the cloud
 
-The instance anyone can try, <https://shortener.codes>, and the plan it follows. The production stack is rehearsed on one machine ([DEPLOY.md](DEPLOY.md)).
+The instance anyone can try, <https://shortener.codes>: its shape, setup, safety and cost. The production stack can be rehearsed on one machine ([DEPLOY.md](DEPLOY.md)).
 
 > [!NOTE]
-> It is running, with no promise of availability. What was run, and what is still missing, is under [Status](#status).
+> It is running, with no promise of availability. What was run, and what is missing, is under [Status](#status).
 
 - [Goal](#goal)
 - [Shape](#shape)
-- [To decide](#to-decide)
+- [Choices](#choices)
 - [Status](#status)
 - [Steps](#steps)
 - [Safety](#safety)
@@ -20,7 +20,7 @@ it, and sees that another client cannot see it.
 
 ## Shape
 
-One arm64 VM (Ubuntu 24.04 on AWS, a Graviton `t4g.small` in `us-east-2`: 2 vCPU and 2 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm. The first choice was Oracle's Always Free Ampere A1, which is the same shape and costs nothing, but it had no capacity, so the plan went to AWS.
+One arm64 VM (Ubuntu 24.04 on AWS, a Graviton `t4g.small` in `us-east-2`: 2 vCPU and 2 GB) running `deploy/stack/compose.prod.yaml` on a single-node Swarm.
 
 ```mermaid
 flowchart LR
@@ -38,64 +38,50 @@ flowchart LR
 - **Edge:** nginx with a Let's Encrypt certificate for one host name, issued over HTTP-01 and renewed by certbot's timer ([DEPLOY.md](DEPLOY.md#certificate)).
 - **Identity:** Keycloak with the production realm, behind the edge under `/realms/shortener` ([DEPLOY.md](DEPLOY.md#keycloak)).
 - **Database:** the stack's Postgres on the VM's disk, backed up by the [backups overlay](DEPLOY.md#backups-and-a-replica), Keycloak's database included, with a copy in an S3 bucket made from the node ([DEPLOY.md](DEPLOY.md#a-copy-off-the-node)).
-- **Image:** `ghcr.io/christ008/shortener:<version>`, arm64 only ([ADR 0036](adr/0036-jvm-image-for-arm64.md)). Graviton is arm64, and 20% cheaper than the x86 instance of the same size. An amd64 host builds its own with `./gradlew bootBuildImage`.
-- **Memory:** the limits of the stack add up to about 3.5 GB with Keycloak at its default 1 GB and the backups overlay. Measured on a 2 GB `t4g.small` with Keycloak at
-  `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50`, two application tasks, Postgres and the edge: the host used about 1.5 GB with 340 MiB available and 233 MiB of swap,
-  steady; Keycloak peaked at 541 MiB (463 MiB of it anonymous memory) over its first start and a token request, with no swap and no memory events. **512 MiB would not do**:
-  Keycloak's own documentation puts the least that gives its heap the old 512 MB maximum at 750 MB. Prometheus (`OBSERVABILITY=1`) and the backups overlay were not tried
-  there and are unlikely to fit; use a `t4g.large` (8 GB) for them. `bootstrap.sh` adds a 2 GB swap file and writes the two Keycloak settings.
+- **Image:** `ghcr.io/christ008/shortener:<version>`, arm64 only ([ADR 0036](adr/0036-jvm-image-for-arm64.md)); Graviton is 20% cheaper than the x86 instance of the same size. An amd64 host builds its own with `./gradlew bootBuildImage`.
+- **Memory:** the stack's limits add up to about 3.5 GB with Keycloak at its default 1 GB and the backups overlay. On a 2 GB `t4g.small` with
+  `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50`, two application tasks, Postgres and the edge: the host used about 1.5 GB with 340 MiB available and
+  233 MiB of swap, steady; Keycloak peaked at 541 MiB (463 MiB anonymous) over its first start and a token request. 512 MiB for Keycloak does not do (750 MB is the
+  least that gives its heap 512 MB). Prometheus (`OBSERVABILITY=1`) and the backups overlay were not tried there; use a `t4g.large` (8 GB) for them.
+  `bootstrap.sh` adds a 2 GB swap file and writes the two Keycloak settings.
 - **Not measured on Graviton or Ampere:** the figures in [Performance](INTERNALS.md#performance) are from an x86-64 desktop. A `t4g` has burstable CPU: a long load test spends its credits.
 
-## To decide
+## Choices
 
-| Decision | Options |
+| Choice | Value |
 |---|---|
-| Provider | AWS (decided 2026-10-11): `t4g.medium`, `us-east-2`, with the free plan's credits (Oracle's Always Free Ampere A1 had no capacity). Another arm64 VM works; an amd64 one needs the image built there |
+| Provider | AWS, `t4g.small` (2 GB) in `us-east-2` with the free plan's credits. Oracle's Always Free Ampere A1 had no capacity. Another arm64 VM works; an amd64 one needs the image built there |
 | Host name | a domain or subdomain you control; the token `iss` must equal the public issuer URL |
-| Who can create links | decided: a client with an invitation from the operator ([ADR 0039](adr/0039-clients-register-themselves-with-an-invitation.md)). The demo client's key is not published |
-| Certificate | decided: `certbot --webroot` through the edge, with the secrets named after their contents ([DEPLOY.md](DEPLOY.md#certificate)). Written, not run against Let's Encrypt |
+| Who can create links | a client with an invitation from the operator ([ADR 0039](adr/0039-clients-register-themselves-with-an-invitation.md)). The demo client's key is not published |
+| Certificate | `certbot --webroot` through the edge, secrets named after their contents ([DEPLOY.md](DEPLOY.md#certificate)) |
 
 ## Status
 
-Built: the Keycloak overlay, the edge route for `/realms`, the production realm (`./gradlew productionRealm`: `demo-client` and
-`admin-client`, no users), and backups with a restore test ([DEPLOY.md](DEPLOY.md#backups-and-a-replica)), with the repository on the
-VM's disk and a copy of it in S3 (`deploy/aws/offsite.sh`, `backup offsite`).
+Built: the Keycloak overlay, the edge route for `/realms`, the production realm (`./gradlew productionRealm`: `demo-client` and `admin-client`, no users), and
+backups with a restore test ([DEPLOY.md](DEPLOY.md#backups-and-a-replica)), with the repository on the VM's disk and a copy in S3 (`deploy/aws/offsite.sh`, `backup offsite`).
 
-Verified on 2026-10-11, on a `t4g.small`:
+Verified on a `t4g.small` (2026-10-11 unless noted):
 
-- **Provisioning.** `deploy/aws/launch.sh`, `bootstrap.sh` and `deploy/stack/certificate.sh` with the ACME overlay produce a VM that serves a
-  Let's Encrypt certificate from the edge. The free plan refuses a `t4g.medium`; `ec2 describe-instance-types --filters
-  Name=free-tier-eligible,Values=true` lists what it accepts: `t4g`, `t3` and `t8i` `micro` and `small`, and the x86 `c7i-flex.large` and
-  `m7i-flex.large`.
-- **The stack.** The signed image of 0.22.1 deploys, and `deploy.sh` verifies its signature (v0.22.0 was never published: its Release failed the
-  vulnerability scan). Both tasks run in production mode. An unknown code answers `404`, a create without a token `401` with
-  `WWW-Authenticate: DPoP`, and HTTP redirects to HTTPS.
-- **Start-up.** Two tasks starting together on 2 vCPUs take 27 and 29 seconds, so the health check's start period is 60 s.
-- **Keycloak** (768M, above). It imports the production realm and publishes its discovery document at
-  `https://shortener.codes/realms/shortener/...` with the application's issuer. `demo-client` gets a DPoP token, `POST /api/short-links`
-  answers `201` and the short URL answers `302`. The edge does not serve the master realm or the administration console.
+- **Provisioning.** `deploy/aws/launch.sh`, `bootstrap.sh` and `deploy/stack/certificate.sh` with the ACME overlay produce a VM that serves a Let's Encrypt
+  certificate from the edge. The free plan accepts `t4g`, `t3` and `t8i` `micro` and `small`, and the x86 `c7i-flex.large` and `m7i-flex.large`
+  (`ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`); it refuses a `t4g.medium`.
+- **The stack.** The signed image of 0.22.1 deploys and `deploy.sh` verifies its signature. Both tasks run in production mode. An unknown code answers `404`,
+  a create without a token `401` with `WWW-Authenticate: DPoP`, and HTTP redirects to HTTPS.
+- **Start-up.** Two tasks starting together on 2 vCPUs take 27 and 29 s; the health check's start period is 60 s.
+- **Keycloak** (768M). Imports the production realm and publishes its discovery document at `https://shortener.codes/realms/shortener/...` with the application's
+  issuer. `demo-client` gets a DPoP token, `POST /api/short-links` answers `201` and the short URL answers `302`. The edge does not serve the master realm or the console.
 - **Isolation between clients**, with a second client made for the test and deleted afterwards:
-  - It gets `404` for the first client's link, an empty list, `404` to disable it, and `403` (`insufficient_scope`) to claim its code, the
-    same answer as for a code that does not exist. The first client's link stays enabled and keeps redirecting.
-  - The reverse holds, each client lists only its own links, and the same target gets a different code for each. Each can read and disable
-    its own.
-- **Backups** with pgBackRest, without the replica (`POSTGRES_HA=1` on a node without the `shortener.postgres-replica` label, so
-  `postgres-replica` stays pending at `0/1`):
-  - Postgres archives WAL, and a restart did not stop redirects (`302` while it was down: the redirect cache).
-  - `backup init` took a full backup of the 44 MB database into 4.9 MB, `backup check` passed, and `backup restore-test` restored it into a
-    throwaway container with the same links as the live database. A link created after that backup was in a restore too, once the WAL
-    segment was switched.
-  - The repository is a volume on the same disk, and a copy of it goes to a private S3 bucket from the node (`deploy/aws/offsite.sh`,
-    `backup offsite`): the VM's role can write and read the bucket and cannot delete from it. The WAL goes every five minutes, so the copy
-    trails the node by about ten. `backup offsite-restore-test` restored the bucket into a throwaway container with the same links as the live database.
+  - It gets `404` for the first client's link, an empty list, `404` to disable it, and `403` (`insufficient_scope`) to claim its code. The first client's link stays enabled and keeps redirecting.
+  - Each client lists only its own links, the same target gets a different code for each, and each can read and disable its own.
+- **Backups** with pgBackRest, without the replica (`POSTGRES_HA=1` on a node without the `shortener.postgres-replica` label, so `postgres-replica` stays pending at `0/1`):
+  - Postgres archives WAL, and a restart did not stop redirects (`302` while it was down).
+  - `backup init` took a full backup of the 44 MB database into 4.9 MB, `backup check` passed, and `backup restore-test` restored it into a throwaway container with the same links as the live database. A link created after that backup was in a restore too, once the WAL segment was switched.
+  - A copy goes to a private S3 bucket from the node: the VM's role can write and read the bucket and cannot delete from it. The WAL goes every five minutes, so the copy trails the node by about ten. `backup offsite-restore-test` restored the bucket into a throwaway container with the same links as the live database.
   - The schedule (`deploy/postgres/backup.cron`, in `/etc/cron.d`) ran by itself on 2026-10-13 at 03:17 UTC (`backup diff ok`).
 
-Not run: the replica, Prometheus, the copy to S3 by cron at 03:47, a renewal of the certificate 30 days on, a restore into the real database,
-and an `admin-client` call on another client's link.
+Not run: the replica, Prometheus, the copy to S3 by cron at 03:47, a renewal of the certificate 30 days on, a restore into the real database, and an `admin-client` call on another client's link.
 
-Not built:
-
-1. The `shortener-ui` client and web users (they wait for the [web UI](UI.md)).
+Not built: the `shortener-ui` client and web users (they wait for the [web UI](UI.md)).
 
 ## Steps
 

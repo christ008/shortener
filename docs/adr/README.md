@@ -1,8 +1,7 @@
 # Architecture decision records
 
-Why the system is the way it is, one decision per file. [INTERNALS.md](../INTERNALS.md) says how it works,
-[DESIGN.md](../DESIGN.md) says why the code has its shape, and each ADR says why that choice and not another, what it costs
-and what would make us undo it.
+Why the system is the way it is, one decision per file. [INTERNALS.md](../INTERNALS.md) and [DESIGN.md](../DESIGN.md) list what the system does and its invariants; each ADR says why that choice
+and not another, what it costs and what would make us undo it.
 
 The decisions are recorded after the fact, from the history of the repository, and dated by the commit that made them.
 
@@ -40,7 +39,7 @@ Fit says how much of the complexity the decision adds, for a service of this siz
 | [0017](0017-native-image-on-a-pinned-base.md) | Native image on pinned Alpaquita (**superseded by 0036**) | startup, memory, attack surface | reflection hints, 3-minute builds, and about twice a warm JVM's CPU a request (measured 2026-10-09) | earned |
 | [0018](0018-signed-scanned-releases.md) | Signed, scanned, smoke-tested release | trusting what runs in production | arm64 only, and a package that is private until made public | needed when exposed |
 | [0021](0021-encrypt-internal-traffic.md) | Both overlay networks encrypted | tokens crossing nodes in clear | IPsec cost, ports between nodes | needed when exposed |
-| [0022](0022-mtls-between-services.md) | Mutual TLS between services (**proposed**) | an unauthenticated peer on a stack network | a CA and a rotation job | needed when exposed, not yet |
+| [0022](0022-mtls-between-services.md) | Mutual TLS between services, with the stack's own CA, optional (`PKI=1`) | an unauthenticated peer on a stack network, and any certificate of the CA calling the application | a CA, a yearly ceremony with an offline root, and renewals that are deploys | needed when exposed; tried with Compose on one machine |
 | [0023](0023-production-must-decide-its-targets.md) | Production refuses to start without a target decision | an open redirector by omission | one more variable to set | needed when exposed |
 | [0024](0024-logging-and-audit.md) | Security events, audit trail and notices, each a line and a counter | an attack or a takedown that leaves no trace | local logs with client addresses | needed when exposed |
 | [0025](0025-keycloak-in-the-stack.md) | Keycloak in the stack, optional, behind the edge | the provider decides ownership and admin, and none existed for production | one more service and an image to build | needed when exposed |

@@ -18,6 +18,7 @@ import java.sql.SQLException
 import java.sql.Timestamp
 import java.time.Instant
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /**
  * [JdbcClickStore] against real Postgres with the Flyway schema applied: a batch becomes rows, and a count added to a key that
@@ -38,7 +39,7 @@ class JdbcClickStoreTest {
 
     private fun count(code: String, clicks: Long, device: DeviceClass = DeviceClass.DESKTOP, at: Long = hour) = ClickCount(ClickKey(code, at, device), clicks)
 
-    private fun rows() = jdbc.queryForList("SELECT short_code, extract(epoch FROM hour)::bigint AS epoch, device_class, clicks FROM link_click_hourly ORDER BY 1, 2, 3")
+    private fun rows() = jdbc.queryForList("select short_code, extract(epoch from hour)::bigint as epoch, device_class, clicks from link_click_hourly order by 1, 2, 3")
         .associate { Triple(it["short_code"], it["epoch"], it["device_class"]) to it["clicks"] }
 
     @Test
@@ -74,7 +75,7 @@ class JdbcClickStoreTest {
     fun `stores the hour exactly as the aggregator counted it`() {
         store.add(listOf(count("hour-a", 1)))
 
-        assertThat(jdbc.queryForObject("SELECT hour FROM link_click_hourly WHERE short_code = 'hour-a'", Timestamp::class.java)?.toInstant())
+        assertThat(jdbc.queryForObject("select hour from link_click_hourly where short_code = 'hour-a'", Timestamp::class.java)?.toInstant())
             .isEqualTo(Instant.parse("2026-10-12T10:00:00Z"))
     }
 
@@ -82,6 +83,6 @@ class JdbcClickStoreTest {
     fun `refuses a count that is not positive, as the check constraint says`() {
         val failure = assertFailsWith<DataIntegrityViolationException> { store.add(listOf(count("bad-a", 1), count("bad-b", 0))) }
 
-        assertThat((failure.cause as SQLException).sqlState).isEqualTo("23514")
+        assertThat(assertIs<SQLException>(failure.cause).sqlState).isEqualTo("23514")
     }
 }

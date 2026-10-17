@@ -16,11 +16,11 @@ else
 fi
 
 psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d postgres -v password="$password" <<'SQL'
-SELECT 'CREATE ROLE keycloak LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS'
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'keycloak') \gexec
-ALTER ROLE keycloak PASSWORD :'password';
-SELECT 'CREATE DATABASE keycloak OWNER keycloak'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'keycloak') \gexec
-REVOKE ALL ON DATABASE keycloak FROM PUBLIC;
-GRANT CONNECT ON DATABASE keycloak TO keycloak;
+select 'create role keycloak login nosuperuser nocreatedb nocreaterole noreplication nobypassrls'
+where not exists (select 1 from pg_roles where rolname = 'keycloak') \gexec
+alter role keycloak password :'password';
+select 'create database keycloak owner keycloak'
+where not exists (select 1 from pg_database where datname = 'keycloak') \gexec
+revoke all on database keycloak from public;
+grant connect on database keycloak to keycloak;
 SQL

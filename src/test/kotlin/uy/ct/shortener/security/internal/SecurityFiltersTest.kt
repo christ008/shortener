@@ -1,6 +1,7 @@
 package uy.ct.shortener.security.internal
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import jakarta.servlet.Filter
 import jakarta.servlet.http.HttpServlet
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -15,6 +16,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver
 import org.springframework.web.servlet.ModelAndView
 import java.time.Duration
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /**
  * The small filters and the token resolver of the security chain, with no Spring context.
@@ -30,7 +32,7 @@ class SecurityFiltersTest {
     private val responder = SecurityProblemResponder(
         object : HandlerExceptionResolver {
             override fun resolveException(request: HttpServletRequest, response: HttpServletResponse, handler: Any?, ex: Exception): ModelAndView? {
-                problems += ex as SecurityProblem
+                problems += assertIs<SecurityProblem>(ex)
                 return null
             }
         },
@@ -44,7 +46,7 @@ class SecurityFiltersTest {
     private fun rateLimit(capacity: Long, key: (HttpServletRequest) -> RateLimitKey) =
         RateLimitFilter("test", RateLimiter(SecurityProperties.Limit(capacity, Duration.ofMinutes(1))), responder, key)
 
-    private fun run(filter: jakarta.servlet.Filter, request: MockHttpServletRequest): Pair<MockHttpServletResponse, MockFilterChain> {
+    private fun run(filter: Filter, request: MockHttpServletRequest): Pair<MockHttpServletResponse, MockFilterChain> {
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()
         filter.doFilter(request, response, chain)

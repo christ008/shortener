@@ -105,8 +105,10 @@ Switches of `deploy/stack/deploy.sh`, which may also be in `.env`:
 
 | Variable | Effect |
 |---|---|
-| `OBSERVABILITY=1`, `KEYCLOAK=1`, `POSTGRES_HA=1`, `ACME=1`, `CONSOLE=1` | add the overlay in `deploy/stack/overlays/`. `ACME=1` is for [certificate.sh](DEPLOY.md#certificate), and `CONSOLE=1` (needs `KEYCLOAK=1`) opens [Keycloak's console to a tunnel](DEPLOY.md#the-console-through-a-tunnel) |
+| `OBSERVABILITY=1`, `KEYCLOAK=1`, `POSTGRES_HA=1`, `ACME=1`, `CONSOLE=1`, `PKI_CA=1`, `PKI=1` | add the overlay in `deploy/stack/overlays/`. `PKI_CA=1` is the stack's own CA and `PKI=1` the [mutual TLS between the services](DEPLOY.md#mutual-tls-between-the-services), which includes it and does not work with `POSTGRES_HA=1`. `ACME=1` is for [certificate.sh](DEPLOY.md#certificate), and `CONSOLE=1` (needs `KEYCLOAK=1`) opens [Keycloak's console to a tunnel](DEPLOY.md#the-console-through-a-tunnel) |
 | `TLS_HASH` | set by the script: a hash of `tls_cert` and `tls_key`, in the names of the two secrets, so a renewed certificate is a new secret |
+| `PKI_*_HASH`, `PKI_*_SERIAL`, `PKI_*_SHA256`, `PKI_*_NOT_AFTER`, `PKI_*_RENEW_AFTER` | set by the script from `pki.sh env`: a hash of each `pki_*` file, in the name of its secret, and the labels each certificate's secret carries |
+| `STEPCA_IMAGE`, `PKI_DIR` | with `PKI_CA=1`, the CA's image (default `smallstep/step-ca:0.30.2`) and where its database is on the node (default `/srv/shortener/pki`) |
 | `ACME_DIR` | with `ACME=1`, the directory of the challenges on the node, default `/srv/shortener/acme` |
 | `COMPOSE_FILES` | the files to deploy, default `deploy/stack/compose.prod.yaml`. The rehearsal adds `deploy/stack/local/compose.local.yaml` |
 | `RESOLVE_IMAGE` | `always` (default) asks the registry for the digest, `never` uses what the node has |
@@ -129,6 +131,8 @@ reads them through `SPRING_CONFIG_IMPORT=configtree:/run/secrets/`, where each f
 | `dpop_nonce_secret` | the application only, as `shortener.security.dpop.nonce.secret`. The same for every instance | always: production does not start without it |
 | `db_keycloak_password`, `keycloak_admin_password` | the Keycloak overlay | with `KEYCLOAK=1` |
 | `db_replicator_password` | the backups and replica overlay | with `POSTGRES_HA=1` |
+| `pki_ca_json`, `pki_ca_pass`, `pki_ca_key`, `pki_provisioner_pass`, `pki_ca_cert`, `pki_root` | the CA, which alone holds the first four | with `PKI_CA=1` |
+| `pki_chain` and, per identity (`edge`, `shortener`, `migrator`, `postgres`), `pki_<identity>_cert`, `_key` and, for the two that connect to Postgres, `_key_der` | the service that is that identity, and the certificates every peer trusts. Made by [pki.sh](DEPLOY.md#mutual-tls-between-the-services), mode `0600`, not `0444` | with `PKI=1` |
 
 `deploy/stack/local/prepare.sh` makes throwaway ones for the rehearsal. [DEPLOY.md](DEPLOY.md#first-deploy) makes real ones.
 
@@ -164,6 +168,9 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 |---|---|---|
 | `deploy/stack/deploy.sh` | deploy or update the stack on a manager | sh |
 | `deploy/stack/local/prepare.sh` | throwaway secrets and certificate for a rehearsal | sh |
+| `deploy/stack/pki.sh` | the stack's certificates: the root (offline), the issuing CA's key and request, the node's keys and requests for each identity, renewal, inspection | sh |
+| `deploy/stack/local/prepare-pki.sh` | the CA and the four identities, throwaway, for a rehearsal | sh |
+| `deploy/pki/ca-config` | make the CA's provisioners and configuration, inside the CA's image, started by `pki.sh init` | sh |
 | `deploy/postgres/bootstrap.sql`, `set-role-passwords.sh`, `keycloak-database.sh`, `include-diagnostics.sh` | roles and databases at first Postgres start | sql, sh |
 | `deploy/postgres/backup` | back up, check and restore-test the stack's Postgres, and copy the backups to S3, from a manager | sh |
 | `deploy/aws/offsite.sh` | make (or delete) the S3 bucket and the VM's role for that copy, from your machine | sh |

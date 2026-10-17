@@ -4,6 +4,7 @@ import com.nimbusds.jose.crypto.ECDSAVerifier
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.util.Base64URL
+import com.nimbusds.jwt.SignedJWT
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -45,7 +46,7 @@ class ClientKeysTest {
         repeat(300) {
             val key = parseJson(ClientKeys.generate("c").privateJwk)
 
-            listOf("x", "y", "d").forEach { member -> assertThat(Base64URL(key.getValue(member) as String).decode()).hasSize(32) }
+            listOf("x", "y", "d").forEach { member -> assertThat(Base64URL(key.text(member)).decode()).hasSize(32) }
         }
     }
 
@@ -59,7 +60,7 @@ class ClientKeysTest {
         val key = ClientKeys.generate("demo-client")
         val signed = DpopCalls.jws(ClientKeys.readPrivate(fileWith(key.privateJwk)), linkedMapOf("alg" to "ES256"), linkedMapOf("sub" to "demo-client"))
 
-        val jwt = com.nimbusds.jwt.SignedJWT.parse(signed)
+        val jwt = SignedJWT.parse(signed)
 
         assertThat(jwt.verify(ECDSAVerifier(ECKey.parse(key.publicJwk)))).isTrue()
         assertThat(jwt.jwtClaimsSet.subject).isEqualTo("demo-client")

@@ -59,10 +59,10 @@ class JdbcClickStatsRepository(private val jdbc: JdbcClient) : ClickStatsReposit
         const val LOCK_NOT_AVAILABLE = "55P03"
 
         const val READ = """
-            SELECT date_trunc(:unit, hour, 'UTC') AS bucket, device_class, sum(clicks)::bigint AS clicks
-            FROM link_click_hourly
-            WHERE short_code = :shortCode AND hour >= :start AND hour < :end
-            GROUP BY 1, 2
+            select date_trunc(:unit, hour, 'UTC') as bucket, device_class, sum(clicks)::bigint as clicks
+            from link_click_hourly
+            where short_code = :shortCode and hour >= :start and hour < :end
+            group by 1, 2
         """
     }
 }

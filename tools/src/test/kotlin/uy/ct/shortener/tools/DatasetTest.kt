@@ -2,6 +2,7 @@ package uy.ct.shortener.tools
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -56,8 +57,8 @@ class DatasetTest {
 
     @Test
     fun `an index outside the space is refused`() {
-        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { CodePermutation(1, 1_000).valueAt(1_000) }
-        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { CodePermutation(1, 1_000).valueAt(-1) }
+        assertThrows<IllegalArgumentException> { CodePermutation(1, 1_000).valueAt(1_000) }
+        assertThrows<IllegalArgumentException> { CodePermutation(1, 1_000).valueAt(-1) }
     }
 
     @Test

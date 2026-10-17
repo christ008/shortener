@@ -1,0 +1,100 @@
+# The stack's own certificate authority, step-ca, for mutual TLS between the services (ADR 0022). Add it with a second file:
+#   PKI_CA=1 deploy/stack/deploy.sh <version>
+#   docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.pki-ca.yaml up -d
+# The services use it with compose.pki.yaml (PKI=1), once their certificates exist. docs/DEPLOY.md#mutual-tls-between-the-services has the order.
+#
+# - Root: offline, on another machine (deploy/stack/pki.sh root). It signs the issuing CA's certificate once a year and is never on the node.
+# - Issuing CA: its key is encrypted, made on the node (pki.sh init), signed by the root (pki.sh sign-intermediate) and installed (pki.sh install-intermediate).
+#   It may sign for the names of the stack and no others (name constraints in its certificate), and cannot sign another CA.
+# - Network: `pki`, internal, and nobody else is on it. No service asks the CA for anything: the node does, with `docker exec` (pki.sh issue), and the CA
+#   never sees a private key, only the requests that the node makes.
+# - Node: the one with the label that Swarm is told to place it on (docker node update --label-add shortener.pki=true <node>). pki.sh runs there, as root.
+# - Database: PKI_DIR/db on that node (default /srv/shortener/pki/db), made by pki.sh init and owned by the CA's user, since a named volume belongs to root.
+# - Configuration: pki_ca_json, made by pki.sh init from deploy/pki/ca-config. It holds the provisioners' keys encrypted, so it is a secret, not a config.
+# - Names: certificates carry the template deploy/pki/leaf.tpl. The CA's own name, `stepca`, resolves to itself, since the CA has no network to look it up on.
+services:
+  stepca:
+    read_only: true
+    # NET_BIND_SERVICE is a file capability of the binary: with every capability dropped, and no way to gain one, it does not start.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    image: '${STEPCA_IMAGE:-smallstep/step-ca:0.30.2}'
+    user: '1000:1000'
+    hostname: stepca
+    extra_hosts: ['stepca:127.0.0.1']
+    entrypoint: ['/usr/local/bin/step-ca']
+    command: ['--password-file', '/home/step/secrets/ca.pass', '/home/step/config/ca.json']
+    volumes:
+      - {type: tmpfs, target: /tmp, tmpfs: {size: 16777216, mode: 1023}}
+      - {type: bind, source: '${PKI_DIR:-/srv/shortener/pki}/db', target: /home/step/db}
+    configs:
+      - {source: pki-leaf, target: /home/step/templates/leaf.tpl, mode: 0444}
+    secrets:
+      - {source: pki_ca_json, target: /home/step/config/ca.json, uid: '1000', gid: '1000', mode: 0400}
+      - {source: pki_ca_pass, target: /home/step/secrets/ca.pass, uid: '1000', gid: '1000', mode: 0400}
+      - {source: pki_ca_key, target: /home/step/secrets/intermediate_ca_key, uid: '1000', gid: '1000', mode: 0400}
+      - {source: pki_provisioner_pass, target: /home/step/secrets/provisioner.pass, uid: '1000', gid: '1000', mode: 0400}
+      - {source: pki_ca_cert, target: /home/step/certs/intermediate_ca.crt}
+      - {source: pki_root, target: /home/step/certs/root_ca.crt}
+    networks: [pki]
+    healthcheck:
+      test: ['CMD', 'step', 'ca', 'health', '--ca-url', 'https://stepca:9000', '--root', '/home/step/certs/root_ca.crt']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 20s
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: '0.5', memory: 256M}
+      placement:
+        constraints: ['node.labels.shortener.pki == true']
+      restart_policy: {condition: any, delay: 5s}
+      update_config: {order: stop-first, failure_action: rollback}
+
+networks:
+  # The CA alone. Nothing reaches it from the other networks, and it has no route out.
+  pki:
+    internal: true
+
+configs:
+  # The name carries a hash of the file (set by deploy/stack/deploy.sh).
+  pki-leaf:
+    name: 'shortener-pki-leaf-${PKI_LEAF_TEMPLATE_HASH:-local}'
+    file: ../pki/leaf.tpl
+
+# Files under ${SECRETS_DIR}, made by deploy/stack/pki.sh. A secret is immutable, so the name carries a hash of its contents (pki.sh env) and a new
+# issue is a new secret and a deploy.
+secrets:
+  pki_ca_json:
+    name: 'pki_ca_json_${PKI_CA_JSON_HASH:?run deploy/stack/pki.sh init}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_ca_json'
+  pki_ca_pass:
+    name: 'pki_ca_pass_${PKI_CA_PASS_HASH:?run deploy/stack/pki.sh init}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_ca_pass'
+  pki_ca_key:
+    name: 'pki_ca_key_${PKI_CA_KEY_HASH:?run deploy/stack/pki.sh init}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_ca_key'
+  pki_provisioner_pass:
+    name: 'pki_provisioner_pass_${PKI_PROVISIONER_PASS_HASH:?run deploy/stack/pki.sh init}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_provisioner_pass'
+  pki_ca_cert:
+    name: 'pki_ca_cert_${PKI_CA_CERT_HASH:?run deploy/stack/pki.sh install-intermediate}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_ca_cert'
+    labels:
+      shortener.pki.role: issuing-ca
+      shortener.pki.serial: '${PKI_CA_CERT_SERIAL:-}'
+      shortener.pki.sha256: '${PKI_CA_CERT_SHA256:-}'
+      shortener.pki.not-after: '${PKI_CA_CERT_NOT_AFTER:-}'
+  pki_root:
+    name: 'pki_root_${PKI_ROOT_HASH:?run deploy/stack/pki.sh install-intermediate}'
+    file: '${SECRETS_DIR:-../../secrets}/pki_root'
+    labels:
+      shortener.pki.role: root
+      shortener.pki.serial: '${PKI_ROOT_SERIAL:-}'
+      shortener.pki.sha256: '${PKI_ROOT_SHA256:-}'
+      shortener.pki.not-after: '${PKI_ROOT_NOT_AFTER:-}'

@@ -29,7 +29,7 @@ class SocketTimeoutIntegrationTest {
     fun `gives up on a database that stays silent for longer than the socket timeout`() {
         val started = System.nanoTime()
 
-        assertFailsWith<DataAccessResourceFailureException> { jdbc.sql("SELECT pg_sleep(3)").query().singleRow() }
+        assertFailsWith<DataAccessResourceFailureException> { jdbc.sql("select pg_sleep(3)").query().singleRow() }
 
         assertThat((System.nanoTime() - started) / 1_000_000).isLessThan(2_500)
     }

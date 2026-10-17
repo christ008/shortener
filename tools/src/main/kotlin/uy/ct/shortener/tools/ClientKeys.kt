@@ -42,7 +42,7 @@ object ClientKeys {
         val public = linkedMapOf<String, Any>("kty" to "EC", "crv" to "P-256", "kid" to "$client-key-1", "alg" to "ES256", "use" to "sig")
         public.putAll(coordinates(key))
         val private = LinkedHashMap(public)
-        private["d"] = base64((key.private as ECPrivateKey).s)
+        private["d"] = base64(ecPrivate(key).s)
         return ClientKey(JSON.writeValueAsString(private), JSON.writeValueAsString(public))
     }
 
@@ -76,8 +76,18 @@ object ClientKeys {
         }
     }
 
+    private fun ecPrivate(key: KeyPair): ECPrivateKey = when (val private = key.private) {
+        is ECPrivateKey -> private
+        else -> error("the key pair is not an EC key: ${private.algorithm}")
+    }
+
+    private fun ecPublic(key: KeyPair): ECPublicKey = when (val public = key.public) {
+        is ECPublicKey -> public
+        else -> error("the key pair is not an EC key: ${public.algorithm}")
+    }
+
     private fun coordinates(key: KeyPair): Map<String, String> {
-        val point = (key.public as ECPublicKey).w
+        val point = ecPublic(key).w
         return linkedMapOf("x" to base64(point.affineX), "y" to base64(point.affineY))
     }
 

@@ -1,7 +1,7 @@
 # 0017. A GraalVM native image on a pinned Alpaquita base
 
 - Status: Superseded by [0036](0036-jvm-image-for-arm64.md), 2026-10-09. Accepted 2026-10-03, pinned 2026-10-05
-- Evidence: `96fde0c`, `2128bd8`, `623d3d8`, `perf/smoke.sh`, `INTERNALS.md#native-image`
+- Evidence: `96fde0c`, `2128bd8`, `623d3d8`, `perf/smoke.sh`, `INTERNALS.md#the-native-image`
 
 ## Problem
 
