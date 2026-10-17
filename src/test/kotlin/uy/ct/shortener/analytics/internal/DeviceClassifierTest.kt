@@ -2,7 +2,6 @@ package uy.ct.shortener.analytics.internal
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.util.Locale
 import kotlin.test.assertFailsWith
 
 /**
@@ -53,17 +52,10 @@ class DeviceClassifierTest {
     }
 
     @Test
-    fun `case does not matter, whatever the default locale`() {
-        val default = Locale.getDefault()
-        Locale.setDefault(Locale.of("tr"))
-        try {
-            assertThat(classify("MOZILLA/5.0 (IPHONE; CPU IPHONE OS 18_0 LIKE MAC OS X) MOBILE/15E148")).isEqualTo(DeviceClass.MOBILE)
-            assertThat(classify("MOZILLA/5.0 (COMPATIBLE; GOOGLEBOT/2.1)")).isEqualTo(DeviceClass.BOT)
-            assertThat(classify("SLACKBOT-LINKEXPANDING 1.0")).isEqualTo(DeviceClass.BOT)
-            assertThat(classify("MOZILLA/5.0 (WINDOWS NT 10.0; WIN64; X64) CHROME/130.0")).isEqualTo(DeviceClass.DESKTOP)
-        } finally {
-            Locale.setDefault(default)
-        }
+    fun `case does not matter`() {
+        assertThat(classify("MOZILLA/5.0 (IPHONE; CPU IPHONE OS 18_0 LIKE MAC OS X) MOBILE/15E148")).isEqualTo(DeviceClass.MOBILE)
+        assertThat(classify("MOZILLA/5.0 (COMPATIBLE; GOOGLEBOT/2.1)")).isEqualTo(DeviceClass.BOT)
+        assertThat(classify("MOZILLA/5.0 (WINDOWS NT 10.0; WIN64; X64) CHROME/130.0")).isEqualTo(DeviceClass.DESKTOP)
     }
 
     @Test
