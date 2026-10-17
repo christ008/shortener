@@ -1,6 +1,7 @@
 # shortener
 
 [![CI](https://github.com/christ008/shortener/actions/workflows/ci.yml/badge.svg)](https://github.com/christ008/shortener/actions/workflows/ci.yml)
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=christ008_shortener&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=christ008_shortener)
 
 **TL;DR** A URL shortener you call from your own programs, built to be safe on the public internet. A program registers once,
 gets a key, and creates short links through an HTTP API; anyone can follow a short link.
