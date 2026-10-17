@@ -7,7 +7,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Path
 import java.time.Duration
-import java.util.concurrent.ThreadLocalRandom
+import java.util.UUID
 
 /**
  * Exercises every endpoint of a running application with DPoP-bound tokens, as the demo, other and admin clients, and checks
@@ -69,7 +69,7 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
             val generated = call(DEMO_CLIENT, "POST", api, """{"targetUrl":"https://example.com/smoke"}""")
             check("create with a generated code", 201, generated)
             val code = SHORT_CODE.find(generated.body)?.groupValues?.get(1) ?: ""
-            val custom = "smoke-" + ThreadLocalRandom.current().nextInt(32768)
+            val custom = "smoke-" + UUID.randomUUID().toString().take(8)
             val customBody = """{"targetUrl":"https://example.com/custom"}"""
             check("create with a custom code", 201, call(DEMO_CLIENT, "PUT", "$api/$custom", customBody))
             check("claiming it again is harmless", 200, call(DEMO_CLIENT, "PUT", "$api/$custom", customBody))
