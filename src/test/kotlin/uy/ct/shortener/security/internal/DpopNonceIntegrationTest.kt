@@ -16,6 +16,7 @@ import uy.ct.shortener.RestTestClientSupport.request
 import uy.ct.shortener.TestDpopClient
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.WithTestIdp
+import java.time.Duration
 
 /**
  * With nonces on, a proof must carry the one the server last handed out. The first call of a client has none, so it is answered
@@ -85,7 +86,7 @@ class DpopNonceIntegrationTest {
     @Test
     fun `a nonce the server did not make is asked for again`() {
         val token = client.token()
-        val foreign = HmacDpopNonces("another-secret".toByteArray(), java.time.Duration.ofMinutes(5)).current()
+        val foreign = HmacDpopNonces("another-secret".toByteArray(), Duration.ofMinutes(5)).current()
 
         val response = list(token, nonce = foreign)
 

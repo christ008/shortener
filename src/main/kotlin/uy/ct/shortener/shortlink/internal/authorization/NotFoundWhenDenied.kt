@@ -11,6 +11,9 @@ import uy.ct.shortener.shortlink.ShortLinkNotFoundException
 @Component
 class NotFoundWhenDenied : MethodAuthorizationDeniedHandler {
 
-    override fun handleDeniedInvocation(methodInvocation: MethodInvocation, authorizationResult: AuthorizationResult): Any =
-        throw ShortLinkNotFoundException(methodInvocation.arguments.first() as ShortCode)
+    override fun handleDeniedInvocation(methodInvocation: MethodInvocation, authorizationResult: AuthorizationResult): Any {
+        val shortCode = methodInvocation.arguments.firstOrNull()
+        check(shortCode is ShortCode) { "the first argument of a denied lookup is the link's ShortCode, not $shortCode" }
+        throw ShortLinkNotFoundException(shortCode)
+    }
 }

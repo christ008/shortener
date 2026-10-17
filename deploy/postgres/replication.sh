@@ -11,9 +11,9 @@ else
 fi
 
 psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d postgres -v password="$password" <<'SQL'
-SELECT 'CREATE ROLE shortener_replicator LOGIN REPLICATION NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS CONNECTION LIMIT 3'
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'shortener_replicator') \gexec
-ALTER ROLE shortener_replicator PASSWORD :'password';
+select 'create role shortener_replicator login replication nosuperuser nocreatedb nocreaterole nobypassrls connection limit 3'
+where not exists (select 1 from pg_roles where rolname = 'shortener_replicator') \gexec
+alter role shortener_replicator password :'password';
 SQL
 
 line="host replication shortener_replicator all scram-sha-256"

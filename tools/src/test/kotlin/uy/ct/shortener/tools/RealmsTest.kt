@@ -25,11 +25,9 @@ class RealmsTest {
 
     private fun parse(file: Path): Map<String, Any?> = parseJson(Files.readString(file))
 
-    @Suppress("UNCHECKED_CAST")
-    private fun Map<String, Any?>.clients() = (this["clients"] as List<Map<String, Any?>>).associateBy { it["clientId"] as String }
+    private fun Map<String, Any?>.clients() = list("clients").byText("clientId")
 
-    @Suppress("UNCHECKED_CAST")
-    private fun Map<String, Any?>.attributes() = this["attributes"] as Map<String, String>
+    private fun Map<String, Any?>.attributes() = map("attributes")
 
     @Test
     fun `production makes a realm that trusts exactly the two public keys it was given`() {
@@ -67,32 +65,26 @@ class RealmsTest {
         assertThat(parsed.clients().getValue("admin-client")["defaultClientScopes"]).isEqualTo(listOf("shortlinks:admin", "shortener-owner"))
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun Map<String, Any?>.registrationPolicies(subType: String) =
-        (((this["components"] as Map<String, Any?>)["org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy"]) as List<Map<String, Any?>>)
-            .filter { it["subType"] == subType }.associateBy { it["name"] as String }
+        map("components").list("org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy")
+            .map { it.asMap() }.filter { it["subType"] == subType }.associateBy { it.text("name") }
 
     @Test
     fun `the step-up fragment is a flow that asks for a one-time code at level 2, with every flow and configuration it names, and no name for a level`() {
         val fragment = parse(repositoryRoot.resolve("deploy/keycloak/realm-step-up.json"))
 
-        @Suppress("UNCHECKED_CAST")
-        val flows = (fragment["authenticationFlows"] as List<Map<String, Any?>>).associateBy { it["alias"] as String }
-        @Suppress("UNCHECKED_CAST")
-        val configs = (fragment["authenticatorConfig"] as List<Map<String, Any?>>).associateBy { it["alias"] as String }
-        @Suppress("UNCHECKED_CAST")
-        val executions = flows.values.flatMap { it["authenticationExecutions"] as List<Map<String, Any?>> }
+        val flows = fragment.list("authenticationFlows").byText("alias")
+        val configs = fragment.list("authenticatorConfig").byText("alias")
+        val executions = flows.values.flatMap { flow -> flow.list("authenticationExecutions").map { it.asMap() } }
 
         assertThat(fragment["browserFlow"]).isEqualTo("browser-loa")
         assertThat(flows.keys).contains("browser-loa")
-        assertThat(executions.mapNotNull { it["flowAlias"] as String? }).describedAs("every sub-flow it names exists").allSatisfy { assertThat(flows).containsKey(it) }
-        assertThat(executions.mapNotNull { it["authenticatorConfig"] as String? }).describedAs("every configuration it names exists").allSatisfy { assertThat(configs).containsKey(it) }
-        @Suppress("UNCHECKED_CAST")
-        val levels = configs.mapValues { (it.value["config"] as Map<String, String>)["loa-condition-level"] }
+        assertThat(executions.mapNotNull { it["flowAlias"]?.toString() }).describedAs("every sub-flow it names exists").allSatisfy { assertThat(flows).containsKey(it) }
+        assertThat(executions.mapNotNull { it["authenticatorConfig"]?.toString() }).describedAs("every configuration it names exists").allSatisfy { assertThat(configs).containsKey(it) }
+        val levels = configs.mapValues { it.value.map("config")["loa-condition-level"] }
         assertThat(levels).containsEntry("loa1", "1").containsEntry("loa2", "2")
         val level2 = flows.getValue("browser-loa level 2")
-        @Suppress("UNCHECKED_CAST")
-        assertThat((level2["authenticationExecutions"] as List<Map<String, Any?>>).map { it["authenticator"] }).contains("auth-otp-form")
+        assertThat(level2.list("authenticationExecutions").map { it.asMap()["authenticator"] }).contains("auth-otp-form")
         assertThat(fragment).describedAs("levels stay numbers: a name such as pwd would label a client that signs in with a key").doesNotContainKey("attributes")
     }
 
@@ -102,30 +94,24 @@ class RealmsTest {
         run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString())
         val parsed = parse(realm)
 
-        @Suppress("UNCHECKED_CAST")
-        val scopes = (parsed["clientScopes"] as List<Map<String, Any?>>).associateBy { it["name"] as String }
+        val scopes = parsed.list("clientScopes").byText("name")
         assertThat(parsed["defaultDefaultClientScopes"])
             .describedAs("what a client registered by itself starts with: never claim, which picks a code, nor admin")
             .isEqualTo(listOf("shortener-owner", "shortlinks:create", "shortlinks:read", "shortlinks:delete"))
-        @Suppress("UNCHECKED_CAST")
-        val owner = (scopes.getValue("shortener-owner")["protocolMappers"] as List<Map<String, Any?>>).single()
-        @Suppress("UNCHECKED_CAST")
-        val config = owner["config"] as Map<String, String>
+        val owner = scopes.getValue("shortener-owner").list("protocolMappers").single().asMap()
+        val config = owner.map("config")
         assertThat(owner["protocolMapper"]).describedAs("the owner is written by the provider from the client id of the session").isEqualTo("oidc-usersessionmodel-note-mapper")
         assertThat(config).containsEntry("user.session.note", "client_id").containsEntry("claim.name", "owner")
         assertThat(Files.readString(realm)).describedAs("no client carries a fixed owner of its own").doesNotContain("oidc-hardcoded-claim-mapper")
 
         listOf("anonymous", "authenticated").forEach { subType ->
             val policies = parsed.registrationPolicies(subType)
-            @Suppress("UNCHECKED_CAST")
-            val mappers = (policies.getValue("Allowed Protocol Mapper Types")["config"] as Map<String, List<String>>)["allowed-protocol-mapper-types"].orEmpty()
+            val mappers = policies.getValue("Allowed Protocol Mapper Types").map("config").list("allowed-protocol-mapper-types")
             assertThat(mappers).describedAs("$subType: a registrant adds no mapper").isEmpty()
             assertThat(policies.getValue("Allowed Client Scopes")["providerId"]).describedAs("$subType: scopes beyond the defaults are refused").isEqualTo("allowed-client-templates")
-            @Suppress("UNCHECKED_CAST")
-            assertThat((policies.getValue("Max Clients Limit")["config"] as Map<String, List<String>>)["max-clients"]).describedAs("$subType: the invitations are limited").containsExactly("50")
+            assertThat(policies.getValue("Max Clients Limit").map("config").list("max-clients")).describedAs("$subType: the invitations are limited").containsExactly("50")
         }
-        @Suppress("UNCHECKED_CAST")
-        assertThat((parsed.registrationPolicies("anonymous").getValue("Trusted Hosts")["config"] as Map<String, Any?>)).describedAs("nobody is a trusted host, so no registration without an invitation")
+        assertThat(parsed.registrationPolicies("anonymous").getValue("Trusted Hosts").map("config")).describedAs("nobody is a trusted host, so no registration without an invitation")
             .doesNotContainKey("trusted-hosts")
         assertThat(parsed["registrationAllowed"]).isEqualTo(false)
     }
@@ -155,10 +141,8 @@ class RealmsTest {
         )
 
         assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
-        @Suppress("UNCHECKED_CAST")
-        val users = (parse(realm)["users"] as List<Map<String, Any?>>).associateBy { it["username"] as String }
-        @Suppress("UNCHECKED_CAST")
-        fun password(user: String) = ((users.getValue(user)["credentials"] as List<Map<String, Any?>>).single()["value"])
+        val users = parse(realm).list("users").byText("username")
+        fun password(user: String) = users.getValue(user).list("credentials").single().asMap()["value"]
         assertThat(password("alice")).isEqualTo(awkward)
         assertThat(password("bob")).isEqualTo("plain")
     }

@@ -119,12 +119,14 @@ internal object HeapHistogram {
                     tally.add(classId, bytes + 16L)
                     p += idSize + 4 + idSize + 4 + bytes
                 }
+
                 0x22 -> {
                     val elements = dump.getInt(p + idSize + 4)
                     val classId = id(dump, p + idSize + 8, idSize)
                     tally.add(classId, 16L + elements.toLong() * idSize)
                     p += idSize + 8 + idSize + elements * idSize
                 }
+
                 0x23 -> {
                     val elements = dump.getInt(p + idSize + 4)
                     val type = dump.get(p + idSize + 8).toInt()
@@ -137,11 +139,17 @@ internal object HeapHistogram {
                     tally.add(kind, 16 + bytes)
                     p += idSize + 9 + bytes.toInt()
                 }
+
                 0x20 -> p = skipClassDump(dump, p, idSize)
+
                 0xFF, 0x05, 0x07 -> p += idSize
+
                 0x01 -> p += 2 * idSize
+
                 0x02, 0x03, 0x08 -> p += idSize + 8
+
                 0x04, 0x06 -> p += idSize + 4
+
                 else -> throw Failure("unknown sub-record 0x%x at %d".format(sub, p))
             }
         }

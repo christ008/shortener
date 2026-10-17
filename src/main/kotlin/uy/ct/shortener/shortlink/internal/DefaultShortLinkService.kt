@@ -73,10 +73,14 @@ class DefaultShortLinkService(
      * The link the caller already made under [shortCode] for [uri], which is what claiming it again means. A link is never
      * changed or removed, so if it is the caller's and has this target now, it always had.
      */
-    private fun ownLinkFor(shortCode: ShortCode, uri: URI, createdBy: Actor.Client): ShortLink =
-        (repository.findByShortCode(shortCode) as? LinkLookup.Found)?.link
-            ?.takeIf { it.createdBy == createdBy && it.targetUrl == uri }
-            ?: throw ShortCodeUnavailableException(shortCode)
+    private fun ownLinkFor(shortCode: ShortCode, uri: URI, createdBy: Actor.Client): ShortLink {
+        val existing = when (val lookup = repository.findByShortCode(shortCode)) {
+            is LinkLookup.Found -> lookup.link
+            LinkLookup.Missing -> throw ShortCodeUnavailableException(shortCode)
+        }
+        if (existing.createdBy != createdBy || existing.targetUrl != uri) throw ShortCodeUnavailableException(shortCode)
+        return existing
+    }
 
     override fun resolve(shortCode: ShortCode): ShortLink =
         redirectCache

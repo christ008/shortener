@@ -50,9 +50,14 @@ class InMemoryShortLinkRepository : ShortLinkRepository {
         return InsertResult.Created(ShortLink(shortCode, targetUrl, Actor.Client(createdBy), now).also { saved += it })
     }
 
+    private fun nameOf(actor: Actor): String = when (actor) {
+        is Actor.Client -> actor.name
+        Actor.Unknown -> ""
+    }
+
     override fun list(filter: CreatedByFilter, pageable: Pageable): Page<ShortLink> {
         val newestFirst = compareByDescending<ShortLink> { it.createdAt }.thenByDescending { it.shortCode.value }
-        val matching = saved.filter { filter == CreatedByFilter.Anyone || filter.isLimitedTo((it.createdBy as? Actor.Client)?.name.orEmpty()) }
+        val matching = saved.filter { filter == CreatedByFilter.Anyone || filter.isLimitedTo(nameOf(it.createdBy)) }
             .sortedWith(newestFirst)
         val page = matching.drop(pageable.offset.toInt()).take(pageable.pageSize)
         return PageImpl(page, pageable, matching.size.toLong())

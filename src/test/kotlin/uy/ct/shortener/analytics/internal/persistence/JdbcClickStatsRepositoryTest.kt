@@ -35,7 +35,7 @@ class JdbcClickStatsRepositoryTest {
     private fun at(text: String) = Instant.parse(text)
 
     private fun insert(code: String, hour: String, device: String, clicks: Long) {
-        jdbc.update("INSERT INTO link_click_hourly (short_code, hour, device_class, clicks) VALUES (?, ?::timestamptz, ?, ?)", code, hour, device, clicks)
+        jdbc.update("insert into link_click_hourly (short_code, hour, device_class, clicks) values (?, ?::timestamptz, ?, ?)", code, hour, device, clicks)
     }
 
     @BeforeEach

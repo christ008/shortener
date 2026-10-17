@@ -9,7 +9,6 @@
  */
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.Exec
-
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaToolchainService
 
@@ -76,4 +75,3 @@ tooling("report", "Reads results. -Preport=summary|gc|hprof|profile|json -Ptarge
 tooling("postgresBackup", "Backs up and checks the stack's Postgres. -Pcommand=init|full|diff|check|info|restore-test|offsite|offsite-restore-test (the last two read OFFSITE_BUCKET)") {
     listOf("deploy/postgres/backup", setting("command"))
 }
-

@@ -74,16 +74,19 @@ object Report : Tool(
 
     // ---- summary ------------------------------------------------------------------------------------------------------
 
-    @Suppress("UNCHECKED_CAST")
-    private fun obj(value: Any?): Map<String, Any?> = value as? Map<String, Any?> ?: emptyMap()
+    private fun obj(value: Any?): Map<String, Any?> = when (value) {
+        is Map<*, *> -> value.entries.associate { (name, member) -> name.toString() to member }
+        else -> emptyMap()
+    }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun array(value: Any?): List<Any?> = value as? List<Any?> ?: emptyList()
+    private fun array(value: Any?): List<Any?> = when (value) {
+        is List<*> -> value
+        else -> emptyList()
+    }
 
     private fun number(value: Any?): Double = (value as? Number)?.toDouble() ?: 0.0
 
     /** The JSON object in [file], or a failure that names the file. */
-    @Suppress("UNCHECKED_CAST")
     private fun parse(file: Path, context: Context): Map<String, Any?> {
         val text = context.read(file)
         val value = try {
@@ -91,7 +94,8 @@ object Report : Tool(
         } catch (notJson: JacksonException) {
             throw Failure("$file is not valid JSON: ${notJson.originalMessage}")
         }
-        return value as? Map<String, Any?> ?: throw Failure("$file is not valid JSON: expected a JSON object")
+        if (value !is Map<*, *>) throw Failure("$file is not valid JSON: expected a JSON object")
+        return obj(value)
     }
 
     private fun peakMemory(file: Path): Double {

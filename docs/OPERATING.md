@@ -303,6 +303,7 @@ says why.
 
 | Level | Command | Needs |
 |---|---|---|
+| Lint (Kotlin, Gradle scripts, the Java client, scripts, SQL, YAML) | `./gradlew spotlessCheck`; `./gradlew spotlessApply` fixes | |
 | Everything (about 1 minute) | `./gradlew test` | Docker (Testcontainers starts Postgres) |
 | One class | `./gradlew test --tests '*ShortLinkAuthorizationTest'` | |
 | API contract | `./gradlew test --tests '*OpenApiContractTest'` | |

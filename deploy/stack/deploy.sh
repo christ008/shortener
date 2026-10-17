@@ -79,24 +79,25 @@ database_args=""
 for f in $database_files; do database_args="$database_args -c $f"; done
 
 # Config names carry a hash of the file.
-NGINX_CONF_HASH=$(sha256sum deploy/edge/nginx.conf | cut -c1-12)
-EDGE_UPSTREAM_CONF_HASH=$(sha256sum "deploy/edge/upstream${PKI:+.mtls}.conf" | cut -c1-12)
-PROMETHEUS_CONF_HASH=$(cat deploy/observability/prometheus.stack.yml deploy/observability/alerts.yml | sha256sum | cut -c1-12)
+hash12() { cat "$@" | sha256sum | cut -c1-12; }
+NGINX_CONF_HASH=$(hash12 deploy/edge/nginx.conf)
+EDGE_UPSTREAM_CONF_HASH=$(hash12 "deploy/edge/upstream${PKI:+.mtls}.conf")
+PROMETHEUS_CONF_HASH=$(hash12 deploy/observability/prometheus.stack.yml deploy/observability/alerts.yml)
 if [ -n "${KEYCLOAK:-}" ]; then
-  KEYCLOAK_REALM_HASH=$(sha256sum deploy/keycloak/shortener-realm.production.json | cut -c1-12)
-  EDGE_KEYCLOAK_CONF_HASH=$(sha256sum deploy/edge/keycloak.conf | cut -c1-12)
+  KEYCLOAK_REALM_HASH=$(hash12 deploy/keycloak/shortener-realm.production.json)
+  EDGE_KEYCLOAK_CONF_HASH=$(hash12 deploy/edge/keycloak.conf)
   export KEYCLOAK_REALM_HASH EDGE_KEYCLOAK_CONF_HASH
 fi
 # The certificate secrets are named after their contents, so renewing one replaces it.
-TLS_HASH=$(cat "${SECRETS_DIR:-secrets}/tls_cert" "${SECRETS_DIR:-secrets}/tls_key" 2>/dev/null | sha256sum | cut -c1-12)
+TLS_HASH=$(hash12 "${SECRETS_DIR:-secrets}/tls_cert" "${SECRETS_DIR:-secrets}/tls_key" 2>/dev/null)
 if [ -n "${CONSOLE:-}" ]; then
-  EDGE_CONSOLE_CONF_HASH=$(sha256sum deploy/edge/console.conf | cut -c1-12)
+  EDGE_CONSOLE_CONF_HASH=$(hash12 deploy/edge/console.conf)
   export EDGE_CONSOLE_CONF_HASH
 fi
 # The scripts and files Postgres is given: Swarm does not update a config in place, and they change with the releases.
-POSTGRES_CONF_HASH=$(cat deploy/postgres/bootstrap.sql deploy/postgres/include-diagnostics.sh deploy/postgres/set-role-passwords.sh \
+POSTGRES_CONF_HASH=$(hash12 deploy/postgres/bootstrap.sql deploy/postgres/include-diagnostics.sh deploy/postgres/set-role-passwords.sh \
   deploy/postgres/diagnostics.conf deploy/postgres/keycloak-database.sh deploy/postgres/pgbackrest.conf deploy/postgres/replication.sh \
-  deploy/postgres/pg_hba.mtls.conf deploy/postgres/pg_ident.mtls.conf | sha256sum | cut -c1-12)
+  deploy/postgres/pg_hba.mtls.conf deploy/postgres/pg_ident.mtls.conf)
 export NGINX_CONF_HASH EDGE_UPSTREAM_CONF_HASH PROMETHEUS_CONF_HASH POSTGRES_CONF_HASH TLS_HASH
 # With the CA, a hash of each file pki.sh made names its secret, and the certificates' labels say whose they are and until when.
 if [ -n "${PKI_CA:-}${PKI:-}" ]; then
@@ -121,10 +122,8 @@ deploy() { # [FILES AS -c ARGUMENTS]: all of them, unless it is told which
   docker stack deploy ${1:-$args} --with-registry-auth --resolve-image "${RESOLVE_IMAGE:-always}" --detach=true "$stack"
 }
 
-current=$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_shortener" 2>/dev/null \
-  | sed 's/@.*//; s/.*://' || true)
-
 tag_of() { docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$1" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
+current=$(tag_of shortener)
 
 database_has_certificate() { # a task of the database is running with the certificate's secret, on any node: the swarm's own API, not the containers of this node
   for task in $(docker service ps -q --filter desired-state=running "${stack}_postgres"); do
@@ -140,7 +139,7 @@ database_has_certificate() { # a task of the database is running with the certif
 if [ -n "${PKI:-}" ] && [ -n "$current" ] \
   && ! docker service inspect --format '{{range .Spec.TaskTemplate.ContainerSpec.Secrets}}{{.SecretName}} {{end}}' "${stack}_postgres" 2>/dev/null | grep -q pki_postgres_key; then
   echo "turning on mutual TLS: the database first"
-  EDGE_UPSTREAM_CONF_HASH=$(sha256sum deploy/edge/upstream.conf | cut -c1-12) SHORTENER_VERSION=$current SHORTENER_MIGRATE_VERSION=$(tag_of migrate) deploy "$database_args"
+  EDGE_UPSTREAM_CONF_HASH=$(hash12 deploy/edge/upstream.conf) SHORTENER_VERSION=$current SHORTENER_MIGRATE_VERSION=$(tag_of migrate) deploy "$database_args"
   waited=0
   until database_has_certificate; do
     if [ "$waited" -ge "${WAIT:-300}" ]; then

@@ -3,6 +3,7 @@ package uy.ct.shortener.shortlink.internal
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.LinkLookup
 import uy.ct.shortener.shortlink.LinkStatus
@@ -17,6 +18,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /**
  * The redirect cache on its own: what it keeps, for how long, how many, what it does when many
@@ -133,7 +135,7 @@ class RedirectCacheTest {
         }
 
         assertThat(loads).hasValue(1)
-        assertThat(results).allSatisfy { assertThat((it as LinkLookup.Found).link.shortCode).isEqualTo(ShortCode("aaaaaaa")) }
+        assertThat(results).allSatisfy { assertThat(assertIs<LinkLookup.Found>(it).link.shortCode).isEqualTo(ShortCode("aaaaaaa")) }
     }
 
     @Test
@@ -158,8 +160,8 @@ class RedirectCacheTest {
 
     @Test
     fun `refuses settings that would make it useless or unbounded`() {
-        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(ttl = Duration.ZERO) }
-        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(maxEntries = 0) }
+        assertThrows<IllegalArgumentException> { RedirectCacheProperties(ttl = Duration.ZERO) }
+        assertThrows<IllegalArgumentException> { RedirectCacheProperties(maxEntries = 0) }
     }
 
     private val down = { _: ShortCode -> throw StorageUnavailableException(RuntimeException("the database is down")) }
@@ -266,8 +268,8 @@ class RedirectCacheTest {
 
     @Test
     fun `refuses a stale window shorter than the time to live, which could never outlast an entry`() {
-        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(ttl = Duration.ofSeconds(30), staleIfError = Duration.ofSeconds(10)) }
-        org.junit.jupiter.api.assertThrows<IllegalArgumentException> { RedirectCacheProperties(staleIfError = Duration.ofSeconds(-1)) }
+        assertThrows<IllegalArgumentException> { RedirectCacheProperties(ttl = Duration.ofSeconds(30), staleIfError = Duration.ofSeconds(10)) }
+        assertThrows<IllegalArgumentException> { RedirectCacheProperties(staleIfError = Duration.ofSeconds(-1)) }
         assertThat(RedirectCacheProperties(staleIfError = Duration.ZERO).staleIfError).isZero()
         assertThat(RedirectCacheProperties(ttl = Duration.ofSeconds(30), staleIfError = Duration.ofSeconds(30)).staleIfError).isEqualTo(Duration.ofSeconds(30))
     }

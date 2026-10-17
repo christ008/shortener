@@ -2,7 +2,7 @@
 
 Runbook for the production stack, `deploy/stack/compose.prod.yaml`, on Swarm or on one host with Compose. The steps in order,
 with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and every variable and secret is in
-[REFERENCE.md](REFERENCE.md#configuration). This page has the detail behind them. Design and trade-offs:
+[REFERENCE.md](REFERENCE.md#configuration). This page has the detail behind them. How the stack is built:
 [INTERNALS.md](INTERNALS.md#deployment).
 
 - [Requirements](#requirements)
@@ -22,9 +22,9 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
   arm64 (AWS Graviton, Oracle's Ampere); on an amd64 host build it there with `./gradlew bootBuildImage` and set `SHORTENER_IMAGE`. A private package needs
   `docker login ghcr.io` on the manager. `deploy.sh` passes `--with-registry-auth`.
 - `cosign` 3.0.4 or later on the manager (`deploy/aws/bootstrap.sh` installs 3.0.6). `deploy.sh` verifies the image's signature before it deploys anything, and `VERIFY_SIGNATURE=never`
-  skips that (the [one-machine rehearsal](OPERATING.md#rehearse-production-on-one-machine) does, because its image is built locally). Cosign 3 signs in a new layout (a bundle stored as an OCI
-  referrer) that cosign 2.x does not find: it answers `no signatures found`, as for an image nobody signed. Cosign 3 verifies both layouts (tried on 0.22.1, signed in the old one), so a manager with 2.x
-  must be upgraded before a release signed by 3 can be deployed. Versions up to 2.6.1 and 3.0.3 have [CVE-2026-22703](https://github.com/advisories/GHSA-whqx-f9j3-ch6m) (medium: a crafted bundle verifies).
+  skips that (the [one-machine rehearsal](OPERATING.md#rehearse-production-on-one-machine) does, because its image is built locally).
+  Cosign 2.x does not find signatures made by cosign 3 (it answers `no signatures found`); cosign 3 verifies both layouts. Versions up to 2.6.1 and 3.0.3 have
+  [CVE-2026-22703](https://github.com/advisories/GHSA-whqx-f9j3-ch6m) (medium: a crafted bundle verifies).
 - An identity provider whose tokens carry the `owner` claim and bind to the client's key (DPoP). The dev realm
   `deploy/keycloak/shortener-realm.json` shows what is needed. Never import it into a real one.
 - A certificate and key for the host name, as PEM files, and DNS pointing at the node that runs the edge.
@@ -70,7 +70,7 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
   Postgres file restarts Postgres once, with the application failing its queries for about a minute: do it when that is acceptable. Each deploy removes the configs and secrets that nothing uses any more.
 - **Edge configuration:** edit `deploy/edge/nginx.conf`, deploy again.
 - **Rotate a secret:** create the file under a new name in `deploy/stack/compose.prod.yaml`, deploy. A database password needs
-  `ALTER ROLE` first. Rotating `dpop_nonce_secret` makes clients ask for a nonce again once, while the instances disagree.
+  `alter role` first. Rotating `dpop_nonce_secret` makes clients ask for a nonce again once, while the instances disagree.
 
 ## Operate
 
@@ -105,18 +105,16 @@ DNS for the host name pointing at this node, and port 80 open. The challenge is 
 3. `sudo deploy/stack/certificate.sh issue <host> <email>` runs `certbot certonly --webroot`, copies the files into `secrets/` and deploys. Try it first with
    `STAGING=1`: the staging service has generous limits and no client trusts its certificates.
 
-Going from `STAGING=1` to the real service (or back) is one more `issue`: certbot keeps any certificate that is not due for renewal, whoever issued it, so the script
-sees that the existing one came from the other service and issues anyway. Over a certificate from the same service it does not, to stay inside the limits of Let's Encrypt.
+Going from `STAGING=1` to the real service (or back) is one more `issue`: the script sees that the existing certificate came from the other service and issues anyway. Over a certificate from the same service it does not, to stay inside Let's Encrypt's limits.
 
 Renewal is certbot's own timer (`systemctl list-timers certbot.timer`), about thirty days before the expiry. `issue` installs the hook
 `/etc/letsencrypt/renewal-hooks/deploy/shortener`, which runs `certificate.sh install`: it copies the new files and runs `deploy.sh` with the running version. A secret
 is immutable, so `deploy.sh` names the two certificate secrets after a hash of their contents (`TLS_HASH`), and the edge is replaced by a new task with the new secrets,
 which takes a few seconds on one node. Old secrets stay until `docker secret rm`; list them with `docker secret ls`. Test the renewal without waiting: `sudo certbot renew --dry-run`.
 
-Tried on 2026-10-11 on a `t4g.small` in `us-east-2`, with `STAGING=1`: `issue` got a certificate through the edge, `install` rotated the secrets
-(`tls_cert_<hash>`, mounted at `/run/secrets/tls_cert` as before) and the edge served the new certificate, and `certbot renew --dry-run` passed. The stack ran
-with the application running (the signed image of 0.22.1), and the real service and a renewal 30 days on were not tried. `issue HOST -` registers without an email,
-for a trial: with a real certificate give one, because that is where Let's Encrypt writes before an expiry.
+Verified on a `t4g.small` in `us-east-2` with `STAGING=1`: `issue` got a certificate through the edge, `install` rotated the secrets (`tls_cert_<hash>`, mounted at
+`/run/secrets/tls_cert` as before), the edge served the new certificate, and `certbot renew --dry-run` passed. Not tried: the real service and a renewal 30 days on.
+`issue HOST -` registers without an email, for a trial; with a real certificate give one, because Let's Encrypt writes to it before an expiry.
 
 ## Mutual TLS between the services
 
@@ -154,13 +152,17 @@ the same machine as a service's key, and the CA never sees a service's private k
 6. **Turn it on.** Put `PKI=1` in `.env` and `deploy/stack/deploy.sh <version>`. Services take their certificates as secrets named after a hash of their contents, so the edge, the application and the database are replaced
    with them, and `docker secret inspect pki_edge_cert_<hash>` shows its labels: the role, the identity, the serial, the SHA-256 fingerprint, and when it expires and is renewed.
 
-The first time, `deploy.sh` does it in two deploys: the database, which restarts to take certificates only, with the application as it runs, and when the database is up, the rest. In one deploy the application's new tasks
-would start while the database is down, fail to connect, and Swarm would roll the application back to the one that has no certificate, which the database then refuses (tried: a rollback in twelve seconds). The application as it
-was cannot reach the database between the two. Turning it on is a short maintenance event: measured on two nodes with a request every 0.3 s to each edge, about 28 seconds in which the edges answered `502` (103 of 592 requests) or did not answer at all (13 more). The edge starts speaking TLS to the application while every replica still speaks plain HTTP, and until the first new replica is up there is nobody to talk to; the other order has the same gap. Do it when that is acceptable.
+Turning it on:
+
+- The first time, `deploy.sh` deploys twice: the database first, restarting to take certificates only while the application runs as it is, and when the database is up, the rest.
+  In one deploy the application's new tasks would start while the database is down, fail to connect, and Swarm would roll the application back to the version with no certificate, which the database then refuses.
+- The application as it was cannot reach the database between the two deploys.
+- It is a short maintenance event: on two nodes, with a request every 0.3 s to each edge, about 28 s in which the edges answered `502` (103 of 592 requests) or did not answer (13 more).
+  The edge speaks TLS to the application while every replica still speaks plain HTTP, and until the first new replica is up there is nobody to talk to; the other order has the same gap.
 
 ### More than one node
 
-Tried on two nodes (a manager and a worker, `t3.small` each), with the application's replicas on both:
+Verified on two nodes (a manager and a worker, `t3.small` each), with the application's replicas on both:
 
 - **Labels.** The CA runs on the node with `shortener.pki=true`, which must be a **manager**: `pki.sh` runs there (it uses `docker exec` on the CA's container, and `deploy.sh` needs a manager), and the CA's database directory (`PKI_DIR`) exists on that node alone. Do not move the label without moving the directory and the secrets. The database runs on the node with `shortener.postgres=true`.
 - **The overlays are encrypted between nodes**: ESP between their addresses, 245 packets in ten seconds and no VXLAN in the clear. The nodes' security group must let through every protocol between them (ESP is protocol 50, which UDP 4789 alone does not cover).
@@ -172,16 +174,15 @@ Tried on two nodes (a manager and a worker, `t3.small` each), with the applicati
 
 ### Renewing
 
-`sudo deploy/stack/pki.sh renew` issues again what is two thirds through its life and deploys with the running version, as `certificate.sh install` does. Run it daily:
-`17 4 * * * root /srv/shortener/deploy/stack/pki.sh renew` in `/etc/cron.d/shortener-pki`. Name roles to renew those whatever their age: `pki.sh renew edge shortener`.
-The edge is replaced in a few seconds, and the application one instance at a time with the new one up first (renewing the application's certificate, tried under Swarm with a request every 200 ms from outside: 505 requests, none failed).
-
-The database's certificate, which lives a year, goes **alone and first**. It replaces the database, which restarts for a few seconds, and if the application were updated at the same time its new tasks would not connect, would fail, and Swarm would roll
-the application back (tried: it did, in eighteen seconds, and left the new certificates in `secrets/` and the old ones in use). So when the database is due, `renew` renews only it and deploys, and the others are due still for the next run.
-To renew all by hand: `pki.sh renew postgres`, then `pki.sh renew edge shortener migrator`. If a deploy ever leaves the application at `rollback_completed` (`docker service inspect shortener_shortener`), run `deploy.sh` again: the database is up by then.
-
-The issuing CA's certificate lasts a year, and `pki.sh inspect` counts the days. A month before: `deploy/stack/pki.sh request` makes a new request for the same key, the root signs it as in step 3, `install-intermediate`
-puts it in place and a deploy replaces the CA and the services' trust, the database among them, so check the application afterwards as above. The services trust the root, so no certificate has to be issued again. If a certificate expires, the service that holds it stops being served: renew early.
+- `sudo deploy/stack/pki.sh renew` issues again what is two thirds through its life and deploys with the running version, as `certificate.sh install` does. Run it daily:
+  `17 4 * * * root /srv/shortener/deploy/stack/pki.sh renew` in `/etc/cron.d/shortener-pki`. Name roles to renew those whatever their age: `pki.sh renew edge shortener`.
+- The edge is replaced in a few seconds, and the application one instance at a time with the new one up first (renewing the application's certificate under Swarm, with a request every 200 ms from outside: 505 requests, none failed).
+- The database's certificate, which lives a year, goes **alone and first**: it replaces the database, which restarts for a few seconds, and an application updated at the same time would fail to connect and be rolled back by Swarm
+  (the rollback leaves the new certificates in `secrets/` and the old ones in use). When the database is due, `renew` renews only it and deploys; the others stay due for the next run.
+- To renew all by hand: `pki.sh renew postgres`, then `pki.sh renew edge shortener migrator`. If a deploy leaves the application at `rollback_completed` (`docker service inspect shortener_shortener`), run `deploy.sh` again: the database is up by then.
+- The issuing CA's certificate lasts a year, and `pki.sh inspect` counts the days. A month before: `deploy/stack/pki.sh request` makes a new request for the same key, the root signs it as in step 3, `install-intermediate`
+  puts it in place, and a deploy replaces the CA and the services' trust, the database among them (check the application afterwards). The services trust the root, so no certificate has to be issued again.
+- A certificate that expires stops its service being served: renew early.
 
 ### Trying it on one machine
 
@@ -195,7 +196,7 @@ puts it in place and a deploy replaces the CA and the services' trust, the datab
 - The identity check is in the application: a caller with a certificate of the CA that is not the edge's is a `403`, and the event `peer_identity_not_allowed` is logged. Production does not start with a certificate asked for and
   no identity named, or the reverse.
 - The CA logs each request with its serial, the provisioner, the names and the validity, and also the certificate and the one-time token of the request (valid five minutes). Treat that log as sensitive.
-- Tried under Swarm on one node (2026-10-14) and on two (2026-10-15), with the image of this version: the CA as a service, turning it on, every identity against the application and the database, and the renewals. Not tried: more than two nodes, and the cost of the TLS between the edge and the application under load.
+- Verified under Swarm on one node and on two: the CA as a service, turning it on, every identity against the application and the database, and the renewals. Not tried: more than two nodes, and the cost of the TLS between the edge and the application under load.
 
 ## Keycloak
 
@@ -235,10 +236,9 @@ the `shortener` realm and its static files only. The master realm and the consol
 
 Memory. The overlay limits Keycloak to `KEYCLOAK_MEMORY` (default `1G`) and lets the heap take `KEYCLOAK_HEAP_PERCENT` (default `65`) of it. Keycloak's
 documentation ([containers](https://www.keycloak.org/server/containers), [sizing](https://www.keycloak.org/high-availability/single-cluster/concepts-memory-and-cpu-sizing))
-sizes a pod at 1250 MB with 10,000 cached sessions, about 300 MB of it outside the heap; says a limit of at least 750 MB is what gives the heap the old
-maximum of 512 MB, and recommends 2 GB for a small production deployment. A small host with a realm of a few clients and no users needs much less than that sizing,
-but how much less is not in the documentation: set `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50` (a 384 MB heap, about 300 MB outside it) and read the use
-with `docker stats` before going lower. The first start, which imports the realm and migrates the database, is the peak, and the caches fill again after every restart.
+sizes a pod at 1250 MB with 10,000 cached sessions (about 300 MB outside the heap), gives 750 MB as the least that keeps the old 512 MB heap maximum, and recommends 2 GB
+for a small production deployment. For a small host with a realm of a few clients and no users: `KEYCLOAK_MEMORY=768M` and `KEYCLOAK_HEAP_PERCENT=50` (a 384 MB heap),
+and read the use with `docker stats` before going lower. The first start, which imports the realm and migrates the database, is the peak.
 
 Notes:
 
@@ -257,11 +257,9 @@ Notes:
   requests a second per address.
 - **Its database is backed up with the shortener's** when the [backups and replica overlay](#backups-and-a-replica) is on:
   pgBackRest copies the whole Postgres instance, and the replica streams all of it.
-- **The edge may be published on another port.** A DPoP proof names the URL with its port, and the application rebuilds that URL
-  from the forwarded headers. The edge sends the port of the `Host` header as `X-Forwarded-Port` (`ComposeStackTest`), because
-  without it Tomcat assumes 443 and a call on another port was refused with `invalid_dpop_proof` while the same call on 443
-  worked. `DpopIntegrationTest` reproduces the refusal at the application and shows the header fixing it, and the smoke test
-  passed through the edge on 9443 ([Verified](INTERNALS.md#verified)).
+- **The edge may be published on another port.** A DPoP proof names the URL with its port, and the application rebuilds that URL from the forwarded
+  headers. The edge sends the port of the `Host` header as `X-Forwarded-Port` (`ComposeStackTest`); without it Tomcat assumes 443 and a call on another port is
+  refused with `invalid_dpop_proof` (`DpopIntegrationTest`). The smoke test passed through the edge on 9443 ([Verified](INTERNALS.md#verified)).
 
 ### The administrator
 
@@ -284,7 +282,7 @@ deploy/keycloak/admin-user retire ana
 Names are lower case: Keycloak keeps them so.
 
 `kcadm.sh` cannot answer a one-time code, so with a user that has the app it cannot sign in with a password: use the console ([through a tunnel](#the-console-through-a-tunnel)) for what the notes list as `kcadm.sh`.
-Tried on Keycloak 26.8.0 (2026-10-12): a password alone asks for the code, a wrong code is refused, the right one signs in, and `retire` disables the bootstrap administrator and refuses before the app is set up.
+Verified on Keycloak 26.8.0: a password alone asks for the code, a wrong code is refused, the right one signs in, and `retire` disables the bootstrap administrator and refuses before the app is set up.
 
 ### The console through a tunnel
 
@@ -308,7 +306,7 @@ sudo sed -i '/127.0.0.1 <host>$/d' /etc/hosts
 ```
 
 The guard is the address `172.18.0.1` in `deploy/edge/console.conf`, the gateway of `docker_gwbridge`; if `docker network inspect docker_gwbridge` says another, change it there, or the console stays closed.
-Tried on the AWS VM (2026-10-12): `404` from the Internet and `200` through the tunnel for `/admin/`, the master realm's metadata and the `shortener` realm. Not tried: the sign-in in a browser on the port 443, and the code of an authenticator app.
+Verified on the AWS VM: `404` from the Internet and `200` through the tunnel for `/admin/`, the master realm's metadata and the `shortener` realm. Not tried: the sign-in in a browser on port 443, and the code of an authenticator app.
 
 ### Administrators in the API
 
@@ -318,8 +316,8 @@ The administrator scope (`shortlinks:admin`) reads and disables every client's l
 - **A person** needs a token whose `acr` claim is a level of 2 or more (`shortener.security.admin.min-level`). Otherwise the API answers `401` with `error="insufficient_user_authentication"` and `acr_values="2"` (RFC 9470), and a client signs the person in again with that `acr_values`.
 
 Keycloak's own flows do not write it: a person who gave a one-time code and one who did not both get `acr: 1`. The realm that gives people the scope (the UI's) must take
-the flow of `deploy/keycloak/realm-step-up.json` (its `authenticationFlows`, `authenticatorConfig` and `browserFlow`) and its client must send `acr_values=2`, or have it as its default. Tried on
-Keycloak 26.8.0: a person who asks for level 2 and has a code configured is asked for it and gets `acr: 2`; one who does not ask gets `1`, as a service account does (the flow gives the levels no names: a name such as `pwd` would label a client that signs in with a key); one with no code configured is made to set it up first.
+the flow of `deploy/keycloak/realm-step-up.json` (its `authenticationFlows`, `authenticatorConfig` and `browserFlow`), and its client must send `acr_values=2` or have it as its default.
+Verified on Keycloak 26.8.0: a person who asks for level 2 and has a code configured is asked for it and gets `acr: 2`; one who does not ask gets `1`, as a service account does; one with no code configured is made to set it up first.
 
 ### Registering a client
 
@@ -368,7 +366,7 @@ Limits and how to end one:
    ```
 4. Deploy: `POSTGRES_HA=1 deploy/stack/deploy.sh <version>`. On a database that already exists, create the role by hand:
    `docker exec <postgres container> sh /docker-entrypoint-initdb.d/35-replication.sh`, then
-   `psql -U postgres -c 'SELECT pg_reload_conf()'`.
+   `psql -U postgres -c 'select pg_reload_conf()'`.
 5. Make the first backup, once: `deploy/postgres/backup init`. The WAL archiving alert fires until it runs.
 6. Schedule the rest on the node that runs Postgres. `deploy/postgres/backup.cron` is a file for `/etc/cron.d`: a full backup on Sundays and a differential one on the
    other days, at 03:17 of the server's clock. Install it for the repository where it is (it points at `/srv/shortener`), from the repository's root. Two full backups are kept:

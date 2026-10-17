@@ -28,8 +28,11 @@ sealed interface PeerIdentity {
         private const val URI_NAME = 6
 
         fun of(request: HttpServletRequest): PeerIdentity {
-            val chain = request.getAttribute(CERTIFICATE_ATTRIBUTE) as? Array<*>
-            val leaf = chain?.firstOrNull() as? X509Certificate ?: return Unidentified
+            val chain = request.getAttribute(CERTIFICATE_ATTRIBUTE)
+            val leaf = when (val first = (chain as? Array<*>)?.firstOrNull()) {
+                is X509Certificate -> first
+                else -> return Unidentified
+            }
             val names = try {
                 leaf.subjectAlternativeNames.orEmpty().filter { it[0] == URI_NAME }.map { it[1].toString() }.toSet()
             } catch (_: CertificateParsingException) {

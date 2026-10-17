@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 /**
  * The tools of the repository: dev-setup, the realm maker, the smoke test and the report reader (docs/adr/0029-tools-in-kotlin.md).
  *
@@ -28,7 +30,7 @@ dependencies {
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
+        jvmTarget = JvmTarget.JVM_25
         // Compile against the JDK 25 API only.
         freeCompilerArgs.add("-Xjdk-release=25")
         allWarningsAsErrors = true

@@ -69,6 +69,22 @@ ca_container() {
 
 epoch() { date -d "$(openssl x509 -in "$1" -noout "-$2" | cut -d= -f2)" +%s; }
 
+end_date() { openssl x509 -in "$1" -noout -enddate | cut -d= -f2; }
+
+days_left() { echo $(( ( $(epoch "$1" enddate) - $(date +%s) ) / 86400 )); }
+
+# The moment two thirds of a certificate's life are over, in epoch seconds: when it is due for renewal.
+renew_at() { echo $(( $(epoch "$1" startdate) + ( $(epoch "$1" enddate) - $(epoch "$1" startdate) ) * 2 / 3 )); }
+
+hash12() { sha256sum "$1" | cut -c1-12; }
+
+# CERT then the arguments of `openssl pkey` that read its key: whether the key is the certificate's.
+key_matches() {
+  cert=$1
+  shift
+  [ "$(openssl x509 -in "$cert" -noout -pubkey)" = "$(openssl pkey "$@" -pubout)" ]
+}
+
 # name of the identity, what it may be used for, who signs it, how long it lives, and its names
 role_settings() {
   case "$1" in
@@ -96,14 +112,14 @@ issue_role() {
     --issuer="$provisioner" --provisioner-password-file=/home/step/secrets/provisioner.pass \
     --not-after="$lifetime" --set="role=$role" --set="eku=$eku" --force 2>&1) || { echo "$signed" >&2; exit 1; }
   docker exec "$id" cat "/tmp/$role.crt" > "$cert.new"
-  [ "$(openssl x509 -in "$cert.new" -noout -pubkey)" = "$(openssl pkey -in "$key.new" -pubout)" ] \
+  key_matches "$cert.new" -in "$key.new" \
     || { echo "the CA returned a certificate for another key" >&2; exit 1; }
   case "$role" in
     shortener|migrator) openssl pkcs8 -topk8 -nocrypt -in "$key.new" -outform DER -out "${key}_der.new"; mv -f "${key}_der.new" "${key}_der" ;;
   esac
   mv -f "$key.new" "$key"
   mv -f "$cert.new" "$cert"
-  echo "issued $role: $(openssl x509 -in "$cert" -noout -serial) until $(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2)"
+  echo "issued $role: $(openssl x509 -in "$cert" -noout -serial) until $(end_date "$cert")"
 }
 
 case "$command" in
@@ -140,7 +156,7 @@ authorityKeyIdentifier=keyid
 nameConstraints=critical,permitted;DNS:shortener,permitted;DNS:postgres,permitted;DNS:edge,permitted;DNS:stepca,permitted;URI:$domain,excluded;IP:0.0.0.0/0.0.0.0,excluded;IP:0:0:0:0:0:0:0:0/0:0:0:0:0:0:0:0
 EOF
     chmod 0644 "$out"
-    echo "wrote $out: $(openssl x509 -in "$out" -noout -serial), until $(openssl x509 -in "$out" -noout -enddate | cut -d= -f2)"
+    echo "wrote $out: $(openssl x509 -in "$out" -noout -serial), until $(end_date "$out")"
     ;;
 
   init)
@@ -168,13 +184,13 @@ EOF
     cert=${2:?usage: deploy/stack/pki.sh install-intermediate CERT ROOT}
     root=${3:?usage: deploy/stack/pki.sh install-intermediate CERT ROOT}
     openssl verify -x509_strict -CAfile "$root" "$cert" >/dev/null || { echo "$cert is not signed by $root" >&2; exit 1; }
-    [ "$(openssl x509 -in "$cert" -noout -pubkey)" = "$(openssl pkey -in "$secrets/pki_ca_key" -passin "file:$secrets/pki_ca_pass" -pubout)" ] \
+    key_matches "$cert" -in "$secrets/pki_ca_key" -passin "file:$secrets/pki_ca_pass" \
       || { echo "$cert is for another key than the one init made" >&2; exit 1; }
     cp "$cert" "$secrets/pki_ca_cert"
     cp "$root" "$secrets/pki_root"
     cat "$secrets/pki_ca_cert" "$secrets/pki_root" > "$secrets/pki_chain"
     chmod 0644 "$secrets/pki_ca_cert" "$secrets/pki_root" "$secrets/pki_chain"
-    echo "installed: the issuing CA until $(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2). Deploy with PKI_CA=1, then issue each role"
+    echo "installed: the issuing CA until $(end_date "$cert"). Deploy with PKI_CA=1, then issue each role"
     ;;
 
   issue)
@@ -190,9 +206,7 @@ EOF
       for role in $roles; do
         cert=$secrets/pki_${role}_cert
         [ -e "$cert" ] || continue
-        start=$(epoch "$cert" startdate)
-        end=$(epoch "$cert" enddate)
-        [ "$(date +%s)" -lt $((start + (end - start) * 2 / 3)) ] || due="$due $role"
+        [ "$(date +%s)" -lt "$(renew_at "$cert")" ] || due="$due $role"
       done
     fi
     # A new certificate of the database replaces the database, and the application's new tasks, starting while it restarts, cannot connect and fail, and Swarm rolls the
@@ -208,7 +222,7 @@ EOF
     ;;
 
   inspect)
-    [ -e "$secrets/pki_ca_cert" ] && echo "== issuing CA: $(openssl x509 -in "$secrets/pki_ca_cert" -noout -subject), $(( ( $(epoch "$secrets/pki_ca_cert" enddate) - $(date +%s) ) / 86400 )) days left (renew it with the root, once a year)"
+    [ -e "$secrets/pki_ca_cert" ] && echo "== issuing CA: $(openssl x509 -in "$secrets/pki_ca_cert" -noout -subject), $(days_left "$secrets/pki_ca_cert") days left (renew it with the root, once a year)"
     for cert in "$secrets"/pki_*_cert; do
       [ -e "$cert" ] || { echo "no certificates in $secrets: run issue first" >&2; exit 1; }
       role=$(basename "$cert" _cert); role=${role#pki_}
@@ -220,10 +234,10 @@ EOF
       echo "   public key:  $(openssl x509 -in "$cert" -noout -text | sed -n 's/.*Public Key Algorithm: //p' | head -n 1)"
       if [ -e "$key" ]; then
         match=no
-        [ "$(openssl x509 -in "$cert" -noout -pubkey)" = "$(openssl pkey -in "$key" -pubout)" ] && match=yes
+        if key_matches "$cert" -in "$key"; then match=yes; fi
         echo "   key file:    $key, mode $(stat -c %a "$key"), owner $(stat -c %U "$key"), $(head -n 1 "$key" | sed 's/-----//g'), matches the certificate: $match"
       fi
-      echo "   days left:   $(( ( $(epoch "$cert" enddate) - $(date +%s) ) / 86400 ))"
+      echo "   days left:   $(days_left "$cert")"
     done
     ;;
 
@@ -233,19 +247,17 @@ EOF
       name=$(basename "$file")
       case "$name" in *[!a-z_]*) continue ;; esac
       label=$(echo "${name#pki_}" | tr '[:lower:]' '[:upper:]')
-      echo "PKI_${label}_HASH=$(sha256sum "$file" | cut -c1-12)"
+      echo "PKI_${label}_HASH=$(hash12 "$file")"
       case "$name" in
         pki_root|pki_*_cert)
-          start=$(epoch "$file" startdate)
-          end=$(epoch "$file" enddate)
           echo "PKI_${label}_SERIAL=$(openssl x509 -in "$file" -noout -serial | cut -d= -f2)"
           echo "PKI_${label}_SHA256=$(openssl x509 -in "$file" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d : | tr 'A-F' 'a-f')"
-          echo "PKI_${label}_NOT_AFTER=$(date -u -d "@$end" +%Y-%m-%dT%H:%M:%SZ)"
-          echo "PKI_${label}_RENEW_AFTER=$(date -u -d "@$((start + (end - start) * 2 / 3))" +%Y-%m-%dT%H:%M:%SZ)"
+          echo "PKI_${label}_NOT_AFTER=$(date -u -d "@$(epoch "$file" enddate)" +%Y-%m-%dT%H:%M:%SZ)"
+          echo "PKI_${label}_RENEW_AFTER=$(date -u -d "@$(renew_at "$file")" +%Y-%m-%dT%H:%M:%SZ)"
           ;;
       esac
     done
-    echo "PKI_LEAF_TEMPLATE_HASH=$(sha256sum "$repo/deploy/pki/leaf.tpl" | cut -c1-12)"
+    echo "PKI_LEAF_TEMPLATE_HASH=$(hash12 "$repo/deploy/pki/leaf.tpl")"
     ;;
 
   *) echo "usage: deploy/stack/pki.sh root | sign-intermediate | init | request | install-intermediate | issue | renew | inspect | env" >&2; exit 1 ;;

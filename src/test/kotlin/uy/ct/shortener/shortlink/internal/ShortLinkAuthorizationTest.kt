@@ -1,7 +1,5 @@
 package uy.ct.shortener.shortlink.internal
 
-import uy.ct.shortener.shortlink.CreatedByFilter
-import uy.ct.shortener.shortlink.Actor
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.micrometer.observation.ObservationRegistry
 import org.assertj.core.api.Assertions.assertThat
@@ -18,6 +16,8 @@ import org.springframework.security.authentication.TestingAuthenticationToken
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig
+import uy.ct.shortener.shortlink.Actor
+import uy.ct.shortener.shortlink.CreatedByFilter
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.ShortLinkNotFoundException

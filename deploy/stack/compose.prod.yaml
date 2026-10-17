@@ -112,8 +112,8 @@ services:
       ingress: {}
       data: {}
       egress: {}
-    # Failures during start_period do not count. Two JVMs starting together on 2 vCPUs took 17 to 29 s (a t4g.small), and with 15 s Swarm
-    # killed both as unhealthy before they were ready. A task that is ready earlier is healthy at once.
+    # Failures during start_period do not count. Two JVMs starting together on 2 vCPUs (a t4g.small) take 17 to 29 s.
+    # A task that is ready earlier is healthy at once.
     healthcheck:
       test: ['CMD', '/workspace/health-check']
       interval: 5s

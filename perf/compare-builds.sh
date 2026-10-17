@@ -21,21 +21,28 @@ VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
 BUILDS=${BUILDS:-"stack-image oracle-O3-v3 lite-aot"}
 export RATES="${RATES:-6000 8000 10000 12000 14000}" DURATION="${DURATION:-60s}" COOLDOWN="${COOLDOWN:-15}"
 
+bench() { # IMAGE [COMMAND...]: one run of $build, with the scenario given
+  image=$1
+  shift
+  # shellcheck disable=SC2086
+  perf/bench.sh $SCENARIO_ARGUMENTS "$build" "$image" "$OUT/$build" "$@"
+}
+
 ./gradlew bootJar -q
 for build in $BUILDS; do
-  # shellcheck disable=SC2086
   case $build in
-    jvm-temurin) DOCKER_ARGS="-v $PWD/build/libs/shortener-$VERSION.jar:/app.jar:ro" perf/bench.sh $SCENARIO_ARGUMENTS "$build" eclipse-temurin:25-jre "$OUT/$build" java -XX:MaxRAMPercentage=70 -jar /app.jar;;
-    lite) perf/bench.sh $SCENARIO_ARGUMENTS "$build" shortener-bench:lite "$OUT/$build" java -XX:MaxRAMPercentage=70 -jar /app.jar;;
-    lite-aot) perf/bench.sh $SCENARIO_ARGUMENTS "$build" shortener-bench:lite-aot "$OUT/$build" java -XX:MaxRAMPercentage=70 -XX:AOTMode=on -XX:AOTCache=/aot/app.aot -jar /app.jar;;
+    jvm-temurin) DOCKER_ARGS="-v $PWD/build/libs/shortener-$VERSION.jar:/app.jar:ro" bench eclipse-temurin:25-jre java -XX:MaxRAMPercentage=70 -jar /app.jar;;
+    lite) bench shortener-bench:lite java -XX:MaxRAMPercentage=70 -jar /app.jar;;
+    lite-aot) bench shortener-bench:lite-aot java -XX:MaxRAMPercentage=70 -XX:AOTMode=on -XX:AOTCache=/aot/app.aot -jar /app.jar;;
     lite-serial|lite-g1|lite-zgc|lite-parallel|lite-serial-coh|lite-g1-coh|lite-zgc-coh|lite-parallel-coh)
       collector=${build#lite-}
       headers=
       case $collector in *-coh) collector=${collector%-coh}; headers=-XX:+UseCompactObjectHeaders;; esac
       case $collector in serial) flag=-XX:+UseSerialGC;; g1) flag=-XX:+UseG1GC;; zgc) flag=-XX:+UseZGC;; parallel) flag=-XX:+UseParallelGC;; esac
-      perf/bench.sh $SCENARIO_ARGUMENTS "$build" shortener-bench:lite "$OUT/$build" java -XX:MaxRAMPercentage=70 "$flag" $headers -Xlog:gc:stdout -jar /app.jar;;
-    ce-Os|oracle-v3|oracle-O3-v3) perf/bench.sh $SCENARIO_ARGUMENTS "$build" "shortener-bench:$build" "$OUT/$build";;
-    stack-image) perf/bench.sh $SCENARIO_ARGUMENTS "$build" "shortener:$VERSION" "$OUT/$build";;
+      # shellcheck disable=SC2086
+      bench shortener-bench:lite java -XX:MaxRAMPercentage=70 "$flag" $headers -Xlog:gc:stdout -jar /app.jar;;
+    ce-Os|oracle-v3|oracle-O3-v3) bench "shortener-bench:$build";;
+    stack-image) bench "shortener:$VERSION";;
     *) echo "unknown build $build" >&2; exit 2;;
   esac
 done

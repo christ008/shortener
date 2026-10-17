@@ -34,5 +34,6 @@ platform had become larger than the problem, and what was never run was only val
 ## Rejected
 
 - Keeping Kubernetes: its operators and policies cannot be trusted until run, and running them was the cost being avoided.
-- A managed container service: right for an instance meant to last, and costs more
-  ([INTERNALS.md](../INTERNALS.md#a-managed-container-service-instead-of-a-vm)).
+- A managed container service: right for an instance meant to last, because a managed Postgres leaves nothing to patch and no disk to lose. It costs
+  more, mainly for the database, and needs reshaping: the edge becomes the platform's load balancer, the migration job a one-off task before each release,
+  Keycloak its own service and database, and the stack's network isolation the provider's. Not worth it for a demo ([CLOUD.md](../CLOUD.md)).

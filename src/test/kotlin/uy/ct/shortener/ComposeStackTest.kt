@@ -49,7 +49,6 @@ class ComposeStackTest {
         .mapValues { (_, parts) -> parts.reduce(::merged) }
 
     /** What Compose does with a service named in two files: maps merge, lists add up, and the later scalar wins. */
-    @Suppress("UNCHECKED_CAST")
     private fun merged(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> =
         (base.keys + overlay.keys).associateWith { key ->
             val a = base[key]
@@ -57,22 +56,13 @@ class ComposeStackTest {
             when {
                 a == null -> b
                 b == null -> a
-                a is Map<*, *> && b is Map<*, *> -> merged(a as Map<String, Any?>, b as Map<String, Any?>)
+                a is Map<*, *> && b is Map<*, *> -> merged(a.asMap(), b.asMap())
                 a is List<*> && b is List<*> -> a + b
                 else -> b
             }
         }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun load(path: String): Map<String, Any?> = Yaml().load<Map<String, Any?>>(Files.readString(Path.of(path)))
-
-    @Suppress("UNCHECKED_CAST")
-    private fun Any?.asMap(): Map<String, Any?> = this as? Map<String, Any?> ?: emptyMap()
-
-    private fun Map<String, Any?>.map(key: String): Map<String, Any?> = this[key].asMap()
-
-    @Suppress("UNCHECKED_CAST")
-    private fun Map<String, Any?>.list(key: String): List<Any?> = this[key] as? List<Any?> ?: emptyList()
+    private fun load(path: String): Map<String, Any?> = Yaml().load<Any?>(Files.readString(Path.of(path))).asMap()
 
     private val networks: Map<String, Map<String, Any?>> = files
         .flatMap { it.map("networks").entries }
@@ -80,12 +70,21 @@ class ComposeStackTest {
         .mapValues { (_, parts) -> parts.reduce(::merged) }
 
     private fun networksOf(service: String): Set<String> =
-        services.getValue(service).let { it.list("networks").map(Any?::toString).ifEmpty { it.map("networks").keys.toList() } }.toSet()
+        when (val networks = services.getValue(service)["networks"]) {
+            is List<*> -> networks.map(Any?::toString).toSet()
+            else -> networks.asMap().keys
+        }
 
     private fun membersOf(network: String): Set<String> = services.keys.filter { network in networksOf(it) }.toSet()
 
     private fun secretsOf(service: Map<String, Any?>): Set<String> =
-        service.list("secrets").map { if (it is Map<*, *>) it["source"] as String else it as String }.toSet()
+        service.list("secrets").map(::sourceOf).toSet()
+
+    /** A secret of a service is named by a string, or by a map whose `source` is the name. */
+    private fun sourceOf(secret: Any?): String = when (secret) {
+        is String -> secret
+        else -> secret.asMap().text("source")
+    }
 
     private fun environmentOf(service: Map<String, Any?>) = service.map("environment").mapValues { it.value.toString() }
 
@@ -121,8 +120,8 @@ class ComposeStackTest {
     fun `only the edge publishes ports, in host mode so that it sees the client's address`() {
         val publishing = services.filter { it.value.list("ports").isNotEmpty() }
         assertThat(publishing.keys).containsExactly("edge")
-        publishing.getValue("edge").list("ports").forEach { assertThat((it as Map<*, *>)["mode"]).isEqualTo("host") }
-        assertThat(publishing.getValue("edge").list("ports").map { (it as Map<*, *>)["published"] }).containsExactlyInAnyOrder(80, 443)
+        publishing.getValue("edge").list("ports").maps().forEach { assertThat(it["mode"]).isEqualTo("host") }
+        assertThat(publishing.getValue("edge").list("ports").maps().map { it["published"] }).containsExactlyInAnyOrder(80, 443)
     }
 
     @Test
@@ -140,11 +139,11 @@ class ComposeStackTest {
     fun `writable memory is mounted with the long volumes syntax, which Swarm honours, and never with tmpfs`() {
         services.forEach { (name, service) ->
             assertThat(service).describedAs("$name must not use the short tmpfs key").doesNotContainKey("tmpfs")
-            val tmpfs = service.list("volumes").filterIsInstance<Map<*, *>>().filter { it["type"] == "tmpfs" }
-            tmpfs.forEach { assertThat((it["tmpfs"] as Map<*, *>)["size"]).describedAs("$name tmpfs size").isNotNull }
+            val tmpfs = service.list("volumes").maps().filter { it["type"] == "tmpfs" }
+            tmpfs.forEach { assertThat(it.map("tmpfs")["size"]).describedAs("$name tmpfs size").isNotNull }
         }
-        assertThat(services.getValue("edge").list("volumes").map { (it as Map<*, *>)["target"] }).contains("/tmp")
-        assertThat(services.getValue("shortener").list("volumes").map { (it as Map<*, *>)["target"] }).contains("/tmp")
+        assertThat(services.getValue("edge").list("volumes").maps().map { it["target"] }).contains("/tmp")
+        assertThat(services.getValue("shortener").list("volumes").maps().map { it["target"] }).contains("/tmp")
     }
 
     @Test
@@ -210,10 +209,8 @@ class ComposeStackTest {
     fun `the database has no route out and only the stack's own services attach to it`() {
         val data = files.first().map("networks").map("data")
         assertThat(data["internal"]).isEqualTo(true)
-        assertThat(services.getValue("edge").list("networks").ifEmpty { services.getValue("edge").map("networks").keys.toList() })
-            .doesNotContain("data")
-        assertThat(services.getValue("migrate").map("networks").keys.ifEmpty { services.getValue("migrate").list("networks").toSet() })
-            .containsExactly("data")
+        assertThat(networksOf("edge")).doesNotContain("data")
+        assertThat(networksOf("migrate")).containsExactly("data")
     }
 
     @Test
@@ -480,7 +477,7 @@ class ComposeStackTest {
     @Test
     fun `a service names a secret once, since a stack deploy keeps only the last of two mounts with one source`() {
         services.forEach { (name, service) ->
-            val sources = service.list("secrets").map { if (it is Map<*, *>) it["source"] as String else it as String }
+            val sources = service.list("secrets").map(::sourceOf)
             assertThat(sources).describedAs("secrets of $name").doesNotHaveDuplicates()
         }
     }
@@ -540,7 +537,7 @@ class ComposeStackTest {
         ).forEach { (secret, holders) ->
             assertThat(services.filter { secret in secretsOf(it.value) }.keys).describedAs("who holds $secret").isEqualTo(holders)
         }
-        services.values.flatMap { it.list("secrets").filterIsInstance<Map<*, *>>() }.filter { (it["source"] as String).endsWith("_key_der") }.forEach {
+        services.values.flatMap { it.list("secrets").maps() }.filter { it.text("source").endsWith("_key_der") }.forEach {
             assertThat(it["mode"]).describedAs("pgjdbc refuses a key others can read: ${it["source"]}").isEqualTo(256)
             assertThat(it["uid"].toString()).isEqualTo("1000")
         }
@@ -557,7 +554,7 @@ class ComposeStackTest {
             "proxy_ssl_certificate /run/secrets/mtls_cert;", "proxy_ssl_certificate_key /run/secrets/mtls_key;", "proxy_ssl_trusted_certificate /run/secrets/mtls_ca;",
         )
         assertThat(tls.count { it.startsWith("proxy_pass ") }).isEqualTo(1)
-        val edge = services.getValue("edge").list("secrets").filterIsInstance<Map<*, *>>().filter { (it["source"] as String).startsWith("pki_") }
+        val edge = services.getValue("edge").list("secrets").maps().filter { it.text("source").startsWith("pki_") }
         assertThat(edge.map { it["target"] }).containsExactlyInAnyOrder("mtls_cert", "mtls_key", "mtls_ca")
         assertThat(load("deploy/stack/compose.prod.yaml").map("configs").map("edge-upstream")["file"]).isEqualTo("../edge/upstream.conf")
         assertThat(load("deploy/stack/overlays/compose.pki.yaml").map("configs").map("edge-upstream")["file"]).isEqualTo("../edge/upstream.mtls.conf")
@@ -622,9 +619,9 @@ class ComposeStackTest {
     @Test
     fun `every config is named after a hash of its file, because Swarm does not update one in place`() {
         (composePaths + "deploy/stack/overlays/compose.console.yaml").forEach { path ->
-            val configs = Yaml().load<Map<String, Any?>>(Files.readString(Path.of(path)))["configs"] as Map<*, *>? ?: emptyMap<String, Any?>()
+            val configs = load(path).map("configs")
             configs.forEach { (name, config) ->
-                assertThat((config as Map<*, *>)["name"].toString()).describedAs("the name of config $name in $path").contains("_HASH")
+                assertThat(config.asMap()["name"].toString()).describedAs("the name of config $name in $path").contains("_HASH")
             }
         }
     }
@@ -676,6 +673,6 @@ class ComposeStackTest {
     fun `the application's health check waits for a cold start on a small host before its failures count`() {
         val healthcheck = services.getValue("shortener").map("healthcheck")
 
-        assertThat((healthcheck["start_period"] as String).removeSuffix("s").toInt()).describedAs("start_period in seconds").isGreaterThanOrEqualTo(45)
+        assertThat(healthcheck.text("start_period").removeSuffix("s").toInt()).describedAs("start_period in seconds").isGreaterThanOrEqualTo(45)
     }
 }

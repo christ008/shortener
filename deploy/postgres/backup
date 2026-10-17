@@ -32,7 +32,9 @@ container=${PG_CONTAINER:-$(docker ps -q -f "name=^${stack}_postgres\\." | head 
 }
 pgbackrest() { docker exec -u postgres "$container" pgbackrest --stanza=shortener "$@"; }
 repository_volume() {
-  docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/pgbackrest"}}{{.Name}}{{end}}{{end}}' "$container"
+  volume=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/pgbackrest"}}{{.Name}}{{end}}{{end}}' "$container")
+  [ -n "$volume" ] || { echo "backup: the container has no volume at /var/lib/pgbackrest" >&2; return 1; }
+  echo "$volume"
 }
 offsite_cli() {
   bucket=${OFFSITE_BUCKET:?backup: set OFFSITE_BUCKET}
@@ -54,10 +56,6 @@ case "$command" in
   restore-test)
     image=${PG_IMAGE:-$(docker inspect --format '{{.Config.Image}}' "$container")}
     repository=${PGBACKREST_VOLUME:-$(repository_volume)}
-    [ -n "$repository" ] || {
-      echo "backup: the container has no volume at /var/lib/pgbackrest" >&2
-      exit 1
-    }
     docker run --rm --user root --entrypoint /usr/local/bin/shortener-restore-test \
       -v "$repository:/var/lib/pgbackrest:ro" \
       -v "$here/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro" \
@@ -69,7 +67,6 @@ case "$command" in
     what=${2:-all}
     case "$what" in all | wal) ;; *) echo "usage: deploy/postgres/backup offsite [wal]" >&2; exit 2 ;; esac
     repository=$(repository_volume)
-    [ -n "$repository" ] || { echo "backup: the container has no volume at /var/lib/pgbackrest" >&2; exit 1; }
     dir=$(docker volume inspect --format '{{.Mountpoint}}' "$repository")
     # One copy at a time: a second one that starts while the first runs has nothing to add.
     exec 9>"${OFFSITE_LOCK:-/run/shortener-offsite.lock}"

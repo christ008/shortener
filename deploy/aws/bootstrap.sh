@@ -30,6 +30,7 @@ set -eu
 swap=${SWAP_GB:-2}
 cosign=${COSIGN_VERSION:-3.0.6}
 overlays=${OVERLAYS:-ACME=1 KEYCLOAK=1 POSTGRES_HA=1}
+has_overlay() { case " $overlays " in *" $1=1 "*) return 0 ;; *) return 1 ;; esac; }
 
 echo "== packages"
 sudo apt-get update -qq
@@ -76,7 +77,7 @@ if [ "$($d info --format '{{.Swarm.LocalNodeState}}')" != active ]; then
   $d swarm init --advertise-addr 127.0.0.1 --listen-addr 127.0.0.1:2377 >/dev/null
 fi
 $d node update --label-add shortener.postgres=true "$($d info --format '{{.Swarm.NodeID}}')" >/dev/null
-case " $overlays " in *" POSTGRES_HA=1 "*)
+if has_overlay POSTGRES_HA; then
   # The replica is a second Postgres with 1 GB: it gets the node's label only where there is room for it.
   node=$($d info --format '{{.Swarm.NodeID}}')
   memory=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)
@@ -87,8 +88,7 @@ case " $overlays " in *" POSTGRES_HA=1 "*)
     $d node update --label-rm shortener.postgres-replica "$node" >/dev/null
   fi
   echo "postgres replica: $replica (${memory} MB of memory)"
-  ;;
-esac
+fi
 sudo mkdir -p /srv/shortener/acme
 sudo chmod 0755 /srv/shortener/acme
 
@@ -101,8 +101,8 @@ for name in db_postgres_password db_app_password db_migrator_password db_exporte
 done
 
 echo "== images the overlays build here"
-case " $overlays " in *" KEYCLOAK=1 "*) $d build -q -t shortener-keycloak:26.8.0 deploy/keycloak >/dev/null ;; esac
-case " $overlays " in *" POSTGRES_HA=1 "*) $d build -q -t shortener-postgres:18.6 deploy/postgres >/dev/null ;; esac
+if has_overlay KEYCLOAK; then $d build -q -t shortener-keycloak:26.8.0 deploy/keycloak >/dev/null; fi
+if has_overlay POSTGRES_HA; then $d build -q -t shortener-postgres:18.6 deploy/postgres >/dev/null; fi
 
 echo "== .env"
 if [ -e .env ]; then
@@ -118,8 +118,10 @@ JWKS_URI=http://keycloak:8080/realms/shortener/protocol/openid-connect/certs
 ALLOWED_TARGET_HOSTS=$ALLOWED_TARGET_HOSTS
 EOF
   for flag in $overlays; do echo "$flag" >>.env; done
-  case " $overlays " in *" KEYCLOAK=1 "*) printf '%s\n' KEYCLOAK_IMAGE=shortener-keycloak KEYCLOAK_VERSION=26.8.0 KEYCLOAK_DB_URL=jdbc:postgresql://postgres:5432/keycloak "KEYCLOAK_MEMORY=${KEYCLOAK_MEMORY:-768M}" KEYCLOAK_HEAP_PERCENT=50 >>.env ;; esac
-  case " $overlays " in *" POSTGRES_HA=1 "*) printf '%s\n' POSTGRES_IMAGE=shortener-postgres POSTGRES_VERSION=18.6 >>.env ;; esac
+  if has_overlay KEYCLOAK; then
+    printf '%s\n' KEYCLOAK_IMAGE=shortener-keycloak KEYCLOAK_VERSION=26.8.0 KEYCLOAK_DB_URL=jdbc:postgresql://postgres:5432/keycloak "KEYCLOAK_MEMORY=${KEYCLOAK_MEMORY:-768M}" KEYCLOAK_HEAP_PERCENT=50 >>.env
+  fi
+  if has_overlay POSTGRES_HA; then printf '%s\n' POSTGRES_IMAGE=shortener-postgres POSTGRES_VERSION=18.6 >>.env; fi
 fi
 
 echo

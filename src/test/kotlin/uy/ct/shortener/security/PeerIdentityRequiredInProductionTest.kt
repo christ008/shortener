@@ -11,7 +11,7 @@ import uy.ct.shortener.security.internal.SecurityProperties
  *
  * - Asking callers for a certificate without naming who may call serves every certificate the CA signed, not only the edge's.
  * - Naming who may call without asking for a certificate refuses every request.
- * - Neither, which is how the application ran before mutual TLS, starts, and so does both.
+ * - Asking for nothing and naming no one starts, and so does both.
  * - Other profiles are left alone, so that tests and development can use one half.
  */
 class PeerIdentityRequiredInProductionTest {

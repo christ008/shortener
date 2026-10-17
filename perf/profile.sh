@@ -14,8 +14,9 @@ PGPASS=$(sed -n "s/^DEV_POSTGRES_PASSWORD='\{0,1\}\([^']*\)'\{0,1\}$/\1/p" "$ROO
 [ -n "$PGPASS" ] || { echo "no Postgres password in $ROOT/.env: run deploy/keycloak/dev-setup first" >&2; exit 1; }
 OUT=$ROOT/perf/results/profiles/$NAME; rm -rf "$OUT"; mkdir -p "$OUT"; chmod 777 "$OUT"
 PGPORT=$(docker compose -f "$ROOT/compose.yaml" port postgres 5432 | cut -d: -f2)
+PG_CONTAINER=$(docker compose -f "$ROOT/compose.yaml" ps -q postgres)
 docker rm -f prof-app >/dev/null 2>&1
-docker update --cpuset-cpus "${PG_CPUSET:-2,3,8,9}" "$(docker compose -f "$ROOT/compose.yaml" ps -q postgres)" >/dev/null
+docker update --cpuset-cpus "${PG_CPUSET:-2,3,8,9}" "$PG_CONTAINER" >/dev/null
 # DOCKER_ARGS is several words on purpose.
 # shellcheck disable=SC2086
 docker run -d --name prof-app --network host --cpuset-cpus "${APP_CPUSET:-0,1}" --cpus 2 --memory 512m -v "$OUT:/out" \
@@ -24,13 +25,17 @@ docker run -d --name prof-app --network host --cpuset-cpus "${APP_CPUSET:-0,1}" 
   ${DOCKER_ARGS:-} "$IMAGE" "$@" >/dev/null
 until curl -sf -m2 -o /dev/null localhost:8081/actuator/health/readiness; do
   [ -n "$(docker ps -q -f name=prof-app)" ] || { echo "app stopped"; docker logs prof-app 2>&1 | tail; exit 1; }; sleep 0.2; done
-docker exec "$(docker compose -f "$ROOT/compose.yaml" ps -q postgres)" psql -q -U myuser -d mydatabase -c 'TRUNCATE short_link' >/dev/null 2>&1
+docker exec "$PG_CONTAINER" psql -q -U myuser -d mydatabase -c 'truncate short_link' >/dev/null 2>&1
 ( while true; do echo "$(date +%s) $(docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' prof-app 2>/dev/null)"; sleep 2; done ) >"$OUT/stats.txt" &
 SAMPLER=$!
-docker run --rm --network host --cpuset-cpus "${K6_CPUSET:-4,5,10,11}" -v "$ROOT/perf/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
-  -e RATE=2000 -e DURATION=20s -e CREATE_SHARE=0.005 -e SEEDS=300 -e MAX_VUS="$MAXVUS" grafana/k6 run --quiet /scripts/mixed.js >"$OUT/warmup.txt" 2>&1 </dev/null
-docker run --rm --network host --cpuset-cpus "${K6_CPUSET:-4,5,10,11}" -v "$ROOT/perf/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
-  -e RATE="$RATE" -e DURATION="$DUR" -e CREATE_SHARE="$SHARE" -e SEEDS=300 -e MAX_VUS="$MAXVUS" grafana/k6 run --quiet --summary-export /out/k6.json /scripts/mixed.js >"$OUT/k6.txt" 2>&1 </dev/null
+k6() { # RATE DURATION CREATE_SHARE [k6 options...]: a run of perf/k6/mixed.js, whose output the caller redirects
+  rate=$1 duration=$2 share=$3
+  shift 3
+  docker run --rm --network host --cpuset-cpus "${K6_CPUSET:-4,5,10,11}" -v "$ROOT/perf/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
+    -e RATE="$rate" -e DURATION="$duration" -e CREATE_SHARE="$share" -e SEEDS=300 -e MAX_VUS="$MAXVUS" grafana/k6 run --quiet "$@" /scripts/mixed.js </dev/null 2>&1
+}
+k6 2000 20s 0.005 >"$OUT/warmup.txt"
+k6 "$RATE" "$DUR" "$SHARE" --summary-export /out/k6.json >"$OUT/k6.txt"
 "$ROOT/perf/scrub-k6-summary.sh" "$OUT/k6.json"
 kill $SAMPLER 2>/dev/null
 docker stop -t 40 prof-app >/dev/null 2>&1

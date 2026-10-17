@@ -65,21 +65,18 @@ class DevSetupTest {
             assertThat(key(it)).contains("\"kid\":\"$it-key-1\"", "\"d\":")
             assertThat(Files.getPosixFilePermissions(tree.resolve("deploy/keycloak/dev-keys/$it.jwk.json")).map { p -> p.name }).contains("OTHERS_READ")
         }
-        @Suppress("UNCHECKED_CAST")
-        val realmClients = (realm()["clients"] as List<Map<String, Any?>>).associateBy { it["clientId"] as String }
+        val realmClients = realm().list("clients").byText("clientId")
         clients.forEach { client ->
-            @Suppress("UNCHECKED_CAST")
-            val trusted = (realmClients.getValue(client)["attributes"] as Map<String, String>)["jwks.string"]
+            val trusted = realmClients.getValue(client).map("attributes").text("jwks.string")
             assertThat(trusted).contains("\"kid\":\"$client-key-1\"").doesNotContain("\"d\":")
-            assertThat(trusted!!.substringAfter("\"x\":\"").substringBefore('"')).isEqualTo(key(client).substringAfter("\"x\":\"").substringBefore('"'))
+            assertThat(trusted.substringAfter("\"x\":\"").substringBefore('"')).isEqualTo(key(client).substringAfter("\"x\":\"").substringBefore('"'))
         }
         assertThat(env().keys).containsExactlyInAnyOrderElementsOf(settings)
         assertThat(Files.getPosixFilePermissions(tree.resolve(".env")).map { it.name }).containsExactlyInAnyOrder("OWNER_READ", "OWNER_WRITE")
         env().filterKeys { it.endsWith("PASSWORD") }.values.forEach { assertThat(it).matches("[A-Za-z0-9]{24}") }
         assertThat(env().filterKeys { it.endsWith("PASSWORD") }.values.toSet()).describedAs("every password is its own").hasSize(7)
 
-        @Suppress("UNCHECKED_CAST")
-        val users = (realm()["users"] as List<Map<String, Any?>>).associate { it["username"] as String to ((it["credentials"] as List<Map<String, Any?>>).single()["value"]) }
+        val users = realm().list("users").map { it.asMap() }.associate { it.text("username") to it.list("credentials").single().asMap()["value"] }
         assertThat(users).containsEntry("alice", env()["DEV_USER_ALICE_PASSWORD"]).containsEntry("bob", env()["DEV_USER_BOB_PASSWORD"])
 
         val before = env() to key("demo-client")

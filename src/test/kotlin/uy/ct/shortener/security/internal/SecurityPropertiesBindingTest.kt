@@ -8,8 +8,8 @@ import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OA
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.StandardEnvironment
-import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
 import org.springframework.core.env.SystemEnvironmentPropertySource
+import uy.ct.shortener.shortlink.internal.authorization.ShortLinkScopes
 
 /**
  * Pins the environment variable names the production stack uses. For a fixed property such as

@@ -9,7 +9,7 @@ import uy.ct.shortener.analytics.internal.ClickStore
 /**
  * [ClickStore] on plain JDBC.
  *
- * - One statement adds a whole batch: the counts go in as arrays and `INSERT ... SELECT FROM unnest(...) ON CONFLICT DO UPDATE`
+ * - One statement adds a whole batch: the counts go in as arrays and `insert ... select from unnest(...) on conflict do update`
  *   adds each to its row, so a batch is atomic, costs one round trip, and two instances adding to one key add up.
  * - A batch holds each key once, as the aggregator guarantees, because one statement cannot change a row twice.
  * - The hour travels as seconds since the epoch and becomes a timestamp in the database.
@@ -30,10 +30,10 @@ class JdbcClickStore(private val jdbc: JdbcTemplate) : ClickStore {
 
     private companion object {
         const val ADD = """
-            INSERT INTO link_click_hourly (short_code, hour, device_class, clicks)
-            SELECT code, to_timestamp(epoch_second), device, clicks
-            FROM unnest(?::text[], ?::int8[], ?::text[], ?::int8[]) AS counts (code, epoch_second, device, clicks)
-            ON CONFLICT (short_code, hour, device_class) DO UPDATE SET clicks = link_click_hourly.clicks + EXCLUDED.clicks
+            insert into link_click_hourly (short_code, hour, device_class, clicks)
+            select code, to_timestamp(epoch_second), device, clicks
+            from unnest(?::text[], ?::int8[], ?::text[], ?::int8[]) as counts (code, epoch_second, device, clicks)
+            on conflict (short_code, hour, device_class) do update set clicks = link_click_hourly.clicks + excluded.clicks
         """
     }
 }

@@ -15,10 +15,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
 /**
- * `Report` replaced three Python scripts, and the numbers they print have been quoted in the documentation. So the
- * expected output of the tests below is what the Python scripts printed for the same files: the results committed under
- * `perf/results`, and a small HPROF dump built to have every kind of record the reader skips or counts. The one line that
- * is new on purpose is the list of causes of the collections, which Python printed as a dictionary.
+ * The output of `Report` for the results committed under `perf/results` and for a small HPROF dump built to have every kind of
+ * record the reader skips or counts, compared with the expected files.
  */
 class ReportTest {
 
@@ -37,7 +35,7 @@ class ReportTest {
 
     @Test
     fun `a tie rounds to the even digit as the published tables did`() {
-        // 2026-10-05-os has a peak memory of 138.5 MiB, which Python wrote as 138 and a round-half-up would write as 139.
+        // 2026-10-05-os has a peak memory of 138.5 MiB: a tie rounds to the even digit (138), not up (139).
         assertThat(run("summary", "perf/results/2026-10-05-os").stdout).contains("| Peak memory under load (MiB) | 138 | 131 | 127 | 170 |")
     }
 

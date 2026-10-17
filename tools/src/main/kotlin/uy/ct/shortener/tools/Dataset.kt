@@ -1,6 +1,7 @@
 package uy.ct.shortener.tools
 
 import java.io.BufferedOutputStream
+import java.nio.file.Files
 import java.util.Arrays
 import java.util.Locale
 import java.util.stream.Gatherers
@@ -50,7 +51,7 @@ object Dataset : Tool("Dataset", "usage: tools/run Dataset COUNT [--seed N] [--t
         )
 
         val started = System.nanoTime()
-        val bytes = request.out?.let { BufferedOutputStream(java.nio.file.Files.newOutputStream(context.path(it)), 1 shl 16) }
+        val bytes = request.out?.let { BufferedOutputStream(Files.newOutputStream(context.path(it)), 1 shl 16) }
         bytes.use { produce(context, request, permutation, values, chunks, started, it) }
         val generated = seconds(started)
 
@@ -59,7 +60,7 @@ object Dataset : Tool("Dataset", "usage: tools/run Dataset COUNT [--seed N] [--t
                 "${rate(request.count, generated)} codes/s",
         )
         if (request.out != null) {
-            val size = java.nio.file.Files.size(context.path(request.out))
+            val size = Files.size(context.path(request.out))
             context.out.println("wrote ${request.out}: ${number(size)} bytes, ${number(size / (Base62.LENGTH + 1))} lines")
         }
         context.out.println("first codes: " + (0L until minOf(5, request.count)).joinToString(" ") { Base62.encode(permutation.valueAt(it)) })
@@ -131,9 +132,13 @@ object Dataset : Tool("Dataset", "usage: tools/run Dataset COUNT [--seed N] [--t
         while (remaining.hasNext()) {
             when (val argument = remaining.next()) {
                 "--seed" -> seed = whole(argument, valueOf(argument))
+
                 "--threads" -> threads = whole(argument, valueOf(argument)).also { if (it !in 1..1024) throw Usage("--threads must be 1 to 1024") }.toInt()
+
                 "--out" -> out = valueOf(argument)
+
                 "--verify" -> verify = true
+
                 else -> {
                     if (argument.startsWith("--")) throw Usage("unknown option $argument")
                     if (count != null) throw Usage("one COUNT only, and '$argument' is a second")

@@ -69,11 +69,11 @@ class DatabaseRolesTest {
         adminUrl = pool.jdbcUrl
         adminUser = pool.username
         adminPassword = pool.password ?: ""
-        asAdmin(defaultDatabase) { it.createStatement().execute("CREATE DATABASE $database") }
+        asAdmin(defaultDatabase) { it.createStatement().execute("create database $database") }
         asAdmin { connection ->
             connection.createStatement().execute(Files.readString(Path.of("deploy/postgres/bootstrap.sql")))
-            connection.createStatement().execute("CREATE ROLE $stranger LOGIN")
-            passwords.forEach { (role, password) -> connection.createStatement().execute("ALTER ROLE $role PASSWORD '$password'") }
+            connection.createStatement().execute("create role $stranger login")
+            passwords.forEach { (role, password) -> connection.createStatement().execute("alter role $role password '$password'") }
         }
         flywayAs("shortener_migrator").migrate()
     }
@@ -81,8 +81,8 @@ class DatabaseRolesTest {
     @AfterAll
     fun dropEverything() {
         asAdmin(defaultDatabase) {
-            it.createStatement().execute("DROP DATABASE IF EXISTS $database WITH (FORCE)")
-            it.createStatement().execute("DROP ROLE IF EXISTS $stranger")
+            it.createStatement().execute("drop database if exists $database with (force)")
+            it.createStatement().execute("drop role if exists $stranger")
         }
     }
 
@@ -94,7 +94,7 @@ class DatabaseRolesTest {
     @Test
     fun `leaves the tables, and so the right to change them, with the migrator`() {
         val owners = asAdmin { connection ->
-            connection.createStatement().executeQuery("SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'public'").use { rows ->
+            connection.createStatement().executeQuery("select tablename, tableowner from pg_tables where schemaname = 'public'").use { rows ->
                 generateSequence { if (rows.next()) rows.getString(1) to rows.getString(2) else null }.toMap()
             }
         }
@@ -110,7 +110,7 @@ class DatabaseRolesTest {
     fun `lets the application role do what the repository does`() {
         asRole("shortener_app") { connection ->
             val insert = connection.prepareStatement(
-                "INSERT INTO short_link (short_code, target_url, created_by) VALUES (?, ?, ?) ON CONFLICT (short_code) DO NOTHING RETURNING short_code, created_at",
+                "insert into short_link (short_code, target_url, created_by) values (?, ?, ?) on conflict (short_code) do nothing returning short_code, created_at",
             )
             insert.setString(1, "app-role")
             insert.setString(2, "https://example.com/app")
@@ -118,11 +118,11 @@ class DatabaseRolesTest {
             assertThat(insert.executeQuery().use { it.next() }).describedAs("inserted").isTrue()
 
             val select = connection.createStatement()
-                .executeQuery("SELECT short_code, target_url, created_by, created_at, disabled_at, disabled_by FROM short_link WHERE short_code = 'app-role'")
+                .executeQuery("select short_code, target_url, created_by, created_at, disabled_at, disabled_by from short_link where short_code = 'app-role'")
             assertThat(select.use { it.next() }).describedAs("read back").isTrue()
 
             val disable = connection.createStatement().executeQuery(
-                "UPDATE short_link SET disabled_at = COALESCE(disabled_at, now()), disabled_by = COALESCE(disabled_by, 'client') WHERE short_code = 'app-role' RETURNING short_code",
+                "update short_link set disabled_at = coalesce(disabled_at, now()), disabled_by = coalesce(disabled_by, 'client') where short_code = 'app-role' returning short_code",
             )
             assertThat(disable.use { it.next() }).describedAs("disabled").isTrue()
         }
@@ -132,15 +132,15 @@ class DatabaseRolesTest {
     fun `lets the application role add to a count of clicks and read it, as the click store does`() {
         asRole("shortener_app") { connection ->
             val add = connection.prepareStatement(
-                "INSERT INTO link_click_hourly (short_code, hour, device_class, clicks) VALUES ('clicks-a', '2026-10-12T10:00:00Z', 'desktop', ?) " +
-                    "ON CONFLICT (short_code, hour, device_class) DO UPDATE SET clicks = link_click_hourly.clicks + EXCLUDED.clicks",
+                "insert into link_click_hourly (short_code, hour, device_class, clicks) values ('clicks-a', '2026-10-12T10:00:00Z', 'desktop', ?) " +
+                    "on conflict (short_code, hour, device_class) do update set clicks = link_click_hourly.clicks + excluded.clicks",
             )
             repeat(2) {
                 add.setLong(1, 3)
                 add.executeUpdate()
             }
 
-            val total = connection.createStatement().executeQuery("SELECT clicks FROM link_click_hourly WHERE short_code = 'clicks-a'")
+            val total = connection.createStatement().executeQuery("select clicks from link_click_hourly where short_code = 'clicks-a'")
             assertThat(total.use { it.next(); it.getLong(1) }).isEqualTo(6L)
         }
     }
@@ -149,13 +149,13 @@ class DatabaseRolesTest {
     fun `refuses the application role to delete a count or move it to another link or hour`() {
         asRole("shortener_app") { connection ->
             listOf(
-                "DELETE FROM link_click_hourly",
-                "TRUNCATE link_click_hourly",
-                "UPDATE link_click_hourly SET short_code = 'y'",
-                "UPDATE link_click_hourly SET hour = now()",
-                "UPDATE link_click_hourly SET device_class = 'bot'",
-                "DROP TABLE link_click_hourly",
-                "ALTER TABLE link_click_hourly ADD COLUMN extra int",
+                "delete from link_click_hourly",
+                "truncate link_click_hourly",
+                "update link_click_hourly set short_code = 'y'",
+                "update link_click_hourly set hour = now()",
+                "update link_click_hourly set device_class = 'bot'",
+                "drop table link_click_hourly",
+                "alter table link_click_hourly add column extra int",
             ).forEach { assertRefused(connection, it) }
         }
     }
@@ -164,17 +164,17 @@ class DatabaseRolesTest {
     fun `refuses the application role everything else`() {
         asRole("shortener_app") { connection ->
             listOf(
-                "UPDATE short_link SET target_url = 'https://evil.example' WHERE short_code = 'x'",
-                "UPDATE short_link SET short_code = 'y' WHERE short_code = 'x'",
-                "UPDATE short_link SET created_by = 'someone else' WHERE short_code = 'x'",
-                "DELETE FROM short_link WHERE short_code = 'x'",
-                "TRUNCATE short_link",
-                "DROP TABLE short_link",
-                "ALTER TABLE short_link ADD COLUMN extra int",
-                "CREATE INDEX extra_idx ON short_link (target_url)",
-                "CREATE TABLE extra (id int)",
-                "INSERT INTO flyway_schema_history (installed_rank, description, type, script, checksum, installed_by, execution_time, success) VALUES (99, 'x', 'SQL', 'x', 0, 'x', 0, true)",
-                "DELETE FROM flyway_schema_history",
+                "update short_link set target_url = 'https://evil.example' where short_code = 'x'",
+                "update short_link set short_code = 'y' where short_code = 'x'",
+                "update short_link set created_by = 'someone else' where short_code = 'x'",
+                "delete from short_link where short_code = 'x'",
+                "truncate short_link",
+                "drop table short_link",
+                "alter table short_link add column extra int",
+                "create index extra_idx on short_link (target_url)",
+                "create table extra (id int)",
+                "insert into flyway_schema_history (installed_rank, description, type, script, checksum, installed_by, execution_time, success) values (99, 'x', 'SQL', 'x', 0, 'x', 0, true)",
+                "delete from flyway_schema_history",
             ).forEach { assertRefused(connection, it) }
         }
     }
@@ -191,7 +191,7 @@ class DatabaseRolesTest {
     fun `applies the limits of each role when it logs in`() {
         fun settings(role: String) = asRole(role) { connection ->
             listOf("statement_timeout", "lock_timeout", "idle_in_transaction_session_timeout").associateWith { name ->
-                connection.createStatement().executeQuery("SHOW $name").use { it.next(); it.getString(1) }
+                connection.createStatement().executeQuery("show $name").use { it.next(); it.getString(1) }
             }
         }
 
@@ -203,9 +203,9 @@ class DatabaseRolesTest {
     @Test
     fun `lets the exporter read statistics but not the links`() {
         asRole("shortener_exporter") { connection ->
-            assertThat(connection.createStatement().executeQuery("SELECT count(*) FROM pg_stat_database").use { it.next() }).isTrue()
-            assertRefused(connection, "SELECT * FROM short_link")
-            assertRefused(connection, "SELECT * FROM link_click_hourly")
+            assertThat(connection.createStatement().executeQuery("select count(*) from pg_stat_database").use { it.next() }).isTrue()
+            assertRefused(connection, "select * from short_link")
+            assertRefused(connection, "select * from link_click_hourly")
         }
     }
 

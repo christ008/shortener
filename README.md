@@ -50,24 +50,22 @@ flowchart LR
     client(["Client: a program with a DPoP key"]) -->|HTTPS| edge["nginx edge<br/>TLS, limits"]
     visitor(["Visitor"]) -->|"GET /{code}"| edge
     edge --> app["shortener x2<br/>cache of active links"]
-    app -->|"shortener_app: no DELETE, no DDL"| db[("Postgres")]
+    app -->|"shortener_app: no delete, no DDL"| db[("Postgres")]
     migrate["migration job"] -->|shortener_migrator| db
     app -. "signing keys" .-> idp(["Identity provider"])
 ```
 
-## Worth reading
+## Properties
 
-The problems that took the most work, and where each is written up:
-
-- **A stolen token is useless, across instances that share no state.** DPoP-bound tokens with stateless HMAC nonces any
-  instance can check. [SECURITY.md](docs/SECURITY.md#dpop-rfc-9449), [ADR 0032](docs/adr/0032-dpop-nonces.md)
-- **A code can never be reused, even by a compromised application.** The application's database role cannot delete a row or
-  change a code. [Roles and migrations](docs/INTERNALS.md#roles-and-migrations)
-- **Redirects survive a database outage, for a bounded time.** A cache of active links with `stale-if-error`, and readiness
-  that leaves the database out. [Redirect cache](docs/INTERNALS.md#redirect-cache), [ADR 0012](docs/adr/0012-readiness-excludes-the-database.md)
-- **Why a JVM and not a native image?** Three builds measured behind the edge on 2 CPUs: what a request costs, where each one's knee is, and
-  why the native image once ran out of heap. [Performance](docs/INTERNALS.md#performance), [ADR 0036](docs/adr/0036-jvm-image-for-arm64.md)
-- **What each invariant rests on:** the test that fails without it. [Invariants](docs/DESIGN.md#invariants)
+| Property | How | Where |
+|---|---|---|
+| A stolen token is useless | DPoP-bound tokens; HMAC nonces that any instance can check | [SECURITY.md](docs/SECURITY.md#dpop-rfc-9449), [ADR 0032](docs/adr/0032-dpop-nonces.md) |
+| A code is never reused, even by a compromised application | the application's database role cannot delete a row or change a code | [Roles and migrations](docs/INTERNALS.md#roles-and-migrations) |
+| Redirects survive a database outage, for a bounded time | a cache of active links with `stale-if-error`; readiness leaves the database out | [Redirect cache](docs/INTERNALS.md#redirect-cache), [ADR 0012](docs/adr/0012-readiness-excludes-the-database.md) |
+| A client sees only its own links | ownership checked in the service; another client's link is `404` | [SECURITY.md](docs/SECURITY.md#authorization) |
+| Production refuses an unsafe configuration | no target-host decision, DPoP off or no nonce secret stops the start | [Invariants](docs/DESIGN.md#invariants) |
+| One JVM image, at least 12,000 req/s on 2 CPUs behind the edge | Liberica Lite 25, G1, compact object headers | [Performance](docs/INTERNALS.md#performance), [ADR 0036](docs/adr/0036-jvm-image-for-arm64.md) |
+| Each invariant has a test | the test that fails without it | [Invariants](docs/DESIGN.md#invariants) |
 
 ## Run it
 
@@ -121,18 +119,18 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
 ## Evidence
 
 - **Tests:** 479, all passing, 335 of them on the service. Line coverage 97.2%, branch coverage 91.2%.
-- **Mutation score:** 92% on the logic of the `shortlink` and `security` modules (249 mutants), with the survivors explained.
-  [INTERNALS.md#testing](docs/INTERNALS.md#testing)
-- **Security:** the controls, and a STRIDE model with a register of findings, severities, fix dates and the risks accepted.
+- **Mutation score:** 92% on the logic of the `shortlink` and `security` modules (249 mutants). [INTERNALS.md#testing](docs/INTERNALS.md#testing)
+- **Security:** the controls, and a STRIDE model with the open findings, their severities and the risks accepted.
   [SECURITY.md](docs/SECURITY.md), [THREAT_MODEL.md](docs/THREAT_MODEL.md)
 - **Performance:** one desktop, a synthetic load of 99% redirects on links the cache holds. With 2 CPUs a JVM sustains at least 12,000 req/s behind the edge of the stack, and the native image it replaced 6,000.
   The figure is for the cache, not the database. Method and a warning to read before load testing:
   [INTERNALS.md#performance](docs/INTERNALS.md#performance).
-- **Decisions:** one record per decision, with what it costs. [docs/adr/](docs/adr/README.md)
+- **Decisions:** one ADR each, with its cost. [docs/adr/](docs/adr/README.md)
 
 ## Build, test, package
 
 ```bash
+./gradlew spotlessCheck         # lint; ./gradlew spotlessApply fixes what it can
 ./gradlew test                  # integration tests use Testcontainers (Docker)
 ./gradlew bootBuildImage        # JVM image on Alpaquita (glibc) by Paketo buildpacks; arm64 on an arm64 machine
 perf/smoke.sh                   # every endpoint, with real tokens, against a running instance
@@ -150,27 +148,23 @@ Postgres backups with a replica. `deploy/stack/deploy.sh` verifies the image's s
 | [REFERENCE.md](docs/REFERENCE.md) | every configuration key, secret file and script |
 | [DEPLOY.md](docs/DEPLOY.md) | production stack runbook: first deploy, updates, Keycloak, backups |
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | metrics, dashboard, traces, alerts, logs |
-| [INTERNALS.md](docs/INTERNALS.md) | how it works: request flows, database, cache, image, deployment, tests and measurements |
-| [DESIGN.md](docs/DESIGN.md) | invariants, and why the code has this shape: modules, types, design review |
+| [INTERNALS.md](docs/INTERNALS.md) | request flows, database, cache, image, deployment, tests and measurements |
+| [DESIGN.md](docs/DESIGN.md) | invariants, modules, types, conventions |
 | [SECURITY.md](docs/SECURITY.md) | the controls: filter chain, tokens, DPoP, scopes, rate limits |
-| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, a register of findings with their fixes, and the risks accepted |
-| [adr/](docs/adr/README.md) | decision records |
-| [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | the public instance: setup, costs, what was run; a plan for a web UI (nothing built) |
+| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | STRIDE, OWASP, the open findings, and the risks accepted |
+| [adr/](docs/adr/README.md) | decision records: why each choice, and what it costs |
+| [CLOUD.md](docs/CLOUD.md), [UI.md](docs/UI.md) | the public instance: shape, setup, cost, status; a plan for a web UI (nothing built) |
 | [openapi.yaml](docs/openapi.yaml) | API contract |
 
 Releases are tagged `v0.x.y`: a minor version for a change, a patch for a fix to a release.
 
 ## Built with AI
 
-Built with [Claude Code](https://claude.com/claude-code) since 2026-09-19: about three in four commits name Claude as co-author.
+Built with [Claude Code](https://claude.com/claude-code) since 2026-09-19; about three in four commits name Claude as co-author.
 
-- **I set the direction, Claude did most of the writing.** I set the requirements and constraints, and reviewed each change.
-- **Iterative, not one-shot.** Most of the work took several rounds of proposal, review and rework: designs, code, tests and
-  these docs alike. Some choices were reversed outright, and the superseded ADRs keep that history.
-- **Generated code is checked, not trusted.** Each claim in the docs names its test or measurement, mutation testing shows
-  the tests catch real faults, and a smoke test exercises the shipped image.
-- **The reasoning is written down.** The ADRs and the threat model were drafted with Claude from the commit history, each with
-  its cost and the alternatives it rejected.
+- The requirements and constraints are the author's, and every change is reviewed.
+- Each claim in the docs names its test or measurement; mutation testing and a smoke test of the shipped image check the tests and the image.
+- The ADRs and the threat model record each decision with its cost and the alternatives rejected.
 
 ## License
 

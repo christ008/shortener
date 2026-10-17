@@ -24,11 +24,11 @@ disk=${DISK_GB:-30}
 key=${SSH_KEY:-$HOME/.ssh/aws_shortener.pub}
 
 command -v aws >/dev/null || { echo "aws CLI not found" >&2; exit 1; }
-aws sts get-caller-identity >/dev/null || { echo "not signed in: aws login" >&2; exit 1; }
+account=$(aws sts get-caller-identity --query Account --output text) || { echo "not signed in: aws login" >&2; exit 1; }
 region=${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region || true)}}
 [ -n "$region" ] || { echo "set AWS_REGION" >&2; exit 1; }
 export AWS_REGION=$region
-echo "account $(aws sts get-caller-identity --query Account --output text), region $region"
+echo "account $account, region $region"
 
 ec2() { aws ec2 "$@"; }
 find_instance() {

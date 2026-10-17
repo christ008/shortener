@@ -36,7 +36,10 @@ class SecurityProblemResponder(
 ) : AuthenticationEntryPoint, AccessDeniedHandler {
 
     override fun commence(request: HttpServletRequest, response: HttpServletResponse, authException: AuthenticationException) {
-        val error = (authException as? OAuth2AuthenticationException)?.error?.errorCode
+        val error = when (authException) {
+            is OAuth2AuthenticationException -> authException.error.errorCode
+            else -> null
+        }
         val nonceNeeded = error == DpopNonceAuthenticationConverter.USE_DPOP_NONCE
         if (nonceNeeded) {
             events?.nonceRequested(request)
@@ -44,7 +47,10 @@ class SecurityProblemResponder(
             events?.unauthenticated(request, error ?: if (AuthScheme.of(request) == AuthScheme.NONE) "missing_credentials" else "invalid_credentials")
         }
         val malformed = error == OAuth2ErrorCodes.INVALID_REQUEST
-        val stepUp = authException as? InsufficientUserAuthenticationException
+        val stepUp = when (authException) {
+            is InsufficientUserAuthenticationException -> authException
+            else -> null
+        }
         respond(
             request, response,
             SecurityProblem(

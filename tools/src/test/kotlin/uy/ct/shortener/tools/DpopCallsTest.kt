@@ -21,6 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.assertIs
 
 /**
  * `DpopCalls` is the client the tools sign in with, so what it sends is checked as the identity provider and the API would check
@@ -73,11 +74,14 @@ class DpopCallsTest {
         val asksForIt = nonce != null && (askingAlways || SignedJWT.parse(headers.getValue("dpop")).jwtClaimsSet.getStringClaim("nonce") != nonce)
         val (status, answer) = when {
             asksForIt && isToken -> 400 to """{"error":"use_dpop_nonce"}"""
+
             asksForIt -> {
                 exchange.responseHeaders.add("WWW-Authenticate", """DPoP realm="shortener", error="use_dpop_nonce"""")
                 401 to """{"status":401}"""
             }
+
             isToken -> tokenStatus to tokenBody
+
             else -> 201 to """{"shortCode":"abc"}"""
         }
         val bytes = answer.toByteArray()
@@ -89,7 +93,7 @@ class DpopCallsTest {
         request.body.split("&").associate { URLDecoder.decode(it.substringBefore("="), StandardCharsets.UTF_8) to URLDecoder.decode(it.substringAfter("="), StandardCharsets.UTF_8) }
 
     private fun verified(proof: String): SignedJWT =
-        SignedJWT.parse(proof).also { assertThat(it.verify(ECDSAVerifier(it.header.jwk as ECKey))).describedAs("signed by the key in its header").isTrue() }
+        SignedJWT.parse(proof).also { assertThat(it.verify(ECDSAVerifier(assertIs<ECKey>(it.header.jwk)))).describedAs("signed by the key in its header").isTrue() }
 
     @Test
     fun `the client signs in with an assertion signed by its key, for the issuer, and asks for a token bound to a proof`() {
@@ -116,7 +120,7 @@ class DpopCallsTest {
         assertThat(proof.jwtClaimsSet.getStringClaim("htm")).isEqualTo("POST")
         assertThat(proof.jwtClaimsSet.getStringClaim("htu")).isEqualTo("$base/realms/shortener${DpopCalls.TOKEN_ENDPOINT_PATH}")
         assertThat(proof.jwtClaimsSet.getClaim("ath")).describedAs("no token yet to hash").isNull()
-        assertThat((proof.header.jwk as ECKey).isPrivate).describedAs("the header has no private part").isFalse()
+        assertThat(assertIs<ECKey>(proof.header.jwk).isPrivate).describedAs("the header has no private part").isFalse()
         assertThat(proof.header.jwk.toJSONString()).describedAs("not the client's key").isNotEqualTo(clientKey.toPublicJWK().toJSONString())
     }
 

@@ -163,7 +163,7 @@ class SecurityConfiguration {
      * - A certificate asked for and no identity named is authentication with no authorization: TLS accepts every certificate of the CA, which also
      *   signs the migration job's and the database's, and the application would serve them all.
      * - An identity named and no certificate asked for refuses every request, since no caller presents one.
-     * - Neither is how the application ran before mutual TLS, and still starts.
+     * - Asking for nothing and naming no one starts, and so does both.
      */
     fun requirePeerIdentityToMatchClientAuth(properties: SecurityProperties, environment: Environment) {
         if (!environment.acceptsProfiles(Profiles.of("production"))) return

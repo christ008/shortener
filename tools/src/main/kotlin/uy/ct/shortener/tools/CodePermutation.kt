@@ -15,7 +15,7 @@ package uy.ct.shortener.tools
  */
 class CodePermutation(seed: Long, private val space: Long = GENERATED_SPACE) {
 
-    private val halfBits = (64 - java.lang.Long.numberOfLeadingZeros(space - 1) + 1) / 2
+    private val halfBits = (64 - (space - 1).countLeadingZeroBits() + 1) / 2
     private val halfMask = (1L shl halfBits) - 1
     private val keys = LongArray(ROUNDS)
 

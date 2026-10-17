@@ -13,6 +13,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver
 import org.springframework.web.servlet.ModelAndView
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import kotlin.test.assertIs
 
 /**
  * The identity a caller's TLS certificate names, and who the application serves because of it.
@@ -31,7 +32,7 @@ class PeerIdentityFilterTest {
     private val responder = SecurityProblemResponder(
         object : HandlerExceptionResolver {
             override fun resolveException(request: HttpServletRequest, response: HttpServletResponse, handler: Any?, ex: Exception): ModelAndView? {
-                problems += ex as SecurityProblem
+                problems += assertIs<SecurityProblem>(ex)
                 return null
             }
         },
@@ -40,8 +41,10 @@ class PeerIdentityFilterTest {
 
     private val filter = PeerIdentityFilter(setOf(edge), responder)
 
-    private fun certificate(name: String): X509Certificate =
-        javaClass.getResourceAsStream("/mtls/$name.pem")!!.use { CertificateFactory.getInstance("X.509").generateCertificate(it) as X509Certificate }
+    private fun certificate(name: String): X509Certificate {
+        val certificate = javaClass.getResourceAsStream("/mtls/$name.pem")!!.use { CertificateFactory.getInstance("X.509").generateCertificate(it) }
+        return assertIs<X509Certificate>(certificate)
+    }
 
     private fun call(vararg chain: Any): MockFilterChain {
         val request = MockHttpServletRequest("GET", "/abc1234")

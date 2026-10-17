@@ -25,7 +25,7 @@ class AccessTokenTypeValidator(private val headerType: String, private val claim
         }
 
     private fun isAccessToken(token: Jwt): Boolean {
-        val header = (token.headers["typ"] as? String)?.removePrefix("application/")
+        val header = token.headers["typ"]?.toString()?.removePrefix("application/")
         return when {
             header.equals(headerType, ignoreCase = true) -> true
             header.equals("JWT", ignoreCase = true) -> token.getClaimAsString("typ") in claimTypes

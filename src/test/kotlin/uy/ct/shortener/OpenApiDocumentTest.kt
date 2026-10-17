@@ -29,33 +29,31 @@ class OpenApiDocumentTest {
 
     private val methods = setOf("get", "put", "post", "delete", "options", "head", "patch", "trace")
 
-    @Suppress("UNCHECKED_CAST")
-    private fun Any?.map(): Map<String, Any?> = this as Map<String, Any?>
-
-    private fun section(vararg path: String): Map<String, Any?> = path.fold(spec) { node, key -> node[key].map() }
+    private fun section(vararg path: String): Map<String, Any?> = path.fold(spec) { node, key -> node.map(key) }
 
     private data class Operation(val method: String, val path: String, val definition: Map<String, Any?>) {
         override fun toString() = "${method.uppercase()} $path"
     }
 
     private val operations: List<Operation> = section("paths").flatMap { (path, item) ->
-        item.map().filterKeys { it in methods }.map { (method, definition) -> Operation(method, path, definition.map()) }
+        item.asMap().filterKeys { it in methods }.map { (method, definition) -> Operation(method, path, definition.asMap()) }
     }
 
     private fun Operation.parameterNames(): List<String> =
-        (definition["parameters"] as? List<*>).orEmpty().mapNotNull { it.map()["name"] as? String }
+        definition.list("parameters").mapNotNull { it.asMap()["name"]?.toString() }
 
     /** A response, with a `$ref` into `components/responses` followed. */
     private fun response(documented: Any?): Map<String, Any?> {
-        val reference = documented.map()["\$ref"] as? String ?: return documented.map()
+        val response = documented.asMap()
+        val reference = response["\$ref"]?.toString() ?: return response
         return section("components", "responses", reference.substringAfterLast('/'))
     }
 
-    private fun Operation.responses(): Map<String, Any?> = definition["responses"].map()
+    private fun Operation.responses(): Map<String, Any?> = definition.map("responses")
 
     /** The failures an operation can cause, from what it takes in and who may call it. A `PUT` makes what is not there. */
     private fun Operation.mustDocument(): Set<String> = buildSet {
-        val secured = (definition["security"] as? List<*>)?.isNotEmpty() ?: false
+        val secured = definition.list("security").isNotEmpty()
         if (secured) addAll(listOf("401", "403"))
         if ("{shortCode}" in path || "requestBody" in definition || "sort" in parameterNames()) add("400")
         if ("{shortCode}" in path && method != "put") add("404")
@@ -77,7 +75,7 @@ class OpenApiDocumentTest {
     fun `every failure is a problem detail`() {
         operations.forEach { operation ->
             operation.responses().filterKeys { it.toInt() >= 400 }.forEach { (status, documented) ->
-                assertThat(response(documented)["content"].map().keys)
+                assertThat(response(documented).map("content").keys)
                     .describedAs("the $status of $operation")
                     .containsExactly("application/problem+json")
             }
@@ -90,7 +88,7 @@ class OpenApiDocumentTest {
 
         assertThat(creating.map { it.toString() }).containsExactlyInAnyOrder("POST /api/short-links", "PUT /api/short-links/{shortCode}")
         creating.forEach { operation ->
-            assertThat(response(operation.responses().getValue("201"))["headers"].map().keys).describedAs("the 201 of $operation").contains("Location")
+            assertThat(response(operation.responses().getValue("201")).map("headers").keys).describedAs("the 201 of $operation").contains("Location")
         }
     }
 
@@ -99,11 +97,11 @@ class OpenApiDocumentTest {
         val declared = section("components", "securitySchemes", "dpop", "flows", "clientCredentials", "scopes").keys
 
         val asked = operations.flatMap { operation ->
-            (operation.definition["security"] as? List<*>).orEmpty().flatMap { it.map().values.flatMap { scopes -> scopes as List<*> } }
+            operation.definition.list("security").flatMap { requirement -> requirement.asMap().values.flatMap { scopes -> scopes.asList() } }
         }
 
         assertThat(asked).isNotEmpty
-        asked.forEach { assertThat(declared).contains(it as String) }
+        asked.forEach { assertThat(declared).contains(it.toString()) }
     }
 
     @Test
@@ -128,8 +126,8 @@ class OpenApiDocumentTest {
             val schema = section("components", "schemas", schemaName)
             val fields = type.primaryConstructor!!.parameters
 
-            assertThat(schema["properties"].map().keys).describedAs("the properties of $schemaName").containsExactlyInAnyOrderElementsOf(fields.map { it.name })
-            assertThat((schema["required"] as List<*>).map { it.toString() })
+            assertThat(schema.map("properties").keys).describedAs("the properties of $schemaName").containsExactlyInAnyOrderElementsOf(fields.map { it.name })
+            assertThat(schema.list("required").map { it.toString() })
                 .describedAs("what $schemaName requires: the fields that have no default")
                 .containsExactlyInAnyOrderElementsOf(fields.filterNot { it.isOptional }.map { it.name })
         }
@@ -139,10 +137,10 @@ class OpenApiDocumentTest {
     fun `a field that can be null in a response is described as nullable, and the others are not`() {
         val response = ShortLinkResponse::class.primaryConstructor!!.parameters
 
-        val schema = section("components", "schemas", "ShortLink")["properties"].map()
+        val schema = section("components", "schemas", "ShortLink").map("properties")
 
         response.forEach { field ->
-            val type = schema[field.name].map()["type"]
+            val type = schema.map(requireNotNull(field.name) { "a constructor parameter has a name" })["type"]
             val nullable = type is List<*> && "null" in type
             assertThat(nullable).describedAs("is ${field.name} nullable").isEqualTo(field.type.isMarkedNullable)
         }

@@ -1,8 +1,7 @@
 # Architecture decision records
 
-Why the system is the way it is, one decision per file. [INTERNALS.md](../INTERNALS.md) says how it works,
-[DESIGN.md](../DESIGN.md) says why the code has its shape, and each ADR says why that choice and not another, what it costs
-and what would make us undo it.
+Why the system is the way it is, one decision per file. [INTERNALS.md](../INTERNALS.md) and [DESIGN.md](../DESIGN.md) list what the system does and its invariants; each ADR says why that choice
+and not another, what it costs and what would make us undo it.
 
 The decisions are recorded after the fact, from the history of the repository, and dated by the commit that made them.
 

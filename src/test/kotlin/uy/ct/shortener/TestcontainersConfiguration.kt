@@ -14,8 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Gives each Spring context its own empty database, on one throwaway Postgres (same version as `compose.yaml`) that all of them share.
  *
- * - Starting a Postgres took about a second of the second and a half a context needed, and the suite builds a dozen contexts, so
- *   the container starts once per JVM and is removed when it ends.
+ * - The container starts once per JVM and is removed when it ends.
  * - A context gets a new database, initialised with the same `deploy/postgres/bootstrap.sql` as every other environment so the
  *   roles exist, which is also what keeps one context's tables and rows away from another's.
  * - Spring keeps every context it built, each with its own pool of connections, so the server allows more than the default hundred.
@@ -58,7 +57,7 @@ private object SharedPostgres {
         val name = "context_${databases.incrementAndGet()}"
         val postgres = container
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use {
-            it.createStatement().execute("CREATE DATABASE $name")
+            it.createStatement().execute("create database $name")
         }
         val url = postgres.jdbcUrl.replace(Regex("/${postgres.databaseName}(?=\\?|$)"), "/$name")
         DriverManager.getConnection(url, postgres.username, postgres.password).use {
