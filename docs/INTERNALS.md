@@ -219,8 +219,10 @@ An owner's view of how a link is followed, counted without touching the redirect
   `analytics_clicks_dropped_total{reason="error"}`.
   - Cost, on one warm thread: classifying a browser's header takes about 0.22 µs, because it is lowercased once and then searched. A case-insensitive
     search for each token took about 5 µs, near 5% of the CPU a request costs ([Performance](#performance)). The whole step, event included, takes about 0.6 µs.
-- **Hold.** `ClickAggregator` keeps a count per (link, hour, class) in a `ConcurrentHashMap`, added to atomically. It holds about `max-entries` keys
-  (50,000): a key already held always counts, a click that needs a new key past the cap is dropped, and concurrent new keys can pass the cap by at most the number of redirects in flight.
+- **Hold.** `ClickAggregator` keeps a count per (link, hour, class) in a `ConcurrentHashMap`, added to atomically. It holds at most `max-entries` keys
+  (50,000), counted with an atomic counter rather than the map's `size`, which is only an estimate while the map changes: a key already held always
+  counts, and a click that needs a new key past the cap is dropped. A drain takes each key once, adding up a key that was counted again while it
+  walked the map, because the store's statement cannot change a row twice.
 - **Write.** `ClickFlusher` drains it every `flush-interval` (10 s) in batches of `batch-size` (500). `JdbcClickStore` writes a batch with one
   statement, `insert ... select from unnest(...) on conflict do update set clicks = clicks + excluded.clicks`, so a batch is atomic and two instances add up.
 - **Failure.** A batch that cannot be written goes back into the aggregator, up to the cap, and the flush ends. The first failure of a run and the
