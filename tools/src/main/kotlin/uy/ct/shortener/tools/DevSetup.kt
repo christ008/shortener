@@ -135,18 +135,7 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
             context.out.println()
         }
 
-        val values = linkedMapOf<String, String>()
-        for (setting in SETTINGS) {
-            val given = context.environment[setting.name]
-            val fallback = setting.fallback()
-            val value = when {
-                !given.isNullOrEmpty() -> given
-                prompt != null -> ask(prompt, "  ${setting.label} [${if (setting.secret) "a random one" else fallback}]", setting.secret).ifEmpty { fallback }
-                else -> fallback
-            }
-            if (FORBIDDEN_IN_A_VALUE.containsMatchIn(value)) throw Failure("${setting.label} must not contain quotes, backslashes or line breaks")
-            values[setting.name] = value
-        }
+        val values = readValues(prompt, context)
 
         val keysDirectory = Path.of(values.getValue("DEV_KEYS_DIR"))
         context.out.println()
@@ -186,6 +175,22 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
     }
 
     /** The settings of `.env`, in file order. Other lines of the file are not kept. */
+    private fun readValues(prompt: Prompt?, context: Context): LinkedHashMap<String, String> {
+        val values = linkedMapOf<String, String>()
+        for (setting in SETTINGS) {
+            val given = context.environment[setting.name]
+            val fallback = setting.fallback()
+            val value = when {
+                !given.isNullOrEmpty() -> given
+                prompt != null -> ask(prompt, "  ${setting.label} [${if (setting.secret) "a random one" else fallback}]", setting.secret).ifEmpty { fallback }
+                else -> fallback
+            }
+            if (FORBIDDEN_IN_A_VALUE.containsMatchIn(value)) throw Failure("${setting.label} must not contain quotes, backslashes or line breaks")
+            values[setting.name] = value
+        }
+        return values
+    }
+
     private fun readEnv(context: Context): LinkedHashMap<String, String> {
         val env = LinkedHashMap<String, String>()
         val file = context.path(ENV_FILE)

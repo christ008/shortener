@@ -117,7 +117,7 @@ object Report : Tool(
     private fun summary(arguments: List<String>, context: Context) {
         if (arguments.size != 2) throw Usage("summary takes a results directory")
         val directory = context.path(arguments[1])
-        val variants = Files.list(directory).use { children -> children.filter { Files.exists(it.resolve(SUMMARY_FILE)) }.sorted().toList() }
+        val variants: List<Path> = Files.list(directory).use { children -> children.filter { Files.exists(it.resolve(SUMMARY_FILE)) }.sorted().toList() }
         if (variants.isEmpty()) throw Failure("${arguments[1]} has no subdirectory with a summary.json")
         val summaries = variants.associateWith { parse(it.resolve(SUMMARY_FILE), context) }
         val names = variants.map { it.fileName.toString() }
@@ -220,7 +220,7 @@ object Report : Tool(
     private fun cpu(arguments: List<String>, context: Context) {
         if (arguments.size != 2) throw Usage("cpu takes a results directory")
         val directory = context.path(arguments[1])
-        val variants = Files.list(directory).use { children ->
+        val variants: List<Path> = Files.list(directory).use { children ->
             children.filter { Files.exists(it.resolve(SUMMARY_FILE)) && Files.exists(it.resolve(DOCKER_STATS_FILE)) }.sorted().toList()
         }
         if (variants.isEmpty()) throw Failure("${arguments[1]} has no subdirectory with a summary.json and a docker-stats.txt")
