@@ -22,8 +22,9 @@ data class ClickCount(val key: ClickKey, val clicks: Long)
  * The counts of clicks an instance holds until they are flushed to the database.
  *
  * - [record] adds one to the count of its (link, hour, class) in one atomic step, so concurrent redirects never lose a click.
- * - It holds at most `maxEntries` distinct keys. A click that would need another is dropped and counted in
- *   `analytics.clicks.dropped{reason=full}`. A key already held always counts.
+ * - It holds about `maxEntries` distinct keys. A click that would need another is dropped and counted in
+ *   `analytics.clicks.dropped{reason=full}`. A key already held always counts. The check and the insert are not one step, so
+ *   concurrent clicks for new keys can pass the cap by a few.
  * - [drain] takes counts out, up to a limit, and [putBack] returns what could not be written. What no longer fits is dropped and
  *   counted in `analytics.clicks.dropped{reason=storage}`.
  * - Metrics: `analytics.clicks.recorded`, `analytics.clicks.dropped` and the gauge `analytics.aggregator.entries`.

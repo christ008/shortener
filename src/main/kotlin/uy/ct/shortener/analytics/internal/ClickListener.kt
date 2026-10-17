@@ -13,6 +13,7 @@ import uy.ct.shortener.shortlink.LinkFollowed
  *
  * - It runs in the redirect's thread, so it classifies the `User-Agent` and records, and nothing else.
  * - Counting must never fail a redirect: a failure is logged once with its type and counted in `analytics.clicks.dropped{reason=error}`.
+ * - The flag that keeps that log to one line is written only when it changes, so redirects on many cores do not contend for it.
  */
 @Component
 class ClickListener(
@@ -33,7 +34,7 @@ class ClickListener(
     fun on(event: LinkFollowed) {
         try {
             recorder.record(event.shortCode, DeviceClassifier.classify(event.userAgent))
-            failing = false
+            if (failing) failing = false
         } catch (failure: RuntimeException) {
             dropped.increment()
             if (!failing) logger.warn("A click could not be counted: {}", failure.javaClass.simpleName)

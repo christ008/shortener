@@ -48,4 +48,26 @@ class ClickListenerTest {
             assertThat(log.events.single().message).contains("IllegalStateException").doesNotContain("secret detail")
         }
     }
+
+    @Test
+    fun `logs again when counting fails after it had recovered`() {
+        LogCapture(ClickListener::class.java.name).use { log ->
+            var broken = true
+            val listener = listener(object : ClickRecorder {
+                override fun record(shortCode: ShortCode, device: DeviceClass) {
+                    check(!broken) { "down" }
+                    recorded += shortCode to device
+                }
+            })
+
+            listener.on(LinkFollowed(ShortCode("abc"), "x"))
+            broken = false
+            repeat(2) { listener.on(LinkFollowed(ShortCode("abc"), "x")) }
+            broken = true
+            listener.on(LinkFollowed(ShortCode("abc"), "x"))
+
+            assertThat(log.events).hasSize(2)
+            assertThat(recorded).hasSize(2)
+        }
+    }
 }
