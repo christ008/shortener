@@ -13,9 +13,9 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
-import org.junit.jupiter.api.io.TempDir
 import java.lang.reflect.InvocationTargetException
 import java.math.BigInteger
 import java.net.InetAddress
@@ -122,7 +122,9 @@ class DpopClientTest {
             tokenRequests += TokenRequest(headers, form)
             when (form["grant_type"]) {
                 "authorization_code" -> issueForCode(exchange, headers, form)
+
                 "refresh_token" -> issueForRefresh(exchange, headers, form)
+
                 else -> if (tokenNonce != null && nonceOf(headers) != tokenNonce) {
                     exchange.responseHeaders.add("DPoP-Nonce", tokenNonce!!)
                     reply(exchange, 400, """{"error":"use_dpop_nonce"}""")

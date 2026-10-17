@@ -4,11 +4,11 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.dao.QueryTimeoutException
-import org.springframework.jdbc.UncategorizedSQLException
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
+import org.springframework.jdbc.UncategorizedSQLException
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import uy.ct.shortener.shortlink.CreatedByFilter

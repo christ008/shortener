@@ -130,6 +130,7 @@ in errors or health, 5% trace sampling, DPoP required) is set by the stack. Ever
 ## Build, test, package
 
 ```bash
+./gradlew spotlessCheck         # lint; ./gradlew spotlessApply fixes what it can
 ./gradlew test                  # integration tests use Testcontainers (Docker)
 ./gradlew bootBuildImage        # JVM image on Alpaquita (glibc) by Paketo buildpacks; arm64 on an arm64 machine
 perf/smoke.sh                   # every endpoint, with real tokens, against a running instance

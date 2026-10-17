@@ -28,8 +28,10 @@ class RateLimitFilter(
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
         when (val key = keyOf(request)) {
             RateLimitKey.Unlimited -> chain.doFilter(request, response)
+
             is RateLimitKey.Of -> when (val decision = limiter.tryAcquire(key.value)) {
                 RateLimitDecision.Allowed -> chain.doFilter(request, response)
+
                 is RateLimitDecision.Limited ->
                     responder.tooManyRequests(request, response, max(1, decision.retryAfter.plusMillis(999).seconds), name, key.value)
             }

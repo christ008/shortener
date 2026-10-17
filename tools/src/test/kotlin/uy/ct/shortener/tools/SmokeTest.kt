@@ -132,12 +132,18 @@ class SmokeTest {
 
             when {
                 path == "/realms/shortener/protocol/openid-connect/token" && !proved -> reply(exchange, 400, """{"error":"invalid_dpop_proof"}""")
+
                 path == "/realms/shortener/protocol/openid-connect/token" ->
                     reply(exchange, 200, """{"access_token":"${Regex("client_id=([^&]+)").find(body)!!.groupValues[1]}","token_type":"DPoP"}""")
+
                 path == "/.well-known/oauth-protected-resource" || path == "/actuator/health/readiness" -> reply(exchange, 200, "{}")
+
                 path == "/actuator/prometheus" -> reply(exchange, 200, "# HELP x\nhttp_server_requests_seconds_bucket{le=\"0.1\"} 1\n")
+
                 path.startsWith("/api/short-links") -> if (client == null) reply(exchange, 401) else api(exchange, method, path, exchange.requestURI.query, body, client)
+
                 method == "GET" -> redirect(exchange, path.removePrefix("/"))
+
                 else -> reply(exchange, 404)
             }
         }

@@ -11,5 +11,4 @@ class ShortenerApplicationTests {
     @Test
     fun contextLoads() {
     }
-
 }

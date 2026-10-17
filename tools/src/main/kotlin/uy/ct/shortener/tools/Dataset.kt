@@ -132,9 +132,13 @@ object Dataset : Tool("Dataset", "usage: tools/run Dataset COUNT [--seed N] [--t
         while (remaining.hasNext()) {
             when (val argument = remaining.next()) {
                 "--seed" -> seed = whole(argument, valueOf(argument))
+
                 "--threads" -> threads = whole(argument, valueOf(argument)).also { if (it !in 1..1024) throw Usage("--threads must be 1 to 1024") }.toInt()
+
                 "--out" -> out = valueOf(argument)
+
                 "--verify" -> verify = true
+
                 else -> {
                     if (argument.startsWith("--")) throw Usage("unknown option $argument")
                     if (count != null) throw Usage("one COUNT only, and '$argument' is a second")

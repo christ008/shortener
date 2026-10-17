@@ -54,7 +54,7 @@ object Realms : Tool(
         val passwords = linkedMapOf<String, String>()
         for (i in 3 until arguments.size step 2) {
             val option = arguments[i]
-            if (i + 1 >= arguments.size || option != "--jwks" && option != "--password") {
+            if (i + 1 >= arguments.size || (option != "--jwks" && option != "--password")) {
                 throw Usage("expected --jwks or --password with a value, found $option")
             }
             val pair = arguments[i + 1]

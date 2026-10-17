@@ -11,11 +11,5 @@ indent_size = 4
 [*.{yaml,yml,json,sh,conf,md}]
 indent_size = 2
 
-[*.{kt,kts}]
-ktlint_code_style = intellij_idea
-max_line_length = off
-ij_kotlin_allow_trailing_comma = true
-ij_kotlin_allow_trailing_comma_on_call_site = true
-
 [*.md]
 trim_trailing_whitespace = false

@@ -1,7 +1,5 @@
 package uy.ct.shortener.shortlink.internal
 
-import uy.ct.shortener.shortlink.Actor
-import uy.ct.shortener.shortlink.LinkLookup
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.micrometer.observation.ObservationRegistry
 import org.assertj.core.api.Assertions.assertThat
@@ -10,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import uy.ct.shortener.TestcontainersConfiguration
+import uy.ct.shortener.shortlink.Actor
+import uy.ct.shortener.shortlink.LinkLookup
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortCodeGenerator
 import uy.ct.shortener.shortlink.ShortLinkRepository

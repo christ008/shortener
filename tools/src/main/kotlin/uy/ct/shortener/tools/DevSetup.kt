@@ -44,7 +44,7 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
             - a private key for each dev client (demo, other, admin, no-scope)
             - the dev realm for Keycloak, trusting those keys and these passwords
             - the passwords of Keycloak, its two web users and Postgres, in .env
-        """.trimIndent().let(::indented)
+    """.trimIndent().let(::indented)
 
     private val CLIENTS = listOf("demo-client", "other-client", "admin-client", "no-scope-client")
 
@@ -90,12 +90,16 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
         for (argument in arguments) {
             when (argument) {
                 "--yes", "-y" -> yes = true
+
                 "--force", "-f" -> force = true
+
                 "--show" -> show = true
+
                 "--help", "-h" -> {
                     context.out.println(usage)
                     return
                 }
+
                 else -> throw Usage("unknown option $argument (see --help)")
             }
         }

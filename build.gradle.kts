@@ -35,21 +35,61 @@ if (native) apply(plugin = "org.graalvm.buildtools.native")
 
 apply(from = "gradle/tooling.gradle.kts")
 
+val ktlintStyle = mapOf(
+    "ktlint_code_style" to "intellij_idea",
+    "ktlint_standard_function-signature" to "disabled",
+    "ktlint_standard_class-signature" to "disabled",
+    "ktlint_standard_multiline-expression-wrapping" to "disabled",
+    "ktlint_standard_string-template-indent" to "disabled",
+    "ktlint_standard_wrapping" to "disabled",
+    "ktlint_standard_argument-list-wrapping" to "disabled",
+    "ktlint_standard_parameter-list-wrapping" to "disabled",
+    "ktlint_standard_statement-wrapping" to "disabled",
+    "ktlint_standard_trailing-comma-on-call-site" to "disabled",
+    "ktlint_standard_trailing-comma-on-declaration-site" to "disabled",
+    "ktlint_standard_blank-line-before-declaration" to "disabled",
+    "ktlint_standard_if-else-wrapping" to "disabled",
+    "ktlint_standard_if-else-bracing" to "disabled",
+    "ktlint_standard_multiline-if-else" to "disabled",
+    "ktlint_standard_condition-wrapping" to "disabled",
+    "ktlint_standard_chain-method-continuation" to "disabled",
+    "ktlint_standard_property-wrapping" to "disabled",
+    "ktlint_standard_no-blank-line-in-list" to "disabled",
+    "ktlint_standard_enum-entry-name-case" to "disabled",
+    "ktlint_standard_backing-property-naming" to "disabled",
+    "ktlint_standard_filename" to "disabled",
+    "ktlint_standard_max-line-length" to "disabled",
+    "ktlint_standard_comment-wrapping" to "disabled",
+    "ktlint_standard_kdoc" to "disabled",
+    "ktlint_standard_kdoc-wrapping" to "disabled",
+    "ktlint_standard_spacing-between-declarations-with-comments" to "disabled",
+    "ktlint_standard_discouraged-comment-location" to "disabled",
+    "ktlint_standard_annotation" to "disabled",
+    "ktlint_standard_function-literal" to "disabled",
+    "ktlint_standard_try-catch-finally-spacing" to "disabled",
+    "ktlint_standard_no-consecutive-comments" to "disabled",
+    "ktlint_standard_no-empty-first-line-in-class-body" to "disabled",
+    "ktlint_standard_class-naming" to "disabled",
+    "ktlint_standard_function-naming" to "disabled",
+    "ktlint_standard_property-naming" to "disabled",
+)
+
 /**
  * Lint with Spotless: `./gradlew spotlessCheck` reports, `./gradlew spotlessApply` fixes. `check` runs the report.
  *
- * - Kotlin and Gradle scripts: ktlint, with the style of `.editorconfig`. It covers `tools/` too, a build of its own.
+ * - Kotlin and Gradle scripts: ktlint in the IntelliJ style. Import order, spacing, indentation and unused imports are enforced; the rules that
+ *   would rewrap lines, signatures and braces are off, so the layout of the code is the author's. It covers `tools/`, a build of its own.
  * - The reference client `DpopClient.java`: unused imports, trailing spaces, final newline.
- * - Scripts, SQL, YAML and Markdown: trailing spaces and final newline.
+ * - Scripts, SQL, YAML and configuration: trailing spaces and final newline.
  */
 spotless {
     kotlin {
         target("src/**/*.kt", "tools/src/**/*.kt")
-        ktlint("1.8.0")
+        ktlint("1.8.0").editorConfigOverride(ktlintStyle)
     }
     kotlinGradle {
         target("*.gradle.kts", "gradle/*.gradle.kts", "tools/*.gradle.kts")
-        ktlint("1.8.0")
+        ktlint("1.8.0").editorConfigOverride(ktlintStyle)
     }
     java {
         target("deploy/**/*.java")

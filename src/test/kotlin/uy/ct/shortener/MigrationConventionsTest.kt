@@ -110,14 +110,19 @@ class MigrationConventionsTest {
             when {
                 matches(statement, "^create\\s+(unique\\s+)?index\\s+(?!concurrently\\b)") ->
                     flag("create index blocks writes while it builds; use create index concurrently (in its own migration without a transaction)")
+
                 matches(statement, "\\badd\\s+(constraint\\s+\\S+\\s+)?(check|foreign\\s+key)\\b") && !matches(statement, "\\bnot\\s+valid\\b") ->
                     flag("adding a check or foreign key scans the table under an exclusive lock; add it not valid and validate constraint in a later migration")
+
                 matches(statement, "\\badd\\s+(constraint\\s+\\S+\\s+)?(unique|primary\\s+key)\\b") && !matches(statement, "\\busing\\s+index\\b") ->
                     flag("adding a unique or primary key builds an index under an exclusive lock; create the index concurrently and add the constraint using index")
+
                 matches(statement, "\\bset\\s+not\\s+null\\b") ->
                     flag("set not null scans the table under an exclusive lock; validate a check (col is not null) first, or state why it is safe")
+
                 matches(statement, "\\balter\\s+column\\b.*\\btype\\b") ->
                     flag("changing a column type can rewrite the table under an exclusive lock; add a new column and move to it instead")
+
                 matches(statement, "\\bdrop\\s+column\\b|\\brename\\b|^drop\\s+table\\b") ->
                     flag("dropping or renaming is not compatible with the previous version, which keeps running during a rolling update; do it a release later")
             }

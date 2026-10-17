@@ -110,11 +110,13 @@ class DpopCalls(
     private fun asksForNonce(response: HttpResponse<String>): Boolean =
         when (response.statusCode()) {
             UNAUTHORIZED -> response.headers().allValues("WWW-Authenticate").any { it.contains("error=\"use_dpop_nonce\"") }
+
             BAD_REQUEST -> try {
                 JSON.readTree(response.body()).path("error").stringValue(null) == "use_dpop_nonce"
             } catch (notJson: JacksonException) {
                 false
             }
+
             else -> false
         }
 

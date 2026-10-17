@@ -74,11 +74,14 @@ class DpopCallsTest {
         val asksForIt = nonce != null && (askingAlways || SignedJWT.parse(headers.getValue("dpop")).jwtClaimsSet.getStringClaim("nonce") != nonce)
         val (status, answer) = when {
             asksForIt && isToken -> 400 to """{"error":"use_dpop_nonce"}"""
+
             asksForIt -> {
                 exchange.responseHeaders.add("WWW-Authenticate", """DPoP realm="shortener", error="use_dpop_nonce"""")
                 401 to """{"status":401}"""
             }
+
             isToken -> tokenStatus to tokenBody
+
             else -> 201 to """{"shortCode":"abc"}"""
         }
         val bytes = answer.toByteArray()

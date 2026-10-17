@@ -74,7 +74,9 @@ class CaffeineRedirectCache(
         }
         return when {
             cached != null -> LinkLookup.Found(cached)
+
             loadedHere -> loaded
+
             // Another caller's load found nothing active. Only active links are stored, so ask again to tell a missing code from a disabled one.
             else -> load(shortCode)
         }
