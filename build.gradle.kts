@@ -110,6 +110,9 @@ spotless {
 
 extra["springModulithVersion"] = "2.1.1"
 extra["testcontainersVersion"] = "2.0.5"
+extra["bucket4jVersion"] = "8.21.0"
+extra["archunitVersion"] = "1.5.1"
+extra["nimbusVersion"] = "10.10"
 
 /**
  * Jackson ahead of the Spring Boot release: 3.1.6 has four fixed high-severity advisories (GHSA-p6pp-m3f8-5c89, GHSA-7hhh-6rmp-j9qf,
@@ -130,15 +133,15 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("com.bucket4j:bucket4j_jdk17-core:8.21.0")
+    implementation("com.bucket4j:bucket4j_jdk17-core:${property("bucket4jVersion")}")
     implementation("com.github.ben-manes.caffeine:caffeine")
-    testImplementation("org.springframework.modulith:spring-modulith-starter-core")
     implementation("tools.jackson.module:jackson-module-kotlin")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     runtimeOnly("org.postgresql:postgresql")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
+    testImplementation("org.springframework.modulith:spring-modulith-starter-core")
     testImplementation("org.springframework.boot:spring-boot-starter-jdbc-test")
     testImplementation("io.micrometer:micrometer-observation-test")
     testImplementation("org.springframework.boot:spring-boot-starter-security-test")
@@ -150,8 +153,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test")
-    testImplementation("com.tngtech.archunit:archunit:1.5.1")
-    testImplementation("com.nimbusds:nimbus-jose-jwt:10.10") // the tests import it; not in the Boot BOM, and the version Spring Security resolves
+    testImplementation("com.tngtech.archunit:archunit:${property("archunitVersion")}")
+    testImplementation("com.nimbusds:nimbus-jose-jwt:${property("nimbusVersion")}") // the tests import it; not in the Boot BOM, and the version Spring Security resolves
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("org.junit.platform:junit-platform-launcher")
@@ -188,8 +191,11 @@ kover {
 /**
  * Analysis and coverage on SonarCloud, from CI: `./gradlew sonar -x test`, with SONAR_TOKEN in the environment.
  *
- * - Coverage: the XML report of Kover, which has the format of JaCoCo, so run `koverXmlReport` first.
- * - Scope: the application. The tools are a build of their own and are not analysed.
+ * - Coverage: the XML report of Kover, which has the format of JaCoCo, so run `koverXmlReport` first. Kover covers the application
+ *   only, so the code of the tools is excluded from the coverage, though it is still analysed.
+ * - Scope: every file of the project, from its root, so that the tools, the deployment files, the perf scripts and the docs are analysed
+ *   too. The tests are the `src/test` of the application and of the tools, indexed once as tests: the sources leave them out, because
+ *   Sonar refuses a file indexed as both. The build output, the caches, the IDE folders and the raw results of the perf runs are left out.
  * - Needs Automatic Analysis switched off on the project, because the two cannot both feed it.
  */
 sonar {
@@ -197,6 +203,16 @@ sonar {
         property("sonar.host.url", "https://sonarcloud.io")
         property("sonar.organization", "christ008")
         property("sonar.projectKey", "christ008_shortener")
+        property("sonar.sources", ".")
+        property("sonar.tests", "src/test,tools/src/test")
+        property(
+            "sonar.exclusions",
+            listOf(
+                "**/build/**", "**/.gradle/**", "**/.kotlin/**", "**/.idea/**", "**/.junie/**", "perf/results/**", "perf/data/**",
+                "src/test/**", "tools/src/test/**",
+            ).joinToString(","),
+        )
+        property("sonar.coverage.exclusions", "tools/src/main/**")
         property("sonar.coverage.jacoco.xmlReportPaths", layout.buildDirectory.file("reports/kover/report.xml").get().asFile.path)
     }
 }

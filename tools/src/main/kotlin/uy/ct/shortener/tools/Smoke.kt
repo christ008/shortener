@@ -7,7 +7,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Path
 import java.time.Duration
-import java.util.concurrent.ThreadLocalRandom
+import java.util.UUID
 
 /**
  * Exercises every endpoint of a running application with DPoP-bound tokens, as the demo, other and admin clients, and checks
@@ -30,6 +30,9 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
 
     /** The only change a link takes: it is disabled. */
     private const val DISABLE = """{"disabled":true}"""
+
+    private const val DEMO_CLIENT = "demo-client"
+    private const val OTHER_CLIENT = "other-client"
 
     private val HTTP: HttpClient = HttpClient.newHttpClient()
 
@@ -63,32 +66,32 @@ object Smoke : Tool("Smoke", "usage: tools/run Smoke [BASE_URL]   (MGMT in the e
         fun checks(base: String, management: String) {
             val api = "$base/api/short-links"
 
-            val generated = call("demo-client", "POST", api, """{"targetUrl":"https://example.com/smoke"}""")
+            val generated = call(DEMO_CLIENT, "POST", api, """{"targetUrl":"https://example.com/smoke"}""")
             check("create with a generated code", 201, generated)
             val code = SHORT_CODE.find(generated.body)?.groupValues?.get(1) ?: ""
-            val custom = "smoke-" + ThreadLocalRandom.current().nextInt(32768)
+            val custom = "smoke-" + UUID.randomUUID().toString().take(8)
             val customBody = """{"targetUrl":"https://example.com/custom"}"""
-            check("create with a custom code", 201, call("demo-client", "PUT", "$api/$custom", customBody))
-            check("claiming it again is harmless", 200, call("demo-client", "PUT", "$api/$custom", customBody))
-            check("claiming it for another target is refused", 409, call("demo-client", "PUT", "$api/$custom", """{"targetUrl":"https://example.com/other"}"""))
-            check("choosing a code needs the claim scope", 403, call("other-client", "PUT", "$api/$custom", customBody))
-            check("a POST does not take a code", 400, call("demo-client", "POST", api, """{"targetUrl":"https://example.com/x","customCode":"$custom"}"""))
-            check("invalid url", 400, call("demo-client", "POST", api, """{"targetUrl":"not a url"}"""))
-            check("missing url", 400, call("demo-client", "POST", api, "{}"))
-            check("get own link", 200, call("demo-client", "GET", "$api/$code", null))
-            check("another client's link looks not found", 404, call("other-client", "GET", "$api/$code", null))
+            check("create with a custom code", 201, call(DEMO_CLIENT, "PUT", "$api/$custom", customBody))
+            check("claiming it again is harmless", 200, call(DEMO_CLIENT, "PUT", "$api/$custom", customBody))
+            check("claiming it for another target is refused", 409, call(DEMO_CLIENT, "PUT", "$api/$custom", """{"targetUrl":"https://example.com/other"}"""))
+            check("choosing a code needs the claim scope", 403, call(OTHER_CLIENT, "PUT", "$api/$custom", customBody))
+            check("a POST does not take a code", 400, call(DEMO_CLIENT, "POST", api, """{"targetUrl":"https://example.com/x","customCode":"$custom"}"""))
+            check("invalid url", 400, call(DEMO_CLIENT, "POST", api, """{"targetUrl":"not a url"}"""))
+            check("missing url", 400, call(DEMO_CLIENT, "POST", api, "{}"))
+            check("get own link", 200, call(DEMO_CLIENT, "GET", "$api/$code", null))
+            check("another client's link looks not found", 404, call(OTHER_CLIENT, "GET", "$api/$code", null))
             check("admin reads any link", 200, call("admin-client", "GET", "$api/$code", null))
-            check("list own links", 200, call("demo-client", "GET", "$api?size=1&sort=shortCode,asc", null))
-            check("list with a sort that is not allowed", 400, call("demo-client", "GET", "$api?sort=targetUrl", null))
+            check("list own links", 200, call(DEMO_CLIENT, "GET", "$api?size=1&sort=shortCode,asc", null))
+            check("list with a sort that is not allowed", 400, call(DEMO_CLIENT, "GET", "$api?sort=targetUrl", null))
             check("no-scope client cannot create", 403, call("no-scope-client", "POST", api, """{"targetUrl":"https://example.com/x"}"""))
             check("redirect is public", 302, plain("$base/$code", emptyMap()))
             check("unknown code", 404, plain("$base/zzzzzzz", emptyMap()))
-            check("another client cannot disable", 404, call("other-client", "PATCH", "$api/$code", DISABLE))
-            check("owner disables", 200, call("demo-client", "PATCH", "$api/$code", DISABLE))
-            check("disabling again is harmless", 200, call("demo-client", "PATCH", "$api/$code", DISABLE))
-            check("a link cannot be deleted", 405, call("demo-client", "DELETE", "$api/$code", null))
+            check("another client cannot disable", 404, call(OTHER_CLIENT, "PATCH", "$api/$code", DISABLE))
+            check("owner disables", 200, call(DEMO_CLIENT, "PATCH", "$api/$code", DISABLE))
+            check("disabling again is harmless", 200, call(DEMO_CLIENT, "PATCH", "$api/$code", DISABLE))
+            check("a link cannot be deleted", 405, call(DEMO_CLIENT, "DELETE", "$api/$code", null))
             check("disabled link answers gone", 410, plain("$base/$code", emptyMap()))
-            check("bearer scheme is refused", 401, plain(api, mapOf("Authorization" to "Bearer " + token("demo-client"))))
+            check("bearer scheme is refused", 401, plain(api, mapOf("Authorization" to "Bearer " + token(DEMO_CLIENT))))
             check("no credentials", 401, plain(api, emptyMap()))
             check("protected resource metadata", 200, plain("$base/.well-known/oauth-protected-resource", emptyMap()))
             check("readiness", 200, plain("$management/actuator/health/readiness", emptyMap()))

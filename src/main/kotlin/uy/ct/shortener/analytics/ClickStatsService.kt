@@ -9,7 +9,7 @@ import uy.ct.shortener.shortlink.ShortCode
  *   needs the scope to read links.
  * - Counts are read from what was written, whether or not counting is switched on now.
  */
-interface ClickStatsService {
+fun interface ClickStatsService {
 
     /**
      * Returns the clicks of the link under [shortCode] over [window], a point for every bucket, zero where there was none.

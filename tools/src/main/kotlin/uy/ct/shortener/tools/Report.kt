@@ -50,6 +50,9 @@ object Report : Tool(
     """.trimIndent(),
 ) {
 
+    private const val SUMMARY_FILE = "summary.json"
+    private const val DOCKER_STATS_FILE = "docker-stats.txt"
+
     private val JSON: JsonMapper = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build()
 
     override fun run(arguments: List<String>, context: Context) {
@@ -114,9 +117,9 @@ object Report : Tool(
     private fun summary(arguments: List<String>, context: Context) {
         if (arguments.size != 2) throw Usage("summary takes a results directory")
         val directory = context.path(arguments[1])
-        val variants = Files.list(directory).use { children -> children.filter { Files.exists(it.resolve("summary.json")) }.sorted().toList() }
+        val variants: List<Path> = Files.list(directory).use { children -> children.filter { Files.exists(it.resolve(SUMMARY_FILE)) }.sorted().toList() }
         if (variants.isEmpty()) throw Failure("${arguments[1]} has no subdirectory with a summary.json")
-        val summaries = variants.associateWith { parse(it.resolve("summary.json"), context) }
+        val summaries = variants.associateWith { parse(it.resolve(SUMMARY_FILE), context) }
         val names = variants.map { it.fileName.toString() }
         val rows = mutableListOf<List<String>>()
         val started = Regex("Started \\S+ in ")
@@ -126,7 +129,7 @@ object Report : Tool(
         rows += row("Time until ready (ms, from `docker run`)", summaries.values.map { number(it["ready_ms"]).toLong().toString() })
         rows += row("Spring startup", summaries.values.map { started.replace(it["started"].toString(), "") })
         rows += row("Memory when idle", summaries.values.map { it["idle_mem"].toString() })
-        rows += row("Peak memory under load (MiB)", variants.map { d(peakMemory(it.resolve("docker-stats.txt")), 0) })
+        rows += row("Peak memory under load (MiB)", variants.map { d(peakMemory(it.resolve(DOCKER_STATS_FILE)), 0) })
 
         for ((key, first) in groupsOf(summaries.getValue(variants.first()))) {
             val repeats = array(summaries.getValue(variants.first())["runs"]).map { obj(it) }.count { runKey(it) == key }
@@ -217,17 +220,17 @@ object Report : Tool(
     private fun cpu(arguments: List<String>, context: Context) {
         if (arguments.size != 2) throw Usage("cpu takes a results directory")
         val directory = context.path(arguments[1])
-        val variants = Files.list(directory).use { children ->
-            children.filter { Files.exists(it.resolve("summary.json")) && Files.exists(it.resolve("docker-stats.txt")) }.sorted().toList()
+        val variants: List<Path> = Files.list(directory).use { children ->
+            children.filter { Files.exists(it.resolve(SUMMARY_FILE)) && Files.exists(it.resolve(DOCKER_STATS_FILE)) }.sorted().toList()
         }
         if (variants.isEmpty()) throw Failure("${arguments[1]} has no subdirectory with a summary.json and a docker-stats.txt")
         context.out.println("| variant | run | served req/s | application CPU avg / max (% of one CPU) | application ms of CPU a request | edge CPU avg / max | edge ms of CPU a request | load generator CPU avg / max |")
         context.out.println("|---|---|---|---|---|---|---|---|")
         for (variant in variants) {
-            val application = cpuSamples(variant.resolve("docker-stats.txt"))
+            val application = cpuSamples(variant.resolve(DOCKER_STATS_FILE))
             val edge = variant.resolve("docker-stats-edge.txt").takeIf { Files.exists(it) }?.let { cpuSamples(it) }
             val generator = variant.resolve("docker-stats-k6.txt").takeIf { Files.exists(it) }?.let { cpuSamples(it) }
-            for (run in array(parse(variant.resolve("summary.json"), context)["runs"]).map { obj(it) }) {
+            for (run in array(parse(variant.resolve(SUMMARY_FILE), context)["runs"]).map { obj(it) }) {
                 val start = number(run["start"]).toLong()
                 val end = number(run["end"]).toLong()
                 val served = k6(variant.resolve("${run["name"]}.k6.json"), "http_reqs", "rate", context)
