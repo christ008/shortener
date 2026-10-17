@@ -17,6 +17,8 @@ repositories {
     mavenCentral()
 }
 
+extra["nimbusVersion"] = "10.10"
+
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:4.2.0-M2"))
     implementation("tools.jackson.core:jackson-databind")
@@ -24,7 +26,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.assertj:assertj-core")
-    testImplementation("com.nimbusds:nimbus-jose-jwt:10.10") // not in the Boot BOM: the version the application resolves, through Spring Security
+    testImplementation("com.nimbusds:nimbus-jose-jwt:${property("nimbusVersion")}") // not in the Boot BOM: the version the application resolves, through Spring Security
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
