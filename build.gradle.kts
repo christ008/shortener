@@ -191,7 +191,8 @@ kover {
 /**
  * Analysis and coverage on SonarCloud, from CI: `./gradlew sonar -x test`, with SONAR_TOKEN in the environment.
  *
- * - Coverage: the XML report of Kover, which has the format of JaCoCo, so run `koverXmlReport` first.
+ * - Coverage: the XML report of Kover, which has the format of JaCoCo, so run `koverXmlReport` first. Kover covers the application
+ *   only, so the code of the tools is excluded from the coverage, though it is still analysed.
  * - Scope: every file of the project, from its root, so that the tools, the deployment files, the perf scripts and the docs are analysed
  *   too. The tests are the `src/test` of the application and of the tools, indexed once as tests: the sources leave them out, because
  *   Sonar refuses a file indexed as both. The build output, the caches, the IDE folders and the raw results of the perf runs are left out.
@@ -211,6 +212,7 @@ sonar {
                 "src/test/**", "tools/src/test/**",
             ).joinToString(","),
         )
+        property("sonar.coverage.exclusions", "tools/src/main/**")
         property("sonar.coverage.jacoco.xmlReportPaths", layout.buildDirectory.file("reports/kover/report.xml").get().asFile.path)
     }
 }
