@@ -128,3 +128,63 @@ jobs:
               "  --certificate-oidc-issuer https://token.actions.githubusercontent.com" \
               '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  client:
+    name: Attach the Kotlin DPoP client to the release, signed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write  # create the release of the tag, if there is none, and attach the files to it
+      id-token: write  # keyless signing of the JAR with the workflow's identity
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check that the tag matches the version in the build
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' build.gradle.kts)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $version in build.gradle.kts"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+
+      - name: Build the Kotlin DPoP client as an executable JAR
+        run: ./gradlew -p tools dpopJar
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the JAR, and name it with its version
+        run: |
+          cp tools/build/libs/dpop.jar "dpop-$VERSION.jar"
+          sha256sum "dpop-$VERSION.jar" > "dpop-$VERSION.jar.sha256"
+          cosign sign-blob --yes --bundle "dpop-$VERSION.jar.sigstore.json" "dpop-$VERSION.jar"
+
+      - name: Attach the files to the release of the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" "dpop-$VERSION.jar" "dpop-$VERSION.jar.sha256" "dpop-$VERSION.jar.sigstore.json" --clobber
+
+      - name: Summarize
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          {
+            printf '### Attached to the release\n\n'
+            printf '`dpop-%s.jar`, the Kotlin DPoP client, with its checksum and its signature bundle.\n\n' "$VERSION"
+            printf 'Verify the signature:\n\n'
+            printf '%s\n' '```bash' \
+              "cosign verify-blob dpop-$VERSION.jar \\" \
+              "  --bundle dpop-$VERSION.jar.sigstore.json \\" \
+              "  --certificate-identity-regexp '^https://github.com/$REPOSITORY/' \\" \
+              "  --certificate-oidc-issuer https://token.actions.githubusercontent.com" \
+              '```'
+          } >> "$GITHUB_STEP_SUMMARY"
