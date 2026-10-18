@@ -15,7 +15,7 @@ The instance anyone can try, <https://shortener.codes>: its shape, setup, safety
 
 ## Goal
 
-Someone with a terminal and a JDK 17 or newer follows the README against a real URL: gets a token, creates a link, follows
+Someone with a terminal and a JDK 25 or newer follows the README against a real URL: gets a token, creates a link, follows
 it, and sees that another client cannot see it.
 
 ## Shape

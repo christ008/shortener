@@ -51,7 +51,7 @@ import java.util.regex.Pattern;
  * (docs/OPERATING.md lists some) and do what this does: one key for each token, a proof for each request, the nonce kept and
  * repeated.
  *
- * <p>Needs a JDK 17 or newer. One source file, run by the {@code java} launcher.
+ * <p>Needs a JDK 25 or newer. One source file, run by the {@code java} launcher.
  *
  * <pre>
  *   java DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
@@ -245,7 +245,7 @@ public final class DpopClient {
     private static void restrictToOwner(Path keyFile) throws IOException {
         try {
             Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
-        } catch (UnsupportedOperationException ignored) {
+        } catch (UnsupportedOperationException _) {
             // not a POSIX file system: nothing more can be done here
         }
     }
@@ -278,7 +278,7 @@ public final class DpopClient {
         if (response.statusCode() != 201) {
             try {
                 Files.deleteIfExists(keyFile);
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 // the registration failed and so the key means nothing; a leftover file is harmless
             }
             throw new Failure("the registration was refused (" + response.statusCode() + "): " + excerpt(response.body(), 300));
@@ -415,7 +415,7 @@ public final class DpopClient {
         try {
             postToken(form, dpopKey);
             return true;
-        } catch (Refused refused) {
+        } catch (Refused _) {
             return false;
         }
     }
@@ -555,7 +555,7 @@ public final class DpopClient {
         if (response.statusCode() == 400) {
             try {
                 return "use_dpop_nonce".equals(Json.parse(response.body()).string(ERROR));
-            } catch (Failure notJson) {
+            } catch (Failure _) {
                 return false;
             }
         }
@@ -951,7 +951,7 @@ public final class DpopClient {
                         if (position + 4 > text.length()) throw error("a short \\u escape");
                         try {
                             out.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
-                        } catch (NumberFormatException e) {
+                        } catch (NumberFormatException _) {
                             throw error("a bad \\u escape");
                         }
                         position += 4;

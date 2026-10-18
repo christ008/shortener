@@ -324,7 +324,7 @@ Verified on Keycloak 26.8.0: a person who asks for level 2 and has a code config
 A client is a program, a script or an application of a developer that creates links through the API, and it is known to the service by its key. Nobody registers without an invitation, and an invitation is made by an administrator in the console: Clients, Initial access token, Create, with a count of 1 and
 a deadline (seven days is plenty). The token is shown once. Give it to the person by a channel you trust.
 
-The person, with a JDK 17 or newer and `deploy/keycloak/DpopClient.java`:
+The person, with a JDK 25 or newer and `deploy/keycloak/DpopClient.java`:
 
 ```bash
 export ISSUER=https://shortener.example.com/realms/shortener TOKEN_URL=$ISSUER/protocol/openid-connect/token

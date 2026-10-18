@@ -69,7 +69,7 @@ service. 0026 and 0027 are superseded by 0029.
 | [0004](0004-absence-is-a-type.md) | Sealed types and null objects, not nulls | a missed case is a runtime error | more types | needed |
 | [0009](0009-problem-details-for-every-error.md) | One error shape, rendered by Spring MVC | clients parsing several formats | security failures go through an adapter | needed |
 | [0019](0019-no-secrets-in-git.md) | Generated dev keys, no secrets in Git | secrets in the history | a setup step per developer | needed |
-| [0020](0020-dpop-client-in-java.md) | The DPoP client is one Java file | hand-made DER and JSON in a security client | a JDK 17 on the client's machine | needed |
+| [0020](0020-dpop-client-in-java.md) | The DPoP client is one Java file (amended: JDK 25, and a Kotlin twin as a JAR) | hand-made DER and JSON in a security client | a JDK 25 on the client's machine | needed |
 | [0026](0026-scripting-standard.md) | sh to start programs, Java to compute, nothing else (**the Java tier is superseded by 0029**) | five languages and a helper written twice | a JDK 17 to run a compute script | needed |
 | [0027](0027-tools-on-jdk-25.md) | Tools on JDK 25, the client for strangers on 17 (**the tools are superseded by 0029**) | no shared code, a second per call, boilerplate | two baselines, by directory | needed |
 | [0029](0029-tools-in-kotlin.md) | The tools are Kotlin, in a build of their own | a second language, tests that start a process per case, a tool with no test | a build on the first run, and Gradle for `dev-setup` | earned |

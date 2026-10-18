@@ -49,10 +49,10 @@ import javax.tools.ToolProvider
  * verifies against the client's public key. The stand-in also plays the login of a single-page app, with PKCE, a
  * DPoP-bound code and a rotating, key-bound refresh token, so that `login` is exercised too.
  *
- * The client is written for JDK 17, and the tests run on whatever JDK builds the project, so one of them compiles it
- * with `--release 17` and every lint on, and the rest of what it has no unit to call, such as its JSON reader and the
+ * The client is written for JDK 25, and the tests run on whatever JDK builds the project, so one of them compiles it
+ * with `--release 25` and every lint on, and the rest of what it has no unit to call, such as its JSON reader and the
  * padding of coordinates, is called on that compiled class. Compiling for 17 is not running on 17, so with
- * `DPOP_CLIENT_JAVA_HOME` set to a JDK 17 the client runs on that one, which is what CI does.
+ * `DPOP_CLIENT_JAVA_HOME` set to another JDK the client runs on that one.
  *
  * - Every test starts a JVM for the client, which is most of the time of the suite, so the tests of this class run concurrently.
  * - Each has its own stand-in server, key file and temporary directory, and nothing else in the suite runs at the same time.
@@ -578,15 +578,15 @@ class DpopClientTest {
         assertThat(tokenRequests).isEmpty()
     }
 
-    // ---- the JDK 17 baseline ----------------------------------------------------------------------------------------
+    // ---- the JDK 25 baseline ----------------------------------------------------------------------------------------
 
     @Test
-    fun `compiles for JDK 17 with every lint on and no warning`() {
-        val problems = compileForJdk17(directory.resolve("classes"))
+    fun `compiles for JDK 25 with every lint on and no warning`() {
+        val problems = compileForJdk25(directory.resolve("classes"))
 
         assertThat(problems).isEmpty()
         val classFile = Files.readAllBytes(directory.resolve("classes/DpopClient.class"))
-        assertThat(ByteBuffer.wrap(classFile).getShort(6).toInt()).describedAs("class file major version: 61 is Java 17").isEqualTo(61)
+        assertThat(ByteBuffer.wrap(classFile).getShort(6).toInt()).describedAs("class file major version: 69 is Java 25").isEqualTo(69)
     }
 
     @Test
@@ -663,19 +663,19 @@ class DpopClientTest {
 
     private val compiled: Compiled by lazy {
         val classes = Files.createDirectories(directory.resolve("client-classes"))
-        val problems = compileForJdk17(classes)
-        check(problems.isEmpty()) { "DpopClient.java does not compile for JDK 17:\n" + problems.joinToString("\n") }
+        val problems = compileForJdk25(classes)
+        check(problems.isEmpty()) { "DpopClient.java does not compile for JDK 25:\n" + problems.joinToString("\n") }
         Compiled(classes)
     }
 
-    /** The problems, errors and warnings alike, of compiling the client for Java 17, as the baseline requires. */
-    private fun compileForJdk17(output: Path): List<String> {
+    /** The problems, errors and warnings alike, of compiling the client for Java 25, as the baseline requires. */
+    private fun compileForJdk25(output: Path): List<String> {
         val compiler = ToolProvider.getSystemJavaCompiler() ?: error("the tests need a JDK, not a JRE")
         val diagnostics = DiagnosticCollector<JavaFileObject>()
         compiler.getStandardFileManager(diagnostics, null, null).use { files ->
             Files.createDirectories(output)
             // No annotation processing: the classpath of the tests holds processors, which have nothing to do with this file.
-            val options = listOf("--release", "17", "-proc:none", "-Xlint:all", "-Werror", "-d", output.toString())
+            val options = listOf("--release", "25", "-proc:none", "-Xlint:all", "-Werror", "-d", output.toString())
             val sources = files.getJavaFileObjects(Path.of("deploy/keycloak/DpopClient.java"))
             compiler.getTask(null, files, diagnostics, options, null, sources).call()
         }

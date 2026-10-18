@@ -55,7 +55,7 @@ tasks.test {
 }
 
 // The reference client of the Kotlin side as one executable JAR, with its dependencies: `java -jar build/libs/dpop.jar`.
-// It runs on the JRE the tools are built for (25), not on 17 as deploy/keycloak/DpopClient.java does.
+// It runs on JDK 25, the same baseline as deploy/keycloak/DpopClient.java.
 val dpopJar by tasks.registering(Jar::class) {
     group = "distribution"
     description = "Packages the Kotlin DPoP client as an executable JAR, java -jar build/libs/dpop.jar."
