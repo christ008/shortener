@@ -131,12 +131,8 @@ public final class DpopClient {
             System.err.println(ERROR_PREFIX + failure.getMessage());
             if (System.getenv(DEBUG_VARIABLE) != null) failure.printStackTrace();
             System.exit(1);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            System.err.println(ERROR_PREFIX + interrupted);
-            if (System.getenv(DEBUG_VARIABLE) != null) interrupted.printStackTrace();
-            System.exit(1);
         } catch (Exception unexpected) {
+            if (unexpected instanceof InterruptedException) Thread.currentThread().interrupt();
             System.err.println(ERROR_PREFIX + unexpected);
             if (System.getenv(DEBUG_VARIABLE) != null) unexpected.printStackTrace();
             System.exit(1);
