@@ -211,8 +211,7 @@ configure<JacocoPluginExtension> {
 
 // Kover measures the application in the test JVM. JaCoCo measures the client's classes in that same JVM, where the suite calls them
 // in process, and the client's own JVMs; it does not measure anything else of the application, so the two do not overlap.
-val clientClasses = listOf("Console", "DpopClient", "Failure", "Http", "Jose", "Json", "KeycloakLogin", "Keys", "Oauth", "Refused",
-    "SystemConsole", "TokenEndpoint").map { "$it*" }
+val clientClasses = listOf("dpop.*")
 tasks.withType<Test>().configureEach {
     extensions.configure<JacocoTaskExtension> {
         isEnabled = name == "test"
@@ -232,8 +231,8 @@ dependencies {
 
 val compileDpopClient = tasks.register<JavaCompile>("compileDpopClient") {
     group = "verification"
-    description = "Compiles deploy/keycloak/DpopClient.java for Java 25, for the tests that measure the client."
-    source(fileTree("deploy/keycloak") { include("*.java") })
+    description = "Compiles deploy/keycloak/dpop/DpopClient.java for Java 25, for the tests that measure the client."
+    source(fileTree("deploy/keycloak/dpop") { include("*.java") })
     classpath = files()
     destinationDirectory.set(dpopClientClasses)
     options.release.set(25)
@@ -267,7 +266,7 @@ val dpopClientReport = tasks.register<JacocoReport>("dpopClientReport") {
     description = "Writes the JaCoCo report of the DPoP client, which SonarCloud reads beside the Kover one."
     executionData.setFrom(dpopClientData.map { data -> data.asFileTree.matching { include("*.exec") } }, layout.buildDirectory.dir("jacoco").map { dir -> dir.asFileTree.matching { include("test*.exec") } })
     classDirectories.setFrom(dpopClientClasses)
-    sourceDirectories.setFrom(files("deploy/keycloak"))
+    sourceDirectories.setFrom(files("deploy/keycloak/dpop"))
     reports {
         xml.required.set(true)
         xml.outputLocation.set(dpopClientXml)
@@ -418,7 +417,7 @@ tasks.withType<Test> {
         "deploy/stack/overlays/compose.postgres-ha.yaml",
         "deploy/edge/keycloak.conf",
         "deploy/stack/.env.example",
-        "deploy/keycloak/DpopClient.java",
+        "deploy/keycloak/dpop/DpopClient.java",
         "deploy/postgres/bootstrap.sql",
     )
 }

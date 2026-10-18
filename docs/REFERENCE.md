@@ -183,7 +183,7 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 | `Report` | read GC logs, heap dumps and bench results (`summary`, `cpu`); query Prometheus | Kotlin |
 | `Dataset` | distinct short codes, in parallel, for loads that the redirect cache does not absorb | Kotlin |
 | `ClientKeys`, `DpopCalls` | client keys, and DPoP sign-in and calls, for `DevSetup` and `Smoke` | Kotlin |
-| `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
+| `deploy/keycloak/dpop/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test (scenarios `app`, `edge`, `full`), profile | sh |
 | `perf/compare-builds.sh`, `perf/builds/jvm.sh`, `perf/builds/native.sh` | run one load on several builds, and make the images of a JDK (with or without the AOT cache) and of a native image with a given GraalVM | sh |
 | `perf/scrub-k6-summary.sh` | remove the DPoP key and the token from a k6 summary | sh |

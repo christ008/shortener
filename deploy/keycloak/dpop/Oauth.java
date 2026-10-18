@@ -1,3 +1,5 @@
+package dpop;
+
 
 /** The names of the protocols, as Keycloak speaks them: OAuth 2.0, OpenID Connect and the DPoP extension. */
 final class Oauth {

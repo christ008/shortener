@@ -1,3 +1,5 @@
+package dpop;
+
 import java.io.IOException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,14 +27,14 @@ import java.util.UUID;
  * <p>Needs a JDK 25 or newer. Several source files in this directory, run by the {@code java} launcher, which compiles the ones it uses.
  *
  * <pre>
- *   java DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
- *   java DpopClient.java register NAME INVITATION KEY_FILE
+ *   java deploy/keycloak/dpop/DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
+ *   java deploy/keycloak/dpop/DpopClient.java register NAME INVITATION KEY_FILE
  *                                                         makes a key, writes its private half to KEY_FILE (which must not
  *                                                         exist), registers a client with the public half using the
  *                                                         invitation an administrator gave, and prints the client id
- *   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
- *   java DpopClient.java token KEY_FILE CLIENT_ID         prints a DPoP-bound access token
- *   java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]
+ *   java deploy/keycloak/dpop/DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
+ *   java deploy/keycloak/dpop/DpopClient.java token KEY_FILE CLIENT_ID         prints a DPoP-bound access token
+ *   java deploy/keycloak/dpop/DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]
  *                                                         signs a user in the way a single-page app does (authorization
  *                                                         code with PKCE and a DPoP-bound code), shows the token's claims,
  *                                                         refreshes it, then calls the API as that user
@@ -56,11 +58,11 @@ public final class DpopClient {
     private static final String DEBUG_VARIABLE = "DPOP_DEBUG";
 
     private static final String USAGE = """
-            usage: java DpopClient.java keygen CLIENT_ID
-                   java DpopClient.java register NAME INVITATION KEY_FILE
-                   java DpopClient.java token KEY_FILE CLIENT_ID
-                   java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
-                   java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]""";
+            usage: java deploy/keycloak/dpop/DpopClient.java keygen CLIENT_ID
+                   java deploy/keycloak/dpop/DpopClient.java register NAME INVITATION KEY_FILE
+                   java deploy/keycloak/dpop/DpopClient.java token KEY_FILE CLIENT_ID
+                   java deploy/keycloak/dpop/DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
+                   java deploy/keycloak/dpop/DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]""";
 
     private final String tokenUrl = Http.env("TOKEN_URL", Oauth.DEFAULT_TOKEN_URL);
 
@@ -199,7 +201,7 @@ public final class DpopClient {
         if (clientId == null) throw new Failure("the identity provider registered the client but did not say its id: " + Http.excerpt(response.body(), 300));
         console.out("registered: " + clientId);
         console.out("private key: " + keyFile + " (keep it: it is the only way to be this client, and it cannot be recovered)");
-        console.out("try it:  java DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
+        console.out("try it:  java deploy/keycloak/dpop/DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
     }
 
     private void printCall(Path keyFile, String clientId, String method, String url, String body) throws InterruptedException {

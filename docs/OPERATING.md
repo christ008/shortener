@@ -57,7 +57,7 @@ You finish with the service running on your machine, one call made and the tests
    ([how it works](#dpop-client)):
 
    ```bash
-   java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+   java deploy/keycloak/dpop/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
      POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
    curl -i http://localhost:8080/<shortCode>
    ```
@@ -193,13 +193,13 @@ Work down the list. Each item names the invariant it protects ([Invariants](DESI
 
 ### DPoP client
 
-`curl` cannot call the API: tokens are bound to a key and every request needs a proof. `deploy/keycloak/DpopClient.java` is a
+`curl` cannot call the API: tokens are bound to a key and every request needs a proof. `deploy/keycloak/dpop/DpopClient.java` is a
 **reference implementation** of a client, to try the API with, to read and to port: it needs only a JDK 25 or newer, runs on the
 caller's machine (it must reach the token endpoint and the API) and is not deployed. It is not a library, and a program that calls
 the API should use one of the [libraries below](#other-clients-and-libraries):
 
 ```bash
-java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+java deploy/keycloak/dpop/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
   POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 

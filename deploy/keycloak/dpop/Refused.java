@@ -1,3 +1,5 @@
+package dpop;
+
 
 /** The identity provider answered, and said no. */
 class Refused extends Failure {

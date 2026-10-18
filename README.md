@@ -87,11 +87,11 @@ Then call it, rehearse the production stack on your machine, and go to productio
 ## The public instance
 
 <https://shortener.codes> accepts links to `example.com` only. Following a link needs nothing; creating one needs a client. Ask for an invitation, then register
-your own with `java deploy/keycloak/DpopClient.java register NAME INVITATION KEY_FILE` ([DEPLOY.md](docs/DEPLOY.md#registering-a-client)). With its key file:
+your own with `java deploy/keycloak/dpop/DpopClient.java register NAME INVITATION KEY_FILE` ([DEPLOY.md](docs/DEPLOY.md#registering-a-client)). With its key file:
 
 ```bash
 export TOKEN_URL=https://shortener.codes/realms/shortener/protocol/openid-connect/token ISSUER=https://shortener.codes/realms/shortener
-java deploy/keycloak/DpopClient.java call KEY_FILE CLIENT_ID POST https://shortener.codes/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
+java deploy/keycloak/dpop/DpopClient.java call KEY_FILE CLIENT_ID POST https://shortener.codes/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
 ```
 
 ## API

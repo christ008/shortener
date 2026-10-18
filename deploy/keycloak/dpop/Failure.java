@@ -1,3 +1,5 @@
+package dpop;
+
 
 /** What went wrong, in words for the person running this, without a stack trace. */
 class Failure extends RuntimeException {

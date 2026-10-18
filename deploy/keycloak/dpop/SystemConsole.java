@@ -1,3 +1,5 @@
+package dpop;
+
 
 /** The process's own output. The only place that writes to System.out and System.err. */
 class SystemConsole implements Console {

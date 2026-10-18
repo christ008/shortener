@@ -164,7 +164,7 @@ object DevSetup : Tool("DevSetup", "usage: deploy/keycloak/dev-setup [--yes] [--
             """
               Done. What to do next:
                 ./gradlew bootRun                 starts Postgres and Keycloak with these passwords, and the application
-                java deploy/keycloak/DpopClient.java call %s/demo-client.jwk.json demo-client \
+                java deploy/keycloak/dpop/DpopClient.java call %s/demo-client.jwk.json demo-client \
                     POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/"}'
                 deploy/keycloak/dev-setup --show  prints the passwords again
 

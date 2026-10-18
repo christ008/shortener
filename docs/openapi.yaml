@@ -12,12 +12,12 @@ info:
     in the `DPoP-Nonce` header, and the client repeats it once with a new proof. Every response to a DPoP request carries the
     nonce to use next.
 
-    `deploy/keycloak/DpopClient.java` is a reference implementation of the whole flow, not a library, with only a JDK 17 or
+    `deploy/keycloak/dpop/DpopClient.java` is a reference implementation of the whole flow, not a library, with only a JDK 17 or
     newer, on your own machine (run `deploy/keycloak/dev-setup` first). For your own program use a DPoP library for its
     language, see docs/OPERATING.md:
 
     ```
-    java deploy/keycloak/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
+    java deploy/keycloak/dpop/DpopClient.java call deploy/keycloak/dev-keys/demo-client.jwk.json demo-client \
       POST http://localhost:8080/api/short-links '{"targetUrl":"https://example.com/some/long/path"}'
     ```
 

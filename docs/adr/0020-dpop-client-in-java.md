@@ -1,7 +1,7 @@
 # 0020. The DPoP client is Java for JDK 25, in a few files that run without a build
 
 - Status: Accepted, 2026-10-06, and amended 2026-10-18 twice: the baseline is JDK 25, not 17; and the client is several files, not one (see the amendment below). Supersedes the shell client of [0019](0019-no-secrets-in-git.md)
-- Evidence: `a412d3a`, `deploy/keycloak/DpopClient.java`, `DpopClientTest`
+- Evidence: `a412d3a`, `deploy/keycloak/dpop/DpopClient.java`, `DpopClientTest`
 
 ## Problem
 
@@ -11,7 +11,7 @@ security-relevant client made of string handling is hard to get right and to tes
 
 ## Decision
 
-- `deploy/keycloak/DpopClient.java` and the classes beside it, run as `java deploy/keycloak/DpopClient.java ...` with no build step. The JDK already
+- `deploy/keycloak/dpop/DpopClient.java` and the classes of its package beside it, run as `java deploy/keycloak/dpop/DpopClient.java ...` with no build step. The JDK already
   signs in the JWS format and reads P-256 keys, so nothing is hand-made. It also makes the dev keys (`keygen`).
 - Written for the JDK 25 baseline (amended 2026-10-18; it was 17): records, sealed types, text blocks, switch expressions and
   unnamed variables, nothing newer.
@@ -37,7 +37,8 @@ proofs, the token endpoint and the API calls, the browser login, and a JSON read
 "monster class" (S6539: at most 20 dependencies), and every change to one part touches the whole file, so its tests and its
 review cover everything at once. That is high complexity and coupling, and a single file is what caused both.
 
-The client is now several files in `deploy/keycloak/`, in the default package, one top-level type each:
+The client is now several files in the package `dpop`, in `deploy/keycloak/dpop/`, one top-level type each (its documentation is in
+`package-info.java`):
 
 - `DpopClient.java`: the command line, the commands and their output.
 - `TokenEndpoint.java`: the token endpoint, the nonces of each server, and the API calls.
@@ -46,7 +47,7 @@ The client is now several files in `deploy/keycloak/`, in the default package, o
 - `Http.java`, `Oauth.java`: the transport helpers, and the names of the protocol.
 - `Json.java`, `Console.java`, `SystemConsole.java`, `Failure.java`, `Refused.java`: the JSON, the output and the errors.
 
-It still runs with `java deploy/keycloak/DpopClient.java ...` and no build: JDK 25's source launcher compiles the other files it
+It still runs with `java deploy/keycloak/dpop/DpopClient.java ...` and no build: JDK 25's source launcher compiles the other files it
 uses from the same directory (JEP 458). The rule that stays is the one behind the single file: no dependency beyond the JDK.
 
 - Cost: more files to read, and the build and `DpopClientTest` compile the whole directory with `--release 25` and every lint on.

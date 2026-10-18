@@ -44,7 +44,7 @@ tooling("devPasswords", "Prints the passwords of the dev setup.") {
 }
 
 tooling("keygen", "Makes a client key: line 1 private, line 2 public. -Pclient=NAME") {
-    listOf(java, "deploy/keycloak/DpopClient.java", "keygen", setting("client"))
+    listOf(java, "deploy/keycloak/dpop/DpopClient.java", "keygen", setting("client"))
 }
 
 tooling("productionRealm", "Makes the realm a production Keycloak imports. -Pdemo=FILE -Padmin=FILE of public keys, -Poutput=FILE") {
@@ -52,7 +52,7 @@ tooling("productionRealm", "Makes the realm a production Keycloak imports. -Pdem
 }
 
 tooling("dpopCall", "Calls the API with DPoP. -Pkey=FILE -Pclient=NAME -Purl=URL, and -Pmethod=GET and -Pbody=JSON") {
-    listOf(java, "deploy/keycloak/DpopClient.java", "call", setting("key"), setting("client"), optional("method") ?: "GET", setting("url")) +
+    listOf(java, "deploy/keycloak/dpop/DpopClient.java", "call", setting("key"), setting("client"), optional("method") ?: "GET", setting("url")) +
         listOfNotNull(optional("body"))
 }
 

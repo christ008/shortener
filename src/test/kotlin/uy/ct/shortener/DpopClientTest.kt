@@ -42,7 +42,7 @@ import javax.tools.JavaFileObject
 import javax.tools.ToolProvider
 
 /**
- * `deploy/keycloak/DpopClient.java` is not part of the application; the local setup, `dev-setup`, the smoke test and the README depend on it.
+ * `deploy/keycloak/dpop/DpopClient.java` is not part of the application; the local setup, `dev-setup`, the smoke test and the README depend on it.
  * This runs the real file as a subprocess, as the scripts do, against a stand-in for Keycloak and the API, and checks what it sent
  * with a different implementation (Nimbus): the
  * proof is a valid signature by the key it embeds, made for this method and URL and this token, and the client assertion
@@ -241,10 +241,10 @@ class DpopClientTest {
     private fun clientCommand(java: String, args: Array<out String>, asFile: Boolean): List<String> {
         System.getProperty("dpopClient.jar")?.let { return listOf(java, "-jar", it) + args }
         val classes = System.getProperty("dpopClient.classes")
-        if (asFile || classes == null) return listOf(java, "-XX:TieredStopAtLevel=1", "deploy/keycloak/DpopClient.java") + args
+        if (asFile || classes == null) return listOf(java, "-XX:TieredStopAtLevel=1", "deploy/keycloak/dpop/DpopClient.java") + args
         val agent = System.getProperty("dpopClient.agent")
         val data = Files.createDirectories(Path.of(System.getProperty("dpopClient.data"))).resolve("${UUID.randomUUID()}.exec")
-        return listOf(java, "-javaagent:$agent=destfile=$data,includes=*", "-XX:TieredStopAtLevel=1", "-cp", classes, "DpopClient") + args
+        return listOf(java, "-javaagent:$agent=destfile=$data,includes=*", "-XX:TieredStopAtLevel=1", "-cp", classes, "dpop.DpopClient") + args
     }
 
     private fun run(vararg args: String, environment: Map<String, String> = emptyMap(), asFile: Boolean = false): Output {
@@ -384,7 +384,7 @@ class DpopClientTest {
         val output = run(asFile = true)
 
         assertThat(output.exitCode).isEqualTo(2)
-        assertThat(output.stderr).startsWith("usage: java DpopClient.java")
+        assertThat(output.stderr).startsWith("usage: java deploy/keycloak/dpop/DpopClient.java")
     }
 
     @Test
@@ -596,13 +596,13 @@ class DpopClientTest {
         val problems = compileForJdk25(directory.resolve("classes"))
 
         assertThat(problems).isEmpty()
-        val classFile = Files.readAllBytes(directory.resolve("classes/DpopClient.class"))
+        val classFile = Files.readAllBytes(directory.resolve("classes/dpop/DpopClient.class"))
         assertThat(ByteBuffer.wrap(classFile).getShort(6).toInt()).describedAs("class file major version: 69 is Java 25").isEqualTo(69)
     }
 
     @Test
     fun `pads and trims coordinates to the 32 bytes a JWK has`() {
-        val client = compiled.load("Keys")
+        val client = compiled.load("dpop.Keys")
         fun decoded(value: BigInteger) = Base64.getUrlDecoder().decode(client.invoke("coordinate", value) as String)
 
         val cases = mapOf(
@@ -619,7 +619,7 @@ class DpopClientTest {
 
     @Test
     fun `reads and writes the JSON of keys and tokens, and says when it is not JSON`() {
-        val json = compiled.load("Json")
+        val json = compiled.load("dpop.Json")
 
         val written = json.invoke("write", linkedMapOf("a" to "q\"\\\n\u0001é", "n" to 5L, "list" to listOf(true, null)))
         assertThat(written).isEqualTo("""{"a":"q\"\\\n\u0001é","n":5,"list":[true,null]}""")
@@ -637,7 +637,7 @@ class DpopClientTest {
 
     @Test
     fun `finds the action of the login form whatever order its attributes come in`() {
-        val client = compiled.load("KeycloakLogin")
+        val client = compiled.load("dpop.KeycloakLogin")
         fun action(html: String) = (client.invoke("loginFormAction", html) as Optional<*>).orElse(null)
 
         assertThat(action("""<form id="kc-form-login" onsubmit="x" action="/a?b=1&amp;c=2" method="post">""")).isEqualTo("/a?b=1&c=2")
@@ -692,7 +692,7 @@ class DpopClientTest {
             Files.createDirectories(output)
             // No annotation processing: the classpath of the tests holds processors, which have nothing to do with this file.
             val options = listOf("--release", "25", "-proc:none", "-Xlint:all", "-Werror", "-d", output.toString())
-            val sources = files.getJavaFileObjects(*Files.list(Path.of("deploy/keycloak")).use { it.filter { f -> f.fileName.toString().endsWith(".java") }.toList().toTypedArray() })
+            val sources = files.getJavaFileObjects(*Files.list(Path.of("deploy/keycloak/dpop")).use { it.filter { f -> f.fileName.toString().endsWith(".java") }.toList().toTypedArray() })
             compiler.getTask(null, files, diagnostics, options, null, sources).call()
         }
         return diagnostics.diagnostics
