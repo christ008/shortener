@@ -53,3 +53,16 @@ tasks.test {
     // Tests read their fixtures from the root of the repository.
     systemProperty("repository.root", rootDir.parentFile.absolutePath)
 }
+
+// The reference client of the Kotlin side as one executable JAR, with its dependencies: `java -jar build/libs/dpop.jar`.
+// It runs on the JRE the tools are built for (25), not on 17 as deploy/keycloak/DpopClient.java does.
+val dpopJar by tasks.registering(Jar::class) {
+    group = "distribution"
+    description = "Packages the Kotlin DPoP client as an executable JAR, java -jar build/libs/dpop.jar."
+    archiveFileName.set("dpop.jar")
+    manifest { attributes("Main-Class" to "uy.ct.shortener.tools.dpop.DpopClientKt") }
+    from(sourceSets.main.get().output)
+    from(configurations.runtimeClasspath.map { files -> files.map { if (it.isDirectory) it else zipTree(it) } })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+}

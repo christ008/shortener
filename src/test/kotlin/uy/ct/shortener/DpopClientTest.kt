@@ -239,6 +239,7 @@ class DpopClientTest {
      * is run the way the scripts run it, when `asFile` says so or the build gives nothing (as in an IDE).
      */
     private fun clientCommand(java: String, args: Array<out String>, asFile: Boolean): List<String> {
+        System.getProperty("dpopClient.jar")?.let { return listOf(java, "-jar", it) + args }
         val classes = System.getProperty("dpopClient.classes")
         if (asFile || classes == null) return listOf(java, "-XX:TieredStopAtLevel=1", "deploy/keycloak/DpopClient.java") + args
         val agent = System.getProperty("dpopClient.agent")

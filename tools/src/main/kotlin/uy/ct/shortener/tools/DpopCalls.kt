@@ -40,7 +40,7 @@ class DpopCalls(
     private val issuer: String = tokenUrl.removeSuffix(TOKEN_ENDPOINT_PATH),
 ) {
 
-    class Answer(val status: Int, val body: String)
+    class Answer(val status: Int, val body: String, val location: String? = null, val challenges: List<String> = emptyList())
 
     private val http: HttpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build()
 
@@ -56,9 +56,11 @@ class DpopCalls(
                 .header("Authorization", "DPoP $token")
                 .header("DPoP", proof(key, method, url, token, nonce))
             if (hasBody) request.header("Content-Type", "application/json")
+            System.getenv("TRACEPARENT")?.takeIf { it.isNotBlank() }?.let { request.header("traceparent", it) }
             request.method(method, if (hasBody) HttpRequest.BodyPublishers.ofString(body) else HttpRequest.BodyPublishers.noBody()).build()
         }
-        return Answer(response.statusCode(), response.body())
+        return Answer(response.statusCode(), response.body(), response.headers().firstValue("Location").orElse(null),
+            response.headers().allValues("WWW-Authenticate"))
     }
 
     fun token(keyFile: Path, client: String): String = token(keyFile, client, ClientKeys.newKeyPair())
@@ -92,7 +94,7 @@ class DpopCalls(
         return answer.path("access_token").stringValue(null) ?: throw Failure("the token endpoint did not return an access_token: ${response.body()}")
     }
 
-    private fun sendProved(url: String, build: (String?) -> HttpRequest): HttpResponse<String> {
+    internal fun sendProved(url: String, build: (String?) -> HttpRequest): HttpResponse<String> {
         val origin = origin(url)
         var response = send(build(nonces[origin]))
         remember(origin, response)
@@ -120,7 +122,7 @@ class DpopCalls(
             else -> false
         }
 
-    private fun send(request: HttpRequest): HttpResponse<String> =
+    internal fun send(request: HttpRequest): HttpResponse<String> =
         try {
             http.send(request, HttpResponse.BodyHandlers.ofString())
         } catch (unreachable: IOException) {

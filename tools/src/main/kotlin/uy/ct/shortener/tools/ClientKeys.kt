@@ -60,7 +60,7 @@ object ClientKeys {
         val jwk = try {
             JSON.readTree(Files.readString(file))
         } catch (notJson: JacksonException) {
-            throw Failure("$file is not JSON: ${notJson.originalMessage}")
+            throw Failure("not JSON in $file: ${notJson.originalMessage}")
         }
         val d = jwk.path("d").stringValue(null)
         if (jwk.path("kty").stringValue(null) != "EC" || jwk.path("crv").stringValue(null) != "P-256" || d == null) {

@@ -244,6 +244,18 @@ tasks.test {
     }
 }
 
+// The same suite against the Kotlin reference, the executable JAR of tools/: the two implementations answer the same.
+tasks.register<Test>("dpopJarParity") {
+    group = "verification"
+    description = "Runs DpopClientTest against the Kotlin DPoP client's executable JAR (tools/build/libs/dpop.jar)."
+    dependsOn(gradle.includedBuild("tools").task(":dpopJar"))
+    filter { includeTestsMatching("uy.ct.shortener.DpopClientTest") }
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    systemProperty("dpopClient.jar", gradle.includedBuild("tools").projectDir.resolve("build/libs/dpop.jar").path)
+    useJUnitPlatform()
+}
+
 val dpopClientReport = tasks.register<JacocoReport>("dpopClientReport") {
     group = "verification"
     description = "Writes the JaCoCo report of the DPoP client, which SonarCloud reads beside the Kover one."

@@ -72,7 +72,7 @@ class ClientKeysTest {
         assertThatThrownBy { ClientKeys.readPrivate(missing) }.isInstanceOf(Failure::class.java).hasMessage("could not read the key file $missing")
 
         val garbage = fileWith("not json")
-        assertThatThrownBy { ClientKeys.readPrivate(garbage) }.isInstanceOf(Failure::class.java).hasMessageContaining("$garbage is not JSON")
+        assertThatThrownBy { ClientKeys.readPrivate(garbage) }.isInstanceOf(Failure::class.java).hasMessageContaining("not JSON in $garbage")
 
         val other = fileWith("""{"kty":"EC","crv":"P-384","d":"AAAA"}""")
         assertThatThrownBy { ClientKeys.readPrivate(other) }.isInstanceOf(Failure::class.java).hasMessageContaining("is not a private P-256 JWK")
