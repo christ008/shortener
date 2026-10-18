@@ -1,12 +1,6 @@
 package dpop;
 
-import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import module java.base;
 
 /**
  * A strict JSON reader into maps, lists, strings, numbers, booleans and null, and a writer for the same, with no library. A

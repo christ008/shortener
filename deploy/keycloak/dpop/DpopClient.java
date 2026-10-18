@@ -1,17 +1,7 @@
 package dpop;
 
-import java.io.IOException;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.security.KeyPair;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import module java.base;
+import module java.net.http;
 
 /**
  * A reference implementation of a DPoP (RFC 9449) client, to read, to try the API with, and to port. It authenticates to the

@@ -1,15 +1,7 @@
 package dpop;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
+import module java.base;
+import module java.net.http;
 
 /** The transport of the client: the timeouts, the headers it reads and writes, and the helpers of a URL or a form. */
 final class Http {

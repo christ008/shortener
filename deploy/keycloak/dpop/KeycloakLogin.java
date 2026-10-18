@@ -1,17 +1,7 @@
 package dpop;
 
-import java.net.URLDecoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import module java.base;
+import module java.net.http;
 
 /** The browser part of the login: the login page of Keycloak, the form submitted on it, and the redirect that carries the code. */
 class KeycloakLogin {

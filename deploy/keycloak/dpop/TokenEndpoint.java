@@ -1,17 +1,7 @@
 package dpop;
 
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Path;
-import java.security.KeyPair;
-import java.security.PrivateKey;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.Function;
-import java.util.function.Supplier;
+import module java.base;
+import module java.net.http;
 
 /** The token endpoint and the API calls of the client, with the nonce each server asked for. */
 final class TokenEndpoint {

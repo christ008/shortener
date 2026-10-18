@@ -1,18 +1,9 @@
 package dpop;
 
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.KeyPair;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.SecureRandom;
+import module java.base;
+
+// java.lang.classfile has a Signature too, so the one of java.security is named.
 import java.security.Signature;
-import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
 
 /** JSON Web Signatures and the DPoP proofs of RFC 9449: signed with ES256, and the base64url text they are made of. */
 final class Jose {

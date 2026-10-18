@@ -1,24 +1,6 @@
 package dpop;
 
-import java.io.IOException;
-import java.math.BigInteger;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.security.AlgorithmParameters;
-import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
-import java.security.interfaces.ECPrivateKey;
-import java.security.interfaces.ECPublicKey;
-import java.security.spec.ECGenParameterSpec;
-import java.security.spec.ECParameterSpec;
-import java.security.spec.ECPrivateKeySpec;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import module java.base;
 
 /** The key material of the client: the P-256 keys, their JWKs, their thumbprints, and the key file. */
 final class Keys {
