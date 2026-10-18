@@ -561,6 +561,17 @@ class DpopClientTest {
     }
 
     @Test
+    fun `shows the stack trace of a failure when DPOP_DEBUG is set, and names an unexpected error by its class`() {
+        val missing = call("GET", "/api/short-links", key = directory.resolve("missing.jwk.json"), environment = mapOf("DPOP_DEBUG" to "1"))
+        assertThat(missing.exitCode).isEqualTo(1)
+        assertThat(missing.stderr).contains("DpopClient: could not read the key file").contains("\tat ")
+
+        val badMethod = call("BAD METHOD", "/api/short-links")
+        assertThat(badMethod.exitCode).isEqualTo(1)
+        assertThat(badMethod.stderr).startsWith("DpopClient: java.lang.IllegalArgumentException")
+    }
+
+    @Test
     fun `says what is wrong with a key file, in a line`() {
         val missing = call("GET", "/api/short-links", key = directory.resolve("missing.jwk.json"))
         val publicOnly = directory.resolve("public.jwk.json").also { Files.writeString(it, clientKey.toPublicJWK().toJSONString()) }

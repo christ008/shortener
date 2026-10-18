@@ -100,6 +100,8 @@ public final class DpopClient {
     private static final String REFRESH_TOKEN = "refresh_token";
     private static final String ERROR = "error";
     private static final String DPOP_NONCE = "DPoP-Nonce";
+    private static final String ERROR_PREFIX = "DpopClient: ";
+    private static final String DEBUG_VARIABLE = "DPOP_DEBUG";
 
     private static final String USAGE = """
             usage: java DpopClient.java keygen CLIENT_ID
@@ -126,12 +128,13 @@ public final class DpopClient {
         try {
             new DpopClient().run(command.get());
         } catch (Failure failure) {
-            System.err.println("DpopClient: " + failure.getMessage());
-            if (System.getenv("DPOP_DEBUG") != null) failure.printStackTrace();
+            System.err.println(ERROR_PREFIX + failure.getMessage());
+            if (System.getenv(DEBUG_VARIABLE) != null) failure.printStackTrace();
             System.exit(1);
         } catch (Exception unexpected) {
-            System.err.println("DpopClient: " + unexpected);
-            if (System.getenv("DPOP_DEBUG") != null) unexpected.printStackTrace();
+            if (unexpected instanceof InterruptedException) Thread.currentThread().interrupt();
+            System.err.println(ERROR_PREFIX + unexpected);
+            if (System.getenv(DEBUG_VARIABLE) != null) unexpected.printStackTrace();
             System.exit(1);
         }
     }
@@ -178,7 +181,7 @@ public final class DpopClient {
         return args.length > index ? args[index] : null;
     }
 
-    private void run(Command command) throws Exception {
+    private void run(Command command) throws IOException, InterruptedException {
         if (command instanceof Keygen keygen) {
             keygen(keygen.clientId());
         } else if (command instanceof Register register) {
@@ -290,7 +293,7 @@ public final class DpopClient {
         System.out.println("try it:  java DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
     }
 
-    private void printCall(Path keyFile, String clientId, String method, String url, String body) throws Exception {
+    private void printCall(Path keyFile, String clientId, String method, String url, String body) throws InterruptedException {
         Answer answer = answer(keyFile, clientId, method, url, body);
         System.out.println(answer.status());
         if (answer.location() != null) System.out.println("Location: " + answer.location());
@@ -303,7 +306,7 @@ public final class DpopClient {
     /** What the API answered to a call: the status, the {@code Location} if any, the {@code WWW-Authenticate} challenges, the body. */
     private record Answer(int status, String location, List<String> challenges, String body) {}
 
-    private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws Exception {
+    private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws InterruptedException {
         KeyPair dpopKey = newKey();
         Token token = fetchToken(keyFile, clientId, dpopKey);
         HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, token.accessToken(), dpopKey, nonce));
@@ -316,7 +319,7 @@ public final class DpopClient {
      * can be read: the code is bound to the key, the token is bound to it, a refresh keeps it, and the old refresh token
      * is (or is not) refused.
      */
-    private void login(String user, String password, String method, String url, String body) throws Exception {
+    private void login(String user, String password, String method, String url, String body) throws InterruptedException {
         String clientId = env("CLIENT_ID", "shortener-ui");
         String redirect = env("REDIRECT_URI", "http://localhost:3000/app/auth/callback");
         String scope = env("SCOPE", "shortlinks:create shortlinks:claim shortlinks:read shortlinks:delete");
@@ -368,7 +371,7 @@ public final class DpopClient {
     private record Token(String accessToken, String tokenType) {}
 
     /** Authenticates the client with a signed assertion, and asks for a token bound to {@code dpopKey}. */
-    private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws Exception {
+    private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws InterruptedException {
         PrivateKey clientKey = readPrivateKey(keyFile);
         Json answer = Json.parse(postToken(() -> form(GRANT_TYPE, "client_credentials", CLIENT_ID, clientId,
                 "client_assertion_type", CLIENT_ASSERTION_TYPE, "client_assertion", assertion(clientKey, clientId)), dpopKey));
@@ -390,7 +393,7 @@ public final class DpopClient {
         return jwt(clientKey, Map.of("alg", ES256), claims);
     }
 
-    private String postToken(String form, KeyPair dpopKey) throws Exception {
+    private String postToken(String form, KeyPair dpopKey) throws InterruptedException {
         return postToken(() -> form, dpopKey);
     }
 
@@ -411,7 +414,7 @@ public final class DpopClient {
         return response.body();
     }
 
-    private boolean accepts(String form, KeyPair dpopKey) throws Exception {
+    private boolean accepts(String form, KeyPair dpopKey) throws InterruptedException {
         try {
             postToken(form, dpopKey);
             return true;
