@@ -45,6 +45,17 @@ class ToolingTasksTest {
             "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", "deploy/postgres/replication.sh", // inside Postgres
             "deploy/keycloak/dev-setup", // the script starts the DevSetup tool, and is listed through devSetup and devPasswords
             "deploy/keycloak/DpopClient.java", // listed through its tasks
+            "deploy/keycloak/Console.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/Failure.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/Http.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/Jose.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/Json.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/KeycloakLogin.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/Keys.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/Oauth.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/Refused.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/SystemConsole.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/TokenEndpoint.java", // a class of the client, compiled and run by DpopClient.java
             "perf/smoke.sh", // the shim of tools/run that the workflows call, listed through smoke
         )
         val scripts = listOf("deploy", "tools").flatMap { root ->
