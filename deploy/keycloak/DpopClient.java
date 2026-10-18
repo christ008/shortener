@@ -129,6 +129,11 @@ public final class DpopClient {
             System.err.println("DpopClient: " + failure.getMessage());
             if (System.getenv("DPOP_DEBUG") != null) failure.printStackTrace();
             System.exit(1);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            System.err.println("DpopClient: " + interrupted);
+            if (System.getenv("DPOP_DEBUG") != null) interrupted.printStackTrace();
+            System.exit(1);
         } catch (Exception unexpected) {
             System.err.println("DpopClient: " + unexpected);
             if (System.getenv("DPOP_DEBUG") != null) unexpected.printStackTrace();
