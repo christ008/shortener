@@ -161,7 +161,7 @@ change one, expose it as described under [Tunables](#tunables).
 
 Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`. Scripts that compute are Kotlin tools in
 `tools/`, built by `tools/run` the first time and when a source changes (JDK 25). The one exception is
-`DpopClient.java`, a single Java file for JDK 25 or newer with no build, which the tools do not use. See
+`DpopClient.java` and the classes beside it, a Java client for JDK 25 or newer with no build, which the tools do not use. See
 [ADR 0026](adr/0026-scripting-standard.md), [0029](adr/0029-tools-in-kotlin.md) and [0020](adr/0020-dpop-client-in-java.md).
 
 | Script | Is for | Kind |

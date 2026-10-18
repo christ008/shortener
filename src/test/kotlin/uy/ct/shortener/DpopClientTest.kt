@@ -244,7 +244,7 @@ class DpopClientTest {
         if (asFile || classes == null) return listOf(java, "-XX:TieredStopAtLevel=1", "deploy/keycloak/DpopClient.java") + args
         val agent = System.getProperty("dpopClient.agent")
         val data = Files.createDirectories(Path.of(System.getProperty("dpopClient.data"))).resolve("${UUID.randomUUID()}.exec")
-        return listOf(java, "-javaagent:$agent=destfile=$data,includes=DpopClient*", "-XX:TieredStopAtLevel=1", "-cp", classes, "DpopClient") + args
+        return listOf(java, "-javaagent:$agent=destfile=$data,includes=*", "-XX:TieredStopAtLevel=1", "-cp", classes, "DpopClient") + args
     }
 
     private fun run(vararg args: String, environment: Map<String, String> = emptyMap(), asFile: Boolean = false): Output {
@@ -602,7 +602,7 @@ class DpopClientTest {
 
     @Test
     fun `pads and trims coordinates to the 32 bytes a JWK has`() {
-        val client = compiled.load("DpopClient")
+        val client = compiled.load("Keys")
         fun decoded(value: BigInteger) = Base64.getUrlDecoder().decode(client.invoke("coordinate", value) as String)
 
         val cases = mapOf(
@@ -619,7 +619,7 @@ class DpopClientTest {
 
     @Test
     fun `reads and writes the JSON of keys and tokens, and says when it is not JSON`() {
-        val json = compiled.load("DpopClient\$Json")
+        val json = compiled.load("Json")
 
         val written = json.invoke("write", linkedMapOf("a" to "q\"\\\n\u0001é", "n" to 5L, "list" to listOf(true, null)))
         assertThat(written).isEqualTo("""{"a":"q\"\\\n\u0001é","n":5,"list":[true,null]}""")
@@ -637,7 +637,7 @@ class DpopClientTest {
 
     @Test
     fun `finds the action of the login form whatever order its attributes come in`() {
-        val client = compiled.load("DpopClient\$KeycloakLogin")
+        val client = compiled.load("KeycloakLogin")
         fun action(html: String) = (client.invoke("loginFormAction", html) as Optional<*>).orElse(null)
 
         assertThat(action("""<form id="kc-form-login" onsubmit="x" action="/a?b=1&amp;c=2" method="post">""")).isEqualTo("/a?b=1&c=2")
@@ -687,7 +687,7 @@ class DpopClientTest {
             Files.createDirectories(output)
             // No annotation processing: the classpath of the tests holds processors, which have nothing to do with this file.
             val options = listOf("--release", "25", "-proc:none", "-Xlint:all", "-Werror", "-d", output.toString())
-            val sources = files.getJavaFileObjects(Path.of("deploy/keycloak/DpopClient.java"))
+            val sources = files.getJavaFileObjects(*Files.list(Path.of("deploy/keycloak")).use { it.filter { f -> f.fileName.toString().endsWith(".java") }.toList().toTypedArray() })
             compiler.getTask(null, files, diagnostics, options, null, sources).call()
         }
         return diagnostics.diagnostics

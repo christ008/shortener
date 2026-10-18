@@ -254,7 +254,7 @@ Whatever you use, it must:
 3. Keep the latest `DPoP-Nonce` of each server, put it in the `nonce` claim, and repeat a request once, with a new proof, when
    it is answered `401` with `error="use_dpop_nonce"`.
 
-The specification is [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449.html). `DpopClient.java` does all three in one file, and so
+The specification is [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449.html). `DpopClient.java` does all three, in its own classes beside it, and so
 does `DpopCalls` in `tools/src/main/kotlin`, which `Smoke` uses.
 
 | Dev client | Scopes | Is for |

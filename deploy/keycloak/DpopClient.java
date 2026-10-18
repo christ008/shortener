@@ -1,44 +1,15 @@
 import java.io.IOException;
-import java.math.BigInteger;
-import java.net.URI;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.security.AlgorithmParameters;
-import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
 import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.SecureRandom;
-import java.security.Signature;
-import java.security.interfaces.ECPrivateKey;
-import java.security.interfaces.ECPublicKey;
-import java.security.spec.ECGenParameterSpec;
-import java.security.spec.ECParameterSpec;
-import java.security.spec.ECPrivateKeySpec;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * A reference implementation of a DPoP (RFC 9449) client, to read, to try the API with, and to port. It authenticates to the
@@ -51,7 +22,7 @@ import java.util.regex.Pattern;
  * (docs/OPERATING.md lists some) and do what this does: one key for each token, a proof for each request, the nonce kept and
  * repeated.
  *
- * <p>Needs a JDK 25 or newer. One source file, run by the {@code java} launcher.
+ * <p>Needs a JDK 25 or newer. Several source files in this directory, run by the {@code java} launcher, which compiles the ones it uses.
  *
  * <pre>
  *   java DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
@@ -80,27 +51,8 @@ import java.util.regex.Pattern;
  * reason on stderr, 2 for arguments it does not understand.
  */
 public final class DpopClient {
-
-    private static final String TOKEN_ENDPOINT_PATH = "/protocol/openid-connect/token";
-    private static final String DEFAULT_TOKEN_URL = "http://localhost:8180/realms/shortener" + TOKEN_ENDPOINT_PATH;
-    private static final String CLIENT_ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
-    private static final Base64.Encoder B64 = Base64.getUrlEncoder().withoutPadding();
-    private static final Base64.Decoder B64_DECODER = Base64.getUrlDecoder();
-    private static final SecureRandom RANDOM = new SecureRandom();
-
-    private static final String ES256 = "ES256";
-    private static final String P256 = "P-256";
-    private static final String CONTENT_TYPE = "Content-Type";
-    private static final String CLIENT_ID = "client_id";
-    private static final String WWW_AUTHENTICATE = "WWW-Authenticate";
-    private static final String GRANT_TYPE = "grant_type";
-    private static final String ACCESS_TOKEN = "access_token";
-    private static final String REFRESH_TOKEN = "refresh_token";
-    private static final String ERROR = "error";
-    private static final String DPOP_NONCE = "DPoP-Nonce";
     private static final String ERROR_PREFIX = "DpopClient: ";
+
     private static final String DEBUG_VARIABLE = "DPOP_DEBUG";
 
     private static final String USAGE = """
@@ -110,12 +62,13 @@ public final class DpopClient {
                    java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
                    java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]""";
 
-    private final String tokenUrl = env("TOKEN_URL", DEFAULT_TOKEN_URL);
-    private final String issuer = env("ISSUER", tokenUrl.endsWith(TOKEN_ENDPOINT_PATH)
-            ? tokenUrl.substring(0, tokenUrl.length() - TOKEN_ENDPOINT_PATH.length())
+    private final String tokenUrl = Http.env("TOKEN_URL", Oauth.DEFAULT_TOKEN_URL);
+
+    private final String issuer = Http.env("ISSUER", tokenUrl.endsWith(Oauth.TOKEN_ENDPOINT_PATH)
+            ? tokenUrl.substring(0, tokenUrl.length() - Oauth.TOKEN_ENDPOINT_PATH.length())
             : tokenUrl);
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
-    private final Map<String, String> nonces = new HashMap<>();
+    private final TokenEndpoint endpoint = new TokenEndpoint(tokenUrl, issuer);
+
     private final Console console;
 
     private DpopClient(Console console) {
@@ -123,7 +76,6 @@ public final class DpopClient {
     }
 
     // ---- the command line -------------------------------------------------------------------------------------------
-
     public static void main(String[] args) {
         Console console = new SystemConsole();
         Optional<Command> command = parse(args);
@@ -142,33 +94,6 @@ public final class DpopClient {
             console.err(ERROR_PREFIX + unexpected);
             if (System.getenv(DEBUG_VARIABLE) != null) console.trace(unexpected);
             System.exit(1);
-        }
-    }
-
-    /** Where the client writes: what it prints for the person or the script, and what it says about a failure. */
-    private interface Console {
-        void out(String text);
-
-        void err(String text);
-
-        void trace(Throwable error);
-    }
-
-    /** The process's own output. The only place that writes to System.out and System.err. */
-    private static final class SystemConsole implements Console {
-        @Override
-        public void out(String text) {
-            System.out.println(text);
-        }
-
-        @Override
-        public void err(String text) {
-            System.err.println(text);
-        }
-
-        @Override
-        public void trace(Throwable error) {
-            error.printStackTrace(System.err);
         }
     }
 
@@ -220,7 +145,7 @@ public final class DpopClient {
         } else if (command instanceof Register register) {
             register(register.name(), register.invitation(), register.keyFile());
         } else if (command instanceof FetchToken fetch) {
-            console.out(fetchToken(fetch.keyFile(), fetch.clientId(), newKey()).accessToken());
+            console.out(endpoint.fetchToken(fetch.keyFile(), fetch.clientId(), Keys.newKey()).accessToken());
         } else if (command instanceof Call call) {
             printCall(call.keyFile(), call.clientId(), call.method(), call.url(), call.body());
         } else if (command instanceof Login login) {
@@ -230,60 +155,11 @@ public final class DpopClient {
         }
     }
 
-    /** What went wrong, in words for the person running this, without a stack trace. */
-    private static class Failure extends RuntimeException {
-        private static final long serialVersionUID = 1L;
-
-        Failure(String message) {
-            super(message);
-        }
-
-        Failure(String message, Throwable cause) {
-            super(message, cause);
-        }
-    }
-
-    /** The identity provider answered, and said no. */
-    private static final class Refused extends Failure {
-        private static final long serialVersionUID = 1L;
-
-        Refused(int status, String body) {
-            super("the token endpoint answered " + status + ": " + body);
-        }
-    }
-
     // ---- the commands -----------------------------------------------------------------------------------------------
-
     private void keygen(String clientId) {
-        List<Map<String, Object>> jwks = newJwks(clientId);
+        List<Map<String, Object>> jwks = Keys.newJwks(clientId);
         console.out(Json.write(jwks.get(0)));
         console.out(Json.write(jwks.get(1)));
-    }
-
-    /** A new client key as a private JWK and a public one, in that order. */
-    private static List<Map<String, Object>> newJwks(String clientId) {
-        KeyPair pair = newKey();
-        ECPublicKey pub = ecPublic(pair);
-        Map<String, Object> publicJwk = new LinkedHashMap<>();
-        publicJwk.put("kty", "EC");
-        publicJwk.put("crv", P256);
-        publicJwk.put("kid", clientId + "-key-1");
-        publicJwk.put("alg", ES256);
-        publicJwk.put("use", "sig");
-        publicJwk.put("x", coordinate(pub.getW().getAffineX()));
-        publicJwk.put("y", coordinate(pub.getW().getAffineY()));
-        Map<String, Object> privateJwk = new LinkedHashMap<>(publicJwk);
-        privateJwk.put("d", coordinate(ecPrivate(pair).getS()));
-        return List.of(privateJwk, publicJwk);
-    }
-
-    /** Leaves the key file readable by its owner alone; a file system without POSIX permissions has nothing to restrict. */
-    private static void restrictToOwner(Path keyFile) throws IOException {
-        try {
-            Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
-        } catch (UnsupportedOperationException _) {
-            // not a POSIX file system: nothing more can be done here
-        }
     }
 
     /**
@@ -294,22 +170,22 @@ public final class DpopClient {
      */
     private void register(String name, String invitation, Path keyFile) throws IOException, InterruptedException {
         if (Files.exists(keyFile)) throw new Failure(keyFile + " exists already: it is not overwritten, name another file");
-        List<Map<String, Object>> jwks = newJwks(name);
+        List<Map<String, Object>> jwks = Keys.newJwks(name);
         try {
             Files.writeString(keyFile, Json.write(jwks.get(0)) + "\n", StandardOpenOption.CREATE_NEW);
-            restrictToOwner(keyFile);
+            Keys.restrictToOwner(keyFile);
         } catch (IOException e) {
             throw new Failure("could not write the key file " + keyFile + ": " + e.getMessage(), e);
         }
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("client_name", name);
         metadata.put("token_endpoint_auth_method", "private_key_jwt");
-        metadata.put("token_endpoint_auth_signing_alg", ES256);
+        metadata.put("token_endpoint_auth_signing_alg", Jose.ES256);
         metadata.put("grant_types", List.of("client_credentials"));
         metadata.put("jwks", Map.of("keys", List.of(jwks.get(1))));
-        String endpoint = issuer + "/clients-registrations/openid-connect";
-        HttpResponse<String> response = send(HttpRequest.newBuilder(uri(endpoint)).timeout(TIMEOUT)
-                .header("Authorization", "Bearer " + invitation).header(CONTENT_TYPE, "application/json")
+        String registration = issuer + "/clients-registrations/openid-connect";
+        HttpResponse<String> response = endpoint.send(HttpRequest.newBuilder(Http.uri(registration)).timeout(Http.TIMEOUT)
+                .header("Authorization", "Bearer " + invitation).header(Http.CONTENT_TYPE, "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(Json.write(metadata))).build());
         if (response.statusCode() != 201) {
             try {
@@ -317,10 +193,10 @@ public final class DpopClient {
             } catch (IOException _) {
                 // the registration failed and so the key means nothing; a leftover file is harmless
             }
-            throw new Failure("the registration was refused (" + response.statusCode() + "): " + excerpt(response.body(), 300));
+            throw new Failure("the registration was refused (" + response.statusCode() + "): " + Http.excerpt(response.body(), 300));
         }
-        String clientId = Json.parse(response.body()).string(CLIENT_ID);
-        if (clientId == null) throw new Failure("the identity provider registered the client but did not say its id: " + excerpt(response.body(), 300));
+        String clientId = Json.parse(response.body()).string(Oauth.CLIENT_ID);
+        if (clientId == null) throw new Failure("the identity provider registered the client but did not say its id: " + Http.excerpt(response.body(), 300));
         console.out("registered: " + clientId);
         console.out("private key: " + keyFile + " (keep it: it is the only way to be this client, and it cannot be recovered)");
         console.out("try it:  java DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
@@ -335,16 +211,15 @@ public final class DpopClient {
     }
 
     // ---- a call to the API -------------------------------------------------------------------------------------------
-
     /** What the API answered to a call: the status, the {@code Location} if any, the {@code WWW-Authenticate} challenges, the body. */
     private record Answer(int status, String location, List<String> challenges, String body) {}
 
     private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws InterruptedException {
-        KeyPair dpopKey = newKey();
-        Token token = fetchToken(keyFile, clientId, dpopKey);
-        HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, token.accessToken(), dpopKey, nonce));
+        KeyPair dpopKey = Keys.newKey();
+        TokenEndpoint.Token token = endpoint.fetchToken(keyFile, clientId, dpopKey);
+        HttpResponse<String> response = endpoint.sendProved(url, nonce -> endpoint.apiRequest(method, url, body, token.accessToken(), dpopKey, nonce));
         return new Answer(response.statusCode(), response.headers().firstValue("Location").orElse(null),
-                response.headers().allValues(WWW_AUTHENTICATE), response.body());
+                response.headers().allValues(Http.WWW_AUTHENTICATE), response.body());
     }
 
     /**
@@ -353,684 +228,49 @@ public final class DpopClient {
      * is (or is not) refused.
      */
     private void login(String user, String password, String method, String url, String body) throws InterruptedException {
-        String clientId = env("CLIENT_ID", "shortener-ui");
-        String redirect = env("REDIRECT_URI", "http://localhost:3000/app/auth/callback");
-        String scope = env("SCOPE", "shortlinks:create shortlinks:claim shortlinks:read shortlinks:delete");
+        String clientId = Http.env("CLIENT_ID", "shortener-ui");
+        String redirect = Http.env("REDIRECT_URI", "http://localhost:3000/app/auth/callback");
+        String scope = Http.env("SCOPE", "shortlinks:create shortlinks:claim shortlinks:read shortlinks:delete");
 
-        KeyPair dpopKey = newKey();
-        String jkt = thumbprint(dpopKey);
-        String verifier = B64.encodeToString(randomBytes(32));
-        String challenge = B64.encodeToString(sha256(verifier));
+        KeyPair dpopKey = Keys.newKey();
+        String jkt = Keys.thumbprint(dpopKey);
+        String verifier = Jose.B64.encodeToString(Jose.randomBytes(32));
+        String challenge = Jose.B64.encodeToString(Jose.sha256(verifier));
         String state = UUID.randomUUID().toString();
 
         String code = new KeycloakLogin(issuer, console).signIn(user, password,
                 new KeycloakLogin.AuthorizationRequest(clientId, redirect, scope, state, challenge, jkt));
 
-        Json tokens = Json.parse(postToken(form(GRANT_TYPE, "authorization_code", CLIENT_ID, clientId, "code", code,
+        Json tokens = Json.parse(endpoint.postToken(Http.form(Oauth.GRANT_TYPE, "authorization_code", Oauth.CLIENT_ID, clientId, "code", code,
                 "redirect_uri", redirect, "code_verifier", verifier), dpopKey));
-        String accessToken = tokens.string(ACCESS_TOKEN);
-        String refreshToken = tokens.string(REFRESH_TOKEN);
+        String accessToken = tokens.string(Oauth.ACCESS_TOKEN);
+        String refreshToken = tokens.string(Oauth.REFRESH_TOKEN);
         if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + tokens);
         console.out("2. token_type " + tokens.string("token_type") + ", refresh token "
                 + (refreshToken == null ? "NOT issued" : "issued"));
-        console.out("3. access token header " + jwtPart(accessToken, 0));
-        console.out("   claims " + jwtPart(accessToken, 1));
-        console.out("   bound to this client's key: " + jkt.equals(confirmationOf(accessToken)));
+        console.out("3. access token header " + Jose.jwtPart(accessToken, 0));
+        console.out("   claims " + Jose.jwtPart(accessToken, 1));
+        console.out("   bound to this client's key: " + jkt.equals(Jose.confirmationOf(accessToken)));
 
         String latestAccess = accessToken;
         if (refreshToken != null) {
-            Json refreshed = Json.parse(postToken(refreshForm(clientId, refreshToken), dpopKey));
-            latestAccess = refreshed.string(ACCESS_TOKEN);
+            Json refreshed = Json.parse(endpoint.postToken(TokenEndpoint.refreshForm(clientId, refreshToken), dpopKey));
+            latestAccess = refreshed.string(Oauth.ACCESS_TOKEN);
             if (latestAccess == null) throw new Failure("refreshing did not return an access_token: " + refreshed);
-            String rotated = refreshed.string(REFRESH_TOKEN);
-            console.out("4. refreshed with the same key; new token bound to it: " + jkt.equals(confirmationOf(latestAccess))
+            String rotated = refreshed.string(Oauth.REFRESH_TOKEN);
+            console.out("4. refreshed with the same key; new token bound to it: " + jkt.equals(Jose.confirmationOf(latestAccess))
                     + ", refresh token rotated: " + (rotated != null && !refreshToken.equals(rotated)));
-            console.out("   reusing the old refresh token: " + (accepts(refreshForm(clientId, refreshToken), dpopKey)
+            console.out("   reusing the old refresh token: " + (endpoint.accepts(TokenEndpoint.refreshForm(clientId, refreshToken), dpopKey)
                     ? "ACCEPTED (rotation is not enforced)" : "refused, as rotation requires"));
             String refreshWith = rotated != null ? rotated : refreshToken;
-            console.out("   refreshing with a different key: " + (accepts(refreshForm(clientId, refreshWith), newKey())
+            console.out("   refreshing with a different key: " + (endpoint.accepts(TokenEndpoint.refreshForm(clientId, refreshWith), Keys.newKey())
                     ? "ACCEPTED (the refresh token is not bound to the key)" : "refused"));
         }
 
         String accessToUse = latestAccess;
-        HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, accessToUse, dpopKey, nonce));
+        HttpResponse<String> response = endpoint.sendProved(url, nonce -> endpoint.apiRequest(method, url, body, accessToUse, dpopKey, nonce));
         console.out("5. " + method + " " + url + " -> " + response.statusCode());
-        response.headers().allValues(WWW_AUTHENTICATE).forEach(header -> console.out("   WWW-Authenticate: " + header));
+        response.headers().allValues(Http.WWW_AUTHENTICATE).forEach(header -> console.out("   WWW-Authenticate: " + header));
         console.out("   " + response.body());
-    }
-
-    // ---- the identity provider --------------------------------------------------------------------------------------
-
-    private record Token(String accessToken, String tokenType) {}
-
-    /** Authenticates the client with a signed assertion, and asks for a token bound to {@code dpopKey}. */
-    private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws InterruptedException {
-        PrivateKey clientKey = readPrivateKey(keyFile);
-        Json answer = Json.parse(postToken(() -> form(GRANT_TYPE, "client_credentials", CLIENT_ID, clientId,
-                "client_assertion_type", CLIENT_ASSERTION_TYPE, "client_assertion", assertion(clientKey, clientId)), dpopKey));
-        String accessToken = answer.string(ACCESS_TOKEN);
-        if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + answer);
-        return new Token(accessToken, answer.string("token_type"));
-    }
-
-    /** A new assertion for each token request, since an identity provider may refuse one that it has seen: the {@code jti} is new. */
-    private String assertion(PrivateKey clientKey, String clientId) {
-        long now = now();
-        Map<String, Object> claims = new LinkedHashMap<>();
-        claims.put("iss", clientId);
-        claims.put("sub", clientId);
-        claims.put("aud", issuer);
-        claims.put("jti", UUID.randomUUID().toString());
-        claims.put("iat", now);
-        claims.put("exp", now + 60);
-        return jwt(clientKey, Map.of("alg", ES256), claims);
-    }
-
-    private String postToken(String form, KeyPair dpopKey) throws InterruptedException {
-        return postToken(() -> form, dpopKey);
-    }
-
-    /**
-     * Posts a form to the token endpoint with a proof of {@code dpopKey}, and returns the body of the 200 it must answer. The form
-     * is made again for a request that is repeated with a nonce.
-     */
-    private String postToken(Supplier<String> form, KeyPair dpopKey) throws InterruptedException {
-        HttpResponse<String> response = sendProved(tokenUrl, nonce -> HttpRequest.newBuilder(uri(tokenUrl))
-                .timeout(TIMEOUT)
-                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .header("DPoP", proof(dpopKey, "POST", tokenUrl, null, nonce))
-                .POST(HttpRequest.BodyPublishers.ofString(form.get()))
-                .build());
-        if (response.statusCode() != 200) {
-            throw new Refused(response.statusCode(), response.body());
-        }
-        return response.body();
-    }
-
-    private boolean accepts(String form, KeyPair dpopKey) throws InterruptedException {
-        try {
-            postToken(form, dpopKey);
-            return true;
-        } catch (Refused _) {
-            return false;
-        }
-    }
-
-    private static String refreshForm(String clientId, String refreshToken) {
-        return form(GRANT_TYPE, REFRESH_TOKEN, CLIENT_ID, clientId, REFRESH_TOKEN, refreshToken);
-    }
-
-    /** The browser part of the login: the login page of Keycloak, the form submitted on it, and the redirect that carries the code. */
-    private static final class KeycloakLogin {
-        private static final Pattern FORM_TAG = Pattern.compile("<form\\b[^>]*>", Pattern.CASE_INSENSITIVE);
-        private static final Pattern ACTION = Pattern.compile("\\baction=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
-
-        /** The parameters of the authorization request, which the login page is asked for. */
-        record AuthorizationRequest(String clientId, String redirect, String scope, String state, String challenge, String jkt) {}
-
-        private final String issuer;
-        private final Console console;
-
-        KeycloakLogin(String issuer, Console console) {
-            this.issuer = issuer;
-            this.console = console;
-        }
-
-        private static Map<String, String> queryOf(String location) {
-            Map<String, String> parameters = new LinkedHashMap<>();
-            String query = uri(location).getRawQuery();
-            if (query == null) return parameters;
-            for (String pair : query.split("&")) {
-                String[] nameAndValue = pair.split("=", 2);
-                parameters.put(URLDecoder.decode(nameAndValue[0], StandardCharsets.UTF_8),
-                        nameAndValue.length > 1 ? URLDecoder.decode(nameAndValue[1], StandardCharsets.UTF_8) : "");
-            }
-            return parameters;
-        }
-
-        /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
-        String signIn(String user, String password, AuthorizationRequest request) throws InterruptedException {
-            HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
-            Map<String, String> cookies = new LinkedHashMap<>();
-            String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, request.clientId(),
-                    "redirect_uri", request.redirect(), "scope", request.scope(), "state", request.state(), "code_challenge", request.challenge(),
-                    "code_challenge_method", "S256", "dpop_jkt", request.jkt());
-
-            HttpResponse<String> page = send(browser, HttpRequest.newBuilder(uri(authUrl)).timeout(TIMEOUT).GET().build());
-            remember(cookies, page);
-            String action = loginFormAction(page.body())
-                    .orElseThrow(() -> new Failure("no login form (status " + page.statusCode() + "): " + excerpt(page.body(), 500)));
-
-            HttpResponse<String> submitted = send(browser, HttpRequest.newBuilder(uri(action))
-                    .timeout(TIMEOUT)
-                    .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-                    .header("Cookie", cookieHeader(cookies))
-                    .POST(HttpRequest.BodyPublishers.ofString(form("username", user, "password", password, "credentialId", "")))
-                    .build());
-            String location = submitted.headers().firstValue("Location").orElseThrow(() -> new Failure(
-                    "the login did not redirect (status " + submitted.statusCode() + "): " + excerpt(submitted.body(), 300)));
-
-            Map<String, String> returned = queryOf(location);
-            if (returned.containsKey(ERROR)) {
-                throw new Failure("the login was refused: " + returned.get(ERROR) + " " + returned.getOrDefault("error_description", ""));
-            }
-            if (!request.state().equals(returned.get("state"))) throw new Failure("state mismatch");
-            String code = returned.get("code");
-            if (code == null) throw new Failure("the redirect carries no code: " + location);
-            int query = location.indexOf('?');
-            console.out("1. signed in as " + user + "; redirected to " + (query < 0 ? location : location.substring(0, query)) + " with a code");
-            return code;
-        }
-
-        /** The action of the login form of Keycloak, whatever order its attributes come in. */
-        static Optional<String> loginFormAction(String html) {
-            Matcher forms = FORM_TAG.matcher(html);
-            while (forms.find()) {
-                String tag = forms.group();
-                if (!tag.contains("id=\"kc-form-login\"")) continue;
-                Matcher action = ACTION.matcher(tag);
-                if (action.find()) return Optional.of(action.group(1).replace("&amp;", "&"));
-            }
-            return Optional.empty();
-        }
-
-        private static void remember(Map<String, String> cookies, HttpResponse<?> response) {
-            for (String header : response.headers().allValues("Set-Cookie")) {
-                String pair = header.split(";", 2)[0];
-                int equals = pair.indexOf('=');
-                if (equals > 0) cookies.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
-            }
-        }
-
-        private static String cookieHeader(Map<String, String> cookies) {
-            List<String> pairs = new ArrayList<>();
-            cookies.forEach((name, value) -> pairs.add(name + "=" + value));
-            return String.join("; ", pairs);
-        }
-    }
-
-    /**
-     * A request with the token and a proof made for it, carrying {@code nonce} when there is one. A body is sent as JSON, and
-     * without one there is no content type. A trace context goes along when TRACEPARENT is set.
-     */
-    private HttpRequest apiRequest(String method, String url, String body, String accessToken, KeyPair dpopKey, String nonce) {
-        HttpRequest.Builder request = HttpRequest.newBuilder(uri(url))
-                .timeout(TIMEOUT)
-                .header("Authorization", "DPoP " + accessToken)
-                .header("DPoP", proof(dpopKey, method, url, accessToken, nonce));
-        boolean hasBody = body != null && !body.isEmpty();
-        if (hasBody) request.header(CONTENT_TYPE, "application/json");
-        String traceparent = System.getenv("TRACEPARENT");
-        if (traceparent != null && !traceparent.isBlank()) request.header("traceparent", traceparent);
-        return request.method(method, hasBody ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody()).build();
-    }
-
-    private HttpResponse<String> send(HttpRequest request) throws InterruptedException {
-        return send(http, request);
-    }
-
-    /**
-     * Sends the request that {@code build} makes with the nonce the server of {@code url} last handed out (null when it has
-     * handed none), and keeps the nonce of the answer. When the answer asks for a nonce and gives one, the request is made again
-     * once, with a new proof that carries it.
-     */
-    private HttpResponse<String> sendProved(String url, Function<String, HttpRequest> build) throws InterruptedException {
-        String origin = origin(url);
-        HttpResponse<String> response = send(build.apply(nonces.get(origin)));
-        response.headers().firstValue(DPOP_NONCE).ifPresent(nonce -> nonces.put(origin, nonce));
-        if (asksForNonce(response) && response.headers().firstValue(DPOP_NONCE).isPresent()) {
-            response = send(build.apply(nonces.get(origin)));
-            response.headers().firstValue(DPOP_NONCE).ifPresent(nonce -> nonces.put(origin, nonce));
-        }
-        return response;
-    }
-
-    /** A resource server asks with a 401 whose challenge has {@code error="use_dpop_nonce"}, an authorization server with a 400 of that error. */
-    private static boolean asksForNonce(HttpResponse<String> response) {
-        if (response.statusCode() == 401) {
-            return response.headers().allValues(WWW_AUTHENTICATE).stream().anyMatch(challenge -> challenge.contains("error=\"use_dpop_nonce\""));
-        }
-        if (response.statusCode() == 400) {
-            try {
-                return "use_dpop_nonce".equals(Json.parse(response.body()).string(ERROR));
-            } catch (Failure _) {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    private static String origin(String url) {
-        URI uri = uri(url);
-        return uri.getScheme() + "://" + uri.getRawAuthority();
-    }
-
-    private static HttpResponse<String> send(HttpClient client, HttpRequest request) throws InterruptedException {
-        try {
-            return client.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (IOException unreachable) {
-            throw new Failure("could not reach " + request.uri() + ": " + unreachable, unreachable);
-        }
-    }
-
-    // ---- DPoP and JWT -----------------------------------------------------------------------------------------------
-
-    /** The DPoP proof for one request: the method, the URL without its query and fragment, and a hash of the token. */
-    static String proof(KeyPair key, String method, String url, String accessToken) {
-        return proof(key, method, url, accessToken, null);
-    }
-
-    /** The same, with the server's nonce in the {@code nonce} claim when there is one. */
-    static String proof(KeyPair key, String method, String url, String accessToken, String nonce) {
-        URI uri = uri(url);
-        Map<String, Object> header = new LinkedHashMap<>();
-        header.put("alg", ES256);
-        header.put("typ", "dpop+jwt");
-        header.put("jwk", publicJwk(key));
-        Map<String, Object> claims = new LinkedHashMap<>();
-        claims.put("jti", UUID.randomUUID().toString());
-        claims.put("htm", method);
-        claims.put("htu", uri.getScheme() + "://" + uri.getRawAuthority() + uri.getRawPath());
-        claims.put("iat", now());
-        if (accessToken != null) claims.put("ath", B64.encodeToString(sha256(accessToken)));
-        if (nonce != null) claims.put("nonce", nonce);
-        return jwt(key.getPrivate(), header, claims);
-    }
-
-    /** A compact JWS signed with ES256, whose signature is the raw r and s of JWS and not the DER of ECDSA. */
-    static String jwt(PrivateKey key, Map<String, ?> header, Map<String, ?> claims) {
-        String signingInput = B64.encodeToString(Json.write(header).getBytes(StandardCharsets.UTF_8)) + "."
-                + B64.encodeToString(Json.write(claims).getBytes(StandardCharsets.UTF_8));
-        try {
-            Signature signature = Signature.getInstance("SHA256withECDSAinP1363Format");
-            signature.initSign(key);
-            signature.update(signingInput.getBytes(StandardCharsets.US_ASCII));
-            return signingInput + "." + B64.encodeToString(signature.sign());
-        } catch (GeneralSecurityException e) {
-            throw new Failure("could not sign: " + e, e);
-        }
-    }
-
-    private static ECPublicKey ecPublic(KeyPair pair) {
-        if (pair.getPublic() instanceof ECPublicKey key) return key;
-        throw new Failure("the key pair is not an EC key: " + pair.getPublic().getAlgorithm());
-    }
-
-    private static ECPrivateKey ecPrivate(KeyPair pair) {
-        if (pair.getPrivate() instanceof ECPrivateKey key) return key;
-        throw new Failure("the key pair is not an EC key: " + pair.getPrivate().getAlgorithm());
-    }
-
-    private static Map<String, Object> publicJwk(KeyPair key) {
-        ECPublicKey pub = ecPublic(key);
-        Map<String, Object> jwk = new LinkedHashMap<>();
-        jwk.put("kty", "EC");
-        jwk.put("crv", P256);
-        jwk.put("x", coordinate(pub.getW().getAffineX()));
-        jwk.put("y", coordinate(pub.getW().getAffineY()));
-        return jwk;
-    }
-
-    /** The RFC 7638 thumbprint of the public key: its required members, in alphabetical order, with no spaces. */
-    static String thumbprint(KeyPair key) {
-        Map<String, Object> jwk = publicJwk(key);
-        Map<String, Object> canonical = new LinkedHashMap<>();
-        canonical.put("crv", jwk.get("crv"));
-        canonical.put("kty", jwk.get("kty"));
-        canonical.put("x", jwk.get("x"));
-        canonical.put("y", jwk.get("y"));
-        return B64.encodeToString(sha256(Json.write(canonical)));
-    }
-
-    /** The `jkt` of the `cnf` claim of an access token: the key it is bound to. */
-    private static String confirmationOf(String jwt) {
-        Object cnf = Json.parse(jwtPart(jwt, 1)).get("cnf");
-        return cnf instanceof Map<?, ?> map && map.get("jkt") instanceof String jkt ? jkt : null;
-    }
-
-    private static String jwtPart(String jwt, int index) {
-        String[] parts = jwt.split("\\.");
-        if (parts.length < 2) throw new Failure("not a JWT: " + excerpt(jwt, 60));
-        return new String(B64_DECODER.decode(parts[index]), StandardCharsets.UTF_8);
-    }
-
-    // ---- keys -------------------------------------------------------------------------------------------------------
-
-    private static KeyPair newKey() {
-        try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
-            generator.initialize(new ECGenParameterSpec("secp256r1"));
-            return generator.generateKeyPair();
-        } catch (GeneralSecurityException e) {
-            throw new Failure("this JDK cannot make P-256 keys: " + e, e);
-        }
-    }
-
-    /** The private key of a JWK file. Only `d` is needed to sign, but the key must be a P-256 key to be one for ES256. */
-    private static PrivateKey readPrivateKey(Path file) {
-        String text;
-        try {
-            text = Files.readString(file);
-        } catch (IOException e) {
-            throw new Failure("could not read the key file " + file + ": " + e.getMessage(), e);
-        }
-        Json jwk = Json.parse(text);
-        if (!"EC".equals(jwk.string("kty")) || !P256.equals(jwk.string("crv")) || jwk.string("d") == null) {
-            throw new Failure(file + " is not a private P-256 JWK (it needs kty EC, crv P-256 and d)");
-        }
-        try {
-            BigInteger d = new BigInteger(1, B64_DECODER.decode(jwk.string("d")));
-            AlgorithmParameters parameters = AlgorithmParameters.getInstance("EC");
-            parameters.init(new ECGenParameterSpec("secp256r1"));
-            return KeyFactory.getInstance("EC").generatePrivate(new ECPrivateKeySpec(d, parameters.getParameterSpec(ECParameterSpec.class)));
-        } catch (GeneralSecurityException | IllegalArgumentException e) {
-            throw new Failure("could not read the key in " + file + ": " + e.getMessage(), e);
-        }
-    }
-
-    /** A coordinate or a scalar of P-256 as the 32 bytes JWK wants: BigInteger drops leading zeros and may add a sign byte. */
-    static String coordinate(BigInteger value) {
-        byte[] bytes = value.toByteArray();
-        byte[] fixed = new byte[32];
-        int length = Math.min(bytes.length, 32);
-        System.arraycopy(bytes, bytes.length - length, fixed, 32 - length, length);
-        return B64.encodeToString(fixed);
-    }
-
-    // ---- small things -----------------------------------------------------------------------------------------------
-
-    private static String env(String name, String fallback) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? fallback : value;
-    }
-
-    private static long now() {
-        return System.currentTimeMillis() / 1000;
-    }
-
-    private static URI uri(String text) {
-        try {
-            return URI.create(text);
-        } catch (IllegalArgumentException e) {
-            throw new Failure("not a URL: " + text, e);
-        }
-    }
-
-    private static byte[] randomBytes(int count) {
-        byte[] bytes = new byte[count];
-        RANDOM.nextBytes(bytes);
-        return bytes;
-    }
-
-    private static byte[] sha256(String text) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.US_ASCII));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("every JDK has SHA-256", e);
-        }
-    }
-
-    /** NAME, VALUE, NAME, VALUE...: an application/x-www-form-urlencoded body, or a query. */
-    private static String form(String... pairs) {
-        List<String> encoded = new ArrayList<>();
-        for (int i = 0; i < pairs.length; i += 2) {
-            encoded.add(URLEncoder.encode(pairs[i], StandardCharsets.UTF_8) + "=" + URLEncoder.encode(pairs[i + 1], StandardCharsets.UTF_8));
-        }
-        return String.join("&", encoded);
-    }
-
-    /** The text of an HTML page or any text, on one line and cut short, for an error message. */
-    private static String excerpt(String text, int length) {
-        String plain = text.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
-        return plain.length() <= length ? plain : plain.substring(0, length) + "...";
-    }
-
-    // ---- JSON -------------------------------------------------------------------------------------------------------
-
-    /**
-     * A strict JSON reader into maps, lists, strings, numbers, booleans and null, and a writer for the same, with no library. A
-     * response that is not JSON is an error that names it.
-     */
-    static final class Json {
-        private final Map<String, Object> members;
-
-        private Json(Map<String, Object> members) {
-            this.members = members;
-        }
-
-        static Json parse(String text) {
-            Object value = new Reader(text).readDocument();
-            if (value instanceof Map<?, ?> map) {
-                Map<String, Object> members = new LinkedHashMap<>();
-                map.forEach((name, member) -> members.put(String.valueOf(name), member));
-                return new Json(members);
-            }
-            throw new Failure("expected a JSON object, got: " + excerpt(text, 200));
-        }
-
-        /** A member that is a string, or null when it is missing or of another type. */
-        String string(String name) {
-            return members.get(name) instanceof String value ? value : null;
-        }
-
-        Object get(String name) {
-            return members.get(name);
-        }
-
-        @Override
-        public String toString() {
-            return write(members);
-        }
-
-        static String write(Object value) {
-            StringBuilder out = new StringBuilder();
-            write(out, value);
-            return out.toString();
-        }
-
-        private static void write(StringBuilder out, Object value) {
-            if (value == null) {
-                out.append("null");
-            } else if (value instanceof String text) {
-                writeString(out, text);
-            } else if (value instanceof Number || value instanceof Boolean) {
-                out.append(value);
-            } else if (value instanceof Map<?, ?> map) {
-                writeMembers(out, map);
-            } else if (value instanceof List<?> list) {
-                writeItems(out, list);
-            } else {
-                throw new IllegalArgumentException("cannot write " + value.getClass());
-            }
-        }
-
-        private static void writeMembers(StringBuilder out, Map<?, ?> map) {
-            out.append('{');
-            boolean first = true;
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (!first) out.append(',');
-                first = false;
-                writeString(out, String.valueOf(entry.getKey()));
-                out.append(':');
-                write(out, entry.getValue());
-            }
-            out.append('}');
-        }
-
-        private static void writeItems(StringBuilder out, List<?> list) {
-            out.append('[');
-            for (int i = 0; i < list.size(); i++) {
-                if (i > 0) out.append(',');
-                write(out, list.get(i));
-            }
-            out.append(']');
-        }
-
-        private static void writeString(StringBuilder out, String text) {
-            out.append('"');
-            for (int i = 0; i < text.length(); i++) {
-                char c = text.charAt(i);
-                switch (c) {
-                    case '"' -> out.append("\\\"");
-                    case '\\' -> out.append("\\\\");
-                    case '\n' -> out.append("\\n");
-                    case '\r' -> out.append("\\r");
-                    case '\t' -> out.append("\\t");
-                    default -> {
-                        if (c < 0x20) out.append("\\u%04x".formatted((int) c));
-                        else out.append(c);
-                    }
-                }
-            }
-            out.append('"');
-        }
-
-        private static final class Reader {
-            private final String text;
-            private int position;
-
-            Reader(String text) {
-                this.text = text;
-            }
-
-            Object readDocument() {
-                Object value = readValue();
-                skipWhitespace();
-                if (position != text.length()) throw error("unexpected text after the value");
-                return value;
-            }
-
-            private Object readValue() {
-                skipWhitespace();
-                if (position >= text.length()) throw error("unexpected end");
-                char c = text.charAt(position);
-                return switch (c) {
-                    case '{' -> readObject();
-                    case '[' -> readArray();
-                    case '"' -> readString();
-                    case 't' -> literal("true", Boolean.TRUE);
-                    case 'f' -> literal("false", Boolean.FALSE);
-                    case 'n' -> literal("null", null);
-                    default -> readNumber();
-                };
-            }
-
-            private Map<String, Object> readObject() {
-                Map<String, Object> members = new LinkedHashMap<>();
-                position++;
-                skipWhitespace();
-                if (peek('}')) {
-                    position++;
-                    return members;
-                }
-                while (true) {
-                    skipWhitespace();
-                    if (!peek('"')) throw error("expected a member name");
-                    String name = readString();
-                    skipWhitespace();
-                    expect(':');
-                    members.put(name, readValue());
-                    skipWhitespace();
-                    if (peek(',')) {
-                        position++;
-                    } else {
-                        expect('}');
-                        return members;
-                    }
-                }
-            }
-
-            private List<Object> readArray() {
-                List<Object> items = new ArrayList<>();
-                position++;
-                skipWhitespace();
-                if (peek(']')) {
-                    position++;
-                    return items;
-                }
-                while (true) {
-                    items.add(readValue());
-                    skipWhitespace();
-                    if (peek(',')) {
-                        position++;
-                    } else {
-                        expect(']');
-                        return items;
-                    }
-                }
-            }
-
-            private String readString() {
-                StringBuilder out = new StringBuilder();
-                position++;
-                while (position < text.length()) {
-                    char c = text.charAt(position++);
-                    if (c == '"') return out.toString();
-                    if (c < 0x20) throw error("a control character in a string");
-                    if (c == '\\') {
-                        if (position >= text.length()) throw error("an unterminated string");
-                        appendEscape(out, text.charAt(position++));
-                    } else {
-                        out.append(c);
-                    }
-                }
-                throw error("an unterminated string");
-            }
-
-            private void appendEscape(StringBuilder out, char escaped) {
-                switch (escaped) {
-                    case '"', '\\', '/' -> out.append(escaped);
-                    case 'b' -> out.append('\b');
-                    case 'f' -> out.append('\f');
-                    case 'n' -> out.append('\n');
-                    case 'r' -> out.append('\r');
-                    case 't' -> out.append('\t');
-                    case 'u' -> {
-                        if (position + 4 > text.length()) throw error("a short \\u escape");
-                        try {
-                            out.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
-                        } catch (NumberFormatException _) {
-                            throw error("a bad \\u escape");
-                        }
-                        position += 4;
-                    }
-                    default -> throw error("a bad escape \\" + escaped);
-                }
-            }
-
-            private static final Pattern NUMBER = Pattern.compile("-?(0|[1-9]\\d*)(\\.\\d+)?([eE][+-]?\\d+)?");
-
-            private Object readNumber() {
-                Matcher matcher = NUMBER.matcher(text).region(position, text.length());
-                if (!matcher.lookingAt()) throw error("unexpected character '" + text.charAt(position) + "'");
-                position = matcher.end();
-                String number = matcher.group();
-                if (matcher.group(2) == null && matcher.group(3) == null) return new BigInteger(number);
-                return Double.valueOf(number);
-            }
-
-            private Object literal(String word, Object value) {
-                if (!text.startsWith(word, position)) throw error("unexpected character '" + text.charAt(position) + "'");
-                position += word.length();
-                return value;
-            }
-
-            private boolean peek(char c) {
-                return position < text.length() && text.charAt(position) == c;
-            }
-
-            private void expect(char c) {
-                if (!peek(c)) throw error("expected '" + c + "'");
-                position++;
-            }
-
-            private void skipWhitespace() {
-                while (position < text.length() && " \t\r\n".indexOf(text.charAt(position)) >= 0) position++;
-            }
-
-            private Failure error(String what) {
-                return new Failure("not JSON (" + what + " at " + position + "): " + excerpt(text, 200));
-            }
-        }
     }
 }

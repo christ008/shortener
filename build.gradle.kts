@@ -227,7 +227,7 @@ dependencies {
 val compileDpopClient = tasks.register<JavaCompile>("compileDpopClient") {
     group = "verification"
     description = "Compiles deploy/keycloak/DpopClient.java for Java 25, for the tests that measure the client."
-    source(file("deploy/keycloak/DpopClient.java"))
+    source(fileTree("deploy/keycloak") { include("*.java") })
     classpath = files()
     destinationDirectory.set(dpopClientClasses)
     options.release.set(25)
