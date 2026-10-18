@@ -9,13 +9,13 @@ import uy.ct.shortener.analytics.DeviceCounts
 import uy.ct.shortener.analytics.Granularity
 import uy.ct.shortener.analytics.HostVisitors
 import uy.ct.shortener.analytics.InvalidStatsWindowException
+import uy.ct.shortener.analytics.Kept
 import uy.ct.shortener.analytics.Language
 import uy.ct.shortener.analytics.LanguageVisitors
 import uy.ct.shortener.analytics.Languages
 import uy.ct.shortener.analytics.Referrer
 import uy.ct.shortener.analytics.Referrers
 import uy.ct.shortener.analytics.StatsWindow
-import uy.ct.shortener.analytics.keptSince
 import uy.ct.shortener.shortlink.ShortCode
 import uy.ct.shortener.shortlink.ShortLinkService
 import java.time.Clock
@@ -25,10 +25,11 @@ import java.time.Clock
  *
  * - Reads the link through [ShortLinkService.get] first, so the rule of who may see a link is that service's and a link of
  *   another client is not found. Nothing is read from the counts before it passes.
- * - Refuses a window that starts before the oldest bucket its granularity keeps ([Granularity.keptSince]), rather than answering
- *   zeros for what was deleted: hours are kept for 90 days, days for 730.
+ * - Refuses a window that starts before the oldest bucket its granularity keeps ([Kept.For.since]), rather than answering zeros for
+ *   what was folded: hours are kept for 90 days. Days are kept for ever, so a window of days is never refused for its age.
  * - Fills every bucket of the window: one the database has no row for is [DeviceCounts.NONE].
- * - The breakdown covers the whole UTC days the window touches, because it is counted per day.
+ * - The breakdown covers the whole UTC days the window touches, because it is counted per day, and whole months where it reaches days
+ *   older than 730, which are kept by the month. Its start and end say which.
  * - It shows the [SHOWN_HOSTS] hosts with the most visitors, ties by name, and adds the rest to `other`, with what instances already
  *   counted as [Referrer.Other]. Every language is shown: there are only as many as ISO 639-1 has.
  */
@@ -51,13 +52,18 @@ class DefaultClickStatsService(
     }
 
     private fun requireKept(window: StatsWindow) {
-        val granularity = window.granularity
-        val since = granularity.keptSince(clock.instant())
-        if (window.start.isBefore(since)) {
-            throw InvalidStatsWindowException(
-                "${granularity.wire.replaceFirstChar { it.uppercase() }}s are kept for ${granularity.kept.toDays()} days, since $since; " +
-                    "the window starts at ${window.start}. ${granularity.forOlderWindows}",
-            )
+        when (val kept = window.granularity.kept) {
+            Kept.Forever -> Unit
+
+            is Kept.For -> {
+                val since = kept.since(clock.instant())
+                if (window.start.isBefore(since)) {
+                    throw InvalidStatsWindowException(
+                        "${window.granularity.wire.replaceFirstChar { it.uppercase() }}s are kept for ${kept.period.toDays()} days, since $since; " +
+                            "the window starts at ${window.start}. ${kept.otherwise}",
+                    )
+                }
+            }
         }
     }
 
@@ -91,8 +97,8 @@ class DefaultClickStatsService(
         val shown = ranked.take(SHOWN_HOSTS).map { (host, visitors) -> HostVisitors(host, visitors) }
         val unshown = ranked.drop(SHOWN_HOSTS).sumOf { (_, visitors) -> visitors }
         return Breakdown(
-            start = days.start,
-            end = days.end,
+            start = (rows.map { it.start } + days.start).min(),
+            end = (rows.map { it.end } + days.end).max(),
             referrers = Referrers(direct, shown, other + unshown),
             languages = Languages(codes.ranked().map { (code, visitors) -> LanguageVisitors(code, visitors) }, unknown),
         )

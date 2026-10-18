@@ -85,7 +85,7 @@ A create request in Tempo: the HTTP span, and under it `shortlink.insert`.
 | `analytics_aggregator_entries` | gauge | counts held in memory until the next flush |
 | `analytics_flush_seconds` | timer | a write of one batch, by `outcome` (`success` or `failure`) |
 | `analytics_retention_seconds` | timer | a run of retention, by `outcome`: `done`, `busy` (another instance was working) or `failure` ([ADR 0043](adr/0043-analytics-retention-in-the-database-days-in-utc.md)) |
-| `analytics_retention_hours_folded_total`, `analytics_retention_rows_deleted_total` | counter | hourly rows folded into days, and daily rows deleted, by retention |
+| `analytics_retention_hours_folded_total`, `analytics_retention_days_folded_total` | counter | hourly rows folded into days, and days folded into months, by retention |
 | `shortener_security_events_total` | counter | `401`, `403`, `429` and requests for a DPoP nonce (`dpop_nonce_requested`) by `type` |
 | `shortener_audit_events_total` | counter | creates, disables, administrator actions by `type` |
 | `jvm_*`, `process_*` | | memory, GC, threads, CPU |

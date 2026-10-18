@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.analytics.internal.RetentionStep
+import java.time.LocalDate
 import javax.sql.DataSource
 
 /**
@@ -78,11 +79,11 @@ class JdbcRetentionStoreTest {
 
         val first = store.step()
 
-        assertThat(first).isEqualTo(RetentionStep.Progress(hoursFolded = 3, rowsDeleted = 0))
+        assertThat(first).isEqualTo(RetentionStep.Progress(hoursFolded = 3, daysFolded = 0))
         assertThat(folded("old")).containsOnly(entry(100 to "desktop", 5L), entry(100 to "bot", 7L))
         assertThat(hours("old")).isEqualTo(1L)
 
-        assertThat(store.step()).isEqualTo(RetentionStep.Progress(hoursFolded = 1, rowsDeleted = 0))
+        assertThat(store.step()).isEqualTo(RetentionStep.Progress(hoursFolded = 1, daysFolded = 0))
         assertThat(folded("old")).containsEntry(95 to "mobile", 4L)
         assertThat(hours("old")).isZero()
         assertThat(store.step()).isEqualTo(RetentionStep.Done)
@@ -112,25 +113,61 @@ class JdbcRetentionStoreTest {
     }
 
     @Test
-    fun `deletes the days older than 730 days, from the folded counts and from the referrers and languages`() {
+    fun `folds each day older than 730 days into its element of the month, adding to what the month holds`() {
+        val day = jdbc.queryForObject("select (now() at time zone 'UTC')::date - 731", LocalDate::class.java)!!
+        val month = day.withDayOfMonth(1)
         foldedDevice(731, "desktop", 3)
         foldedDevice(730, "desktop", 4)
-        daily("days", 800, "t.co", 1)
-        daily("days", 731, "t.co", 1)
+        jdbc.update(
+            "insert into link_click_monthly_device (short_code, month, device_class, clicks) values ('folded', ?, 'desktop', array_fill(1::bigint, array[31]))",
+            month,
+        )
+
+        assertThat(stepUntilDone().last()).isEqualTo(RetentionStep.Done)
+
+        val clicks = jdbc.queryForObject(
+            "select clicks[?] from link_click_monthly_device where short_code = 'folded' and month = ? and device_class = 'desktop'",
+            Long::class.java, day.dayOfMonth, month,
+        )
+        assertThat(clicks).isEqualTo(4L)
+        assertThat(folded("folded").keys).containsExactly(730 to "desktop")
+    }
+
+    @Test
+    fun `folds the referrers and languages of each day older than 730 days into sums for the month`() {
+        val month = jdbc.queryForObject("select date_trunc('month', (now() at time zone 'UTC')::date - 800)::date", LocalDate::class.java)!!
+        daily("days", 800, "t.co", 2)
+        daily("days", 800, "example.com", 1)
         daily("days", 730, "t.co", 1)
 
         val steps = stepUntilDone()
 
-        assertThat(steps.last()).isEqualTo(RetentionStep.Done)
-        val deleted = steps.sumOf { step ->
+        val days = steps.sumOf { step ->
             when (step) {
-                is RetentionStep.Progress -> step.rowsDeleted
+                is RetentionStep.Progress -> step.daysFolded
                 RetentionStep.Busy, RetentionStep.Done -> 0L
             }
         }
-        assertThat(deleted).isEqualTo(3L)
-        assertThat(folded("folded").keys).containsExactly(730 to "desktop")
+        assertThat(days).isEqualTo(1L)
+        assertThat(
+            jdbc.queryForList("select value, clicks from link_click_monthly where short_code = 'days' and month = ?", month)
+                .associate { it["value"] to it["clicks"] },
+        ).containsOnly(entry("t.co", 2L), entry("example.com", 1L))
         assertThat(jdbc.queryForObject("select count(*) from link_click_daily where short_code = 'days'", Long::class.java)).isEqualTo(1L)
+    }
+
+    @Test
+    fun `loses no click on the way down`() {
+        hourly("all", 100, 1, "desktop", 2)
+        hourly("all", 1, 1, "mobile", 3)
+        foldedDevice(900, "bot", 5)
+        val total = "select (select coalesce(sum(clicks), 0) from link_click_day where short_code in ('all', 'folded'))"
+        val before = jdbc.queryForObject(total, Long::class.java)
+
+        stepUntilDone()
+
+        assertThat(jdbc.queryForObject(total, Long::class.java)).isEqualTo(before)
+        assertThat(jdbc.queryForObject("select count(*) from link_click_monthly_device where short_code = 'folded'", Long::class.java)).isEqualTo(1L)
     }
 
     @Test
@@ -147,6 +184,6 @@ class JdbcRetentionStoreTest {
             }
         }
 
-        assertThat(store.step()).isEqualTo(RetentionStep.Progress(hoursFolded = 1, rowsDeleted = 0))
+        assertThat(store.step()).isEqualTo(RetentionStep.Progress(hoursFolded = 1, daysFolded = 0))
     }
 }

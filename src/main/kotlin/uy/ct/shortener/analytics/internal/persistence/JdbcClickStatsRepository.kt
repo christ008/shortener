@@ -22,13 +22,14 @@ import java.time.ZoneOffset
  *
  * - One statement groups the hourly rows of the link inside the window into the buckets of its granularity. It reads a range of
  *   the primary key `(short_code, hour, device_class)`, so its cost follows the window, not the table.
- * - A window of days also reads `link_click_daily_device`, where retention folds the hours older than 90 days. A day is in one table
- *   or the other, never both, so the two add up without counting a click twice. A window of hours reads the hours only: the service
- *   refuses one that reaches the folded days.
+ * - A window of days reads the view `link_click_day` (V9), which holds every day wherever retention keeps it: the hours of the last 90
+ *   days, the days up to 730, and the months after. A day is in one table only, so nothing is counted twice. A window of hours reads the
+ *   hours only: the service refuses one that reaches the folded days.
  * - The window is half open: an hour that starts at its end is not read.
  * - The granularity's unit is a value of the sealed type, never text from a request, and goes in as a parameter.
- * - The breakdown adds up the daily rows of the link inside a window of days, by dimension and value, over a range of the primary key
- *   `(short_code, day, dimension, value)`, and reads each value back as the sealed type it was written from ([StoredDimension]).
+ * - The breakdown reads the view `link_click_breakdown` (V9): days, and months for what is older than 730 days. A period counts when it
+ *   overlaps the window, and each row says the first and last day it covers. Values are read back as the sealed type they were written
+ *   from ([StoredDimension]).
  * - Storage that cannot serve the read becomes [StorageUnavailableException], as the link repository does it.
  */
 @Repository
@@ -64,9 +65,11 @@ class JdbcClickStatsRepository(private val jdbc: JdbcClient) : ClickStatsReposit
             .query { rows, _ ->
                 val value = rows.getString("value")
                 val visitors = rows.getLong("clicks")
+                val start = rows.getObject("first_day", LocalDate::class.java).atStartOfDay(ZoneOffset.UTC).toInstant()
+                val end = rows.getObject("last_day", LocalDate::class.java).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
                 when (val dimension = rows.getString("dimension")) {
-                    StoredDimension.REFERRER -> BreakdownRow.FromReferrer(StoredDimension.referrer(value), visitors)
-                    StoredDimension.LANGUAGE -> BreakdownRow.InLanguage(StoredDimension.language(value), visitors)
+                    StoredDimension.REFERRER -> BreakdownRow.FromReferrer(StoredDimension.referrer(value), visitors, start, end)
+                    StoredDimension.LANGUAGE -> BreakdownRow.InLanguage(StoredDimension.language(value), visitors, start, end)
                     else -> error("unknown dimension '$dimension'")
                 }
             }
@@ -97,23 +100,16 @@ class JdbcClickStatsRepository(private val jdbc: JdbcClient) : ClickStatsReposit
         """
 
         const val READ_DAYS = """
-            select bucket, device_class, sum(clicks)::bigint as clicks
-            from (
-                select date_trunc(:unit, hour, 'UTC') as bucket, device_class, clicks
-                from link_click_hourly
-                where short_code = :shortCode and hour >= :start and hour < :end
-                union all
-                select day::timestamp at time zone 'UTC' as bucket, device_class, clicks
-                from link_click_daily_device
-                where short_code = :shortCode and day >= :startDay and day < :endDay
-            ) as counts
+            select (day::timestamp at time zone 'UTC') as bucket, device_class, sum(clicks)::bigint as clicks
+            from link_click_day
+            where short_code = :shortCode and day >= :startDay and day < :endDay
             group by 1, 2
         """
 
         const val BREAKDOWN = """
-            select dimension, value, sum(clicks)::bigint as clicks
-            from link_click_daily
-            where short_code = :shortCode and day >= :start and day < :end
+            select dimension, value, sum(clicks)::bigint as clicks, min(first_day) as first_day, max(last_day) as last_day
+            from link_click_breakdown
+            where short_code = :shortCode and last_day >= :start and first_day < :end
             group by 1, 2
         """
     }

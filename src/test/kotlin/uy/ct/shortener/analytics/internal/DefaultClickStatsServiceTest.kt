@@ -71,6 +71,8 @@ class DefaultClickStatsServiceTest {
 
     private fun at(text: String) = Instant.parse(text)
 
+    private val day = Instant.parse("2026-10-12T00:00:00Z")
+
     private val window = StatsWindow.of(Granularity.Hour, at("2026-10-12T10:00:00Z"), at("2026-10-12T13:00:00Z"))
 
     @Test
@@ -140,10 +142,10 @@ class DefaultClickStatsServiceTest {
     @Test
     fun `shows the hosts with the most visitors first, ties by name, beside those that came direct`() {
         breakdownRows += listOf(
-            BreakdownRow.FromReferrer(Referrer.Host("b.example"), 3),
-            BreakdownRow.FromReferrer(Referrer.Host("a.example"), 3),
-            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 9),
-            BreakdownRow.FromReferrer(Referrer.Direct, 4),
+            BreakdownRow.FromReferrer(Referrer.Host("b.example"), 3, day, day.plusSeconds(86_400)),
+            BreakdownRow.FromReferrer(Referrer.Host("a.example"), 3, day, day.plusSeconds(86_400)),
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 9, day, day.plusSeconds(86_400)),
+            BreakdownRow.FromReferrer(Referrer.Direct, 4, day, day.plusSeconds(86_400)),
         )
 
         val referrers = service.stats(known, window).breakdown.referrers
@@ -155,8 +157,8 @@ class DefaultClickStatsServiceTest {
 
     @Test
     fun `adds the hosts past the top 20 to other, with what instances already counted as other`() {
-        breakdownRows += (1..25).map { BreakdownRow.FromReferrer(Referrer.Host("h$it.example"), 100L - it) }
-        breakdownRows += BreakdownRow.FromReferrer(Referrer.Other, 7)
+        breakdownRows += (1..25).map { BreakdownRow.FromReferrer(Referrer.Host("h$it.example"), 100L - it, day, day.plusSeconds(86_400)) }
+        breakdownRows += BreakdownRow.FromReferrer(Referrer.Other, 7, day, day.plusSeconds(86_400))
 
         val referrers = service.stats(known, window).breakdown.referrers
 
@@ -169,9 +171,9 @@ class DefaultClickStatsServiceTest {
     @Test
     fun `shows every language, most first, and those it could not read`() {
         breakdownRows += listOf(
-            BreakdownRow.InLanguage(Language.Code("en"), 2),
-            BreakdownRow.InLanguage(Language.Code("es"), 5),
-            BreakdownRow.InLanguage(Language.Unknown, 1),
+            BreakdownRow.InLanguage(Language.Code("en"), 2, day, day.plusSeconds(86_400)),
+            BreakdownRow.InLanguage(Language.Code("es"), 5, day, day.plusSeconds(86_400)),
+            BreakdownRow.InLanguage(Language.Unknown, 1, day, day.plusSeconds(86_400)),
         )
 
         val languages = service.stats(known, window).breakdown.languages
@@ -183,10 +185,10 @@ class DefaultClickStatsServiceTest {
     @Test
     fun `adds up a host or a language that comes in more than one row`() {
         breakdownRows += listOf(
-            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 2),
-            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 3),
-            BreakdownRow.InLanguage(Language.Code("es"), 1),
-            BreakdownRow.InLanguage(Language.Code("es"), 4),
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 2, day, day.plusSeconds(86_400)),
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 3, day, day.plusSeconds(86_400)),
+            BreakdownRow.InLanguage(Language.Code("es"), 1, day, day.plusSeconds(86_400)),
+            BreakdownRow.InLanguage(Language.Code("es"), 4, day, day.plusSeconds(86_400)),
         )
 
         val breakdown = service.stats(known, window).breakdown
@@ -224,15 +226,22 @@ class DefaultClickStatsServiceTest {
     }
 
     @Test
-    fun `days are kept for 730 days, and a window that starts earlier is refused`() {
-        val keptSince = at("2024-10-14T00:00:00Z")
+    fun `days are kept for ever, so a window of days is never refused for its age`() {
+        val stats = service.stats(known, StatsWindow(Granularity.Day, at("2019-03-01T00:00:00Z"), at("2019-03-04T00:00:00Z")))
 
-        assertThat(service.stats(known, StatsWindow(Granularity.Day, keptSince, keptSince.plusSeconds(86_400))).points).hasSize(1)
-        val failure = assertFailsWith<InvalidStatsWindowException> {
-            service.stats(known, StatsWindow(Granularity.Day, keptSince.minusSeconds(86_400), keptSince.plusSeconds(86_400)))
-        }
+        assertThat(stats.points).hasSize(3)
+    }
 
-        assertThat(failure.body.detail).contains("Days are kept for 730 days, since 2024-10-14T00:00:00Z", "Older ones are not kept")
+    @Test
+    fun `a breakdown that reaches months kept by the month says it covers them whole`() {
+        breakdownRows += BreakdownRow.FromReferrer(Referrer.Host("t.co"), 4, at("2024-02-01T00:00:00Z"), at("2024-03-01T00:00:00Z"))
+        breakdownRows += BreakdownRow.InLanguage(Language.Code("es"), 4, at("2024-03-10T00:00:00Z"), at("2024-03-11T00:00:00Z"))
+
+        val breakdown = service.stats(known, StatsWindow(Granularity.Day, at("2024-02-20T00:00:00Z"), at("2024-03-15T00:00:00Z"))).breakdown
+
+        assertThat(breakdown.start).isEqualTo(at("2024-02-01T00:00:00Z"))
+        assertThat(breakdown.end).isEqualTo(at("2024-03-15T00:00:00Z"))
+        assertThat(breakdown.referrers.hosts).containsExactly(HostVisitors("t.co", 4))
     }
 
     @Test

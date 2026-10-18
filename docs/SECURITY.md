@@ -166,7 +166,7 @@ client's key. Not met:
 
 | Concern | Control | Where it is described |
 |---|---|---|
-| What the database lets the application do | three roles, so the application cannot delete or rewrite a link | [Roles and migrations](INTERNALS.md#roles-and-migrations), [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md) |
+| What the database lets the application do | separate roles, so the application cannot delete or rewrite a link | [Roles and migrations](INTERNALS.md#roles-and-migrations), [ADR 0013](adr/0013-three-database-roles-and-a-migration-job.md) |
 | What the containers can do | read-only root, no capabilities, not root, secrets as files | [Hardening](INTERNALS.md#hardening) |
 | What reaches the application | TLS, replaced forwarded headers, body and connection caps | [Edge](INTERNALS.md#edge) |
 | Traffic between services | encrypted; with `PKI=1` also authenticated, and the application serves only the edge | [ADR 0021](adr/0021-encrypt-internal-traffic.md), [ADR 0022](adr/0022-mtls-between-services.md) |

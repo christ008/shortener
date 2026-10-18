@@ -147,7 +147,7 @@ groups:
       severity: warning
     annotations:
       summary: The retention of the click counts has failed, and no instance has applied it for a day
-      description: 'Hours older than 90 days are not being folded into days, and days older than 730 are not being deleted
-        (ADR 0043), so the tables grow and the stats refuse windows they could answer. The log of
+      description: 'Hours older than 90 days are not being folded into days, nor days older than 730 into months (ADR 0043),
+        so the hourly and daily tables grow and the stats refuse windows of hours they could answer. The log of
         uy.ct.shortener.analytics.internal.AnalyticsRetention has the type of the failure. Run it by hand with
-        `select * from analytics_retention()` as shortener_app until it reports nothing folded and nothing deleted.'
+        `select * from analytics_retention()` as shortener_app until it reports nothing folded.'

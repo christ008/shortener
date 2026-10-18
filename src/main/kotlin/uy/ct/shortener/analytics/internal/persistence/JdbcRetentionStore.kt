@@ -8,8 +8,8 @@ import uy.ct.shortener.analytics.internal.RetentionStore
 /**
  * [RetentionStore] on plain JDBC: one call of `analytics_retention()` (migration V9) per step.
  *
- * - The function runs as its owner, so the application role, which has no `DELETE`, can fold and delete only what the function's
- *   fixed rules say, and only through it.
+ * - The function runs as its owner, `shortener_retention`, so the application role, which has no `DELETE`, can move counts only as the
+ *   function's fixed rules say, and only through it.
  * - Each call is a statement of its own, within the role's `statement_timeout`.
  */
 @Repository
@@ -19,16 +19,16 @@ class JdbcRetentionStore(private val jdbc: JdbcClient) : RetentionStore {
         jdbc.sql(STEP)
             .query { rows, _ ->
                 val hoursFolded = rows.getLong("hours_folded")
-                val rowsDeleted = rows.getLong("rows_deleted")
+                val daysFolded = rows.getLong("days_folded")
                 when {
                     rows.getBoolean("busy") -> RetentionStep.Busy
-                    hoursFolded == 0L && rowsDeleted == 0L -> RetentionStep.Done
-                    else -> RetentionStep.Progress(hoursFolded, rowsDeleted)
+                    hoursFolded == 0L && daysFolded == 0L -> RetentionStep.Done
+                    else -> RetentionStep.Progress(hoursFolded, daysFolded)
                 }
             }
             .single()
 
     private companion object {
-        const val STEP = "select busy, hours_folded, rows_deleted from analytics_retention()"
+        const val STEP = "select busy, hours_folded, days_folded from analytics_retention()"
     }
 }

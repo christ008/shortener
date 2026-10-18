@@ -128,15 +128,17 @@ Postgres 18 with plain JDBC through `JdbcClient`.
 ### Roles and migrations
 
 `deploy/postgres/bootstrap.sql` is idempotent and runs once per database, as a superuser (the dev compose file and the stack run it when
-the data directory is first created). It creates three roles:
+the data directory is first created). It creates four roles:
 
 - `shortener_migrator` owns the tables and runs Flyway.
 - `shortener_app` serves requests.
   - Can `select` and `insert` on `short_link`, `update` only `disabled_at` and `disabled_by`, and read the Flyway history.
-  - Cannot `delete`, `truncate`, change a target or a code, or run DDL. The one thing it can delete is old click counts, and only by calling
+  - Cannot `delete`, `truncate`, change a target or a code, or run DDL. It can move old click counts down their tiers, and only by calling
     `analytics_retention()`, whose rules are fixed in the function ([ADR 0043](adr/0043-analytics-retention-in-the-database-days-in-utc.md)).
   - `V6` states those grants next to the schema. Where the role does not exist, `V6` does nothing, so a developer's database with one user works.
 - `shortener_exporter` has `pg_monitor`: it reads statistics, not data.
+- `shortener_retention` cannot log in. It owns `analytics_retention()` and holds only what that function does with the click counts: nothing
+  on `short_link`, and no `delete` on the monthly counts. `V9` grants it, and gives it the function where the role exists.
 
 ```mermaid
 flowchart LR
@@ -248,25 +250,28 @@ An owner's view of how a link is followed, counted without touching the redirect
 - **Read.** `GET /api/short-links/{code}/stats` takes `granularity` (`hour` or `day`), `from` and `to`.
   - `Granularity` is a sealed type whose variants know where a bucket starts and ends, how wide a window may be (90 days of hours, 366 of days)
     and the default window.
-  - `StatsWindow` rounds a request outward to whole buckets, in UTC, and refuses an empty or too wide one with `400`. The service refuses one that
-    starts before what its granularity keeps (`Granularity.keptSince`: the start of today in UTC, less 90 days of hours or 730 of days) with `400`,
-    rather than answer zeros for what retention deleted.
+  - `StatsWindow` rounds a request outward to whole buckets, in UTC, and refuses an empty or too wide one with `400`. The service refuses a
+    window of hours that starts before the hours kept (`Kept.For.since`: the start of today in UTC, less 90 days) with `400`, rather than answer
+    zeros for what retention folded. Days are `Kept.Forever`.
   - `DefaultClickStatsService` reads the link through `ShortLinkService.get` first (`404` for another client's link, any for an administrator),
-    then the window with one grouped statement over the primary key range, and fills empty buckets with zeros. A window of days also reads
-    `link_click_daily_device`, the days retention folded; a day is in one table or the other, never both.
+    then the window with one grouped statement over the primary key range, and fills empty buckets with zeros. A window of days reads
+    the view `link_click_day`, every tier at once.
   - `visitors` is desktop plus mobile; `bot` is never in it. Counts are read whether or not counting is on.
-  - The breakdown reads the daily rows of the whole UTC days the window touches, in one grouped statement over the primary key range
-    `(short_code, day, dimension, value)`. It shows the 20 hosts with the most visitors, ties by name, adds the rest to `other`, and shows every language.
-- **Retention.** Hours are kept for 90 days and days for 730, counted from the start of today in UTC, and every day is a UTC day
+  - The breakdown reads the view `link_click_breakdown` over the whole UTC days the window touches, and whole months where it reaches the monthly
+    tier; its start and end say which. It shows the 20 hosts with the most visitors, ties by name, adds the rest to `other`, and shows every language.
+- **Retention.** Hours for 90 days, then days for 730, then months, kept for ever; every day is a UTC day
   ([ADR 0043](adr/0043-analytics-retention-in-the-database-days-in-utc.md)).
-  - The rules are one function, `analytics_retention()` (`V9`): `security definer`, owned by the migrator, with its search path fixed and no argument.
-    A call folds the oldest day of hours older than 90 days into `link_click_daily_device` and deletes those hours, and deletes the oldest day older
-    than 730 days from each daily table. One day of each a call keeps it within the role's 5 s statement timeout.
+  - `link_click_monthly_device` holds one row per link, month and class with 31 daily counts, and `link_click_monthly` the referrer and language
+    summed over the month. Measured, a month row costs an eighth of its days as rows; TOAST compression does nothing on rows this small.
+  - `link_click_day` and `link_click_breakdown` (views, `security_invoker`) read every tier as one. A day is in exactly one tier.
+  - The rules are one function, `analytics_retention()` (`V9`), `security definer`, owned by `shortener_retention`, with its search path fixed
+    and no argument. A call moves the oldest day of hours older than 90 days into days, and the oldest day older than 730 into its month, in the
+    statement that removes it. One day of each a call keeps it within the role's 5 s statement timeout.
   - `AnalyticsRetention` calls it a minute after the start and then every `retention.interval` (24 h), step after step until a step finds nothing,
     at most 1,000 a run. Every instance does; a transactional advisory lock lets one work at a time and the others report busy. It runs also when
     counting is off. `shortener.analytics.retention.enabled=false` stops an instance from calling it.
-  - `EXECUTE` is revoked from `PUBLIC` and granted to `shortener_app` only. The role can read the folded days but not write or delete them, and can
-    neither replace nor drop the function (`DatabaseRolesTest`).
+  - `EXECUTE` is revoked from `PUBLIC` and granted to `shortener_app` only. The application reads the tiers and the views but cannot write the
+    folded tiers, and can neither replace nor drop the function (`DatabaseRolesTest`).
   - The indexes it finds the oldest hour and day with are built concurrently (`V10`). That needs `spring.flyway.postgresql.transactional-lock: false`:
     `create index concurrently` waits for every open transaction, Flyway's own included, and with a transactional lock the migration never ends.
     `MigrationConventionsTest` checks the setting whenever a migration builds an index concurrently.

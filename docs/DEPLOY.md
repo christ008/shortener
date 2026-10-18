@@ -66,6 +66,11 @@ with a checklist, are in [OPERATING.md](OPERATING.md#go-to-production), and ever
 - **Update:** `deploy/stack/deploy.sh <version>`. It verifies the signature of that version, runs the migration job at the new version, waits for it, then updates the
   application one task at a time, new before old. A task not healthy within 20 s rolls the update back.
 - **Roll back:** `deploy/stack/deploy.sh <previous version>`. Nothing to undo in the schema.
+- **A database set up before migration V9** (the retention of the click counts, [ADR 0043](adr/0043-analytics-retention-in-the-database-days-in-utc.md)):
+  run `bootstrap.sql` again before the update that brings it, so that the role `shortener_retention` exists and the migration gives it the
+  retention function. It is idempotent. From the repository on the node:
+  `docker exec -i $(docker ps -q -f name=shortener_postgres) psql -U postgres -d shortener < deploy/postgres/bootstrap.sql`. Without it the
+  function works, owned by the migrator.
 - **Configs and secrets** are immutable, so a file that changes (or a renewed certificate) gets a new name, named after a hash of its contents, and the service that uses it restarts. Changing a
   Postgres file restarts Postgres once, with the application failing its queries for about a minute: do it when that is acceptable. Each deploy removes the configs and secrets that nothing uses any more.
 - **Edge configuration:** edit `deploy/edge/nginx.conf`, deploy again.

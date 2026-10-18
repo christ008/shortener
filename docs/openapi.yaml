@@ -319,9 +319,10 @@ paths:
         `breakdown` says where the visitors came from (the host of their `Referer`) and which language they asked for first.
         It is counted per UTC day, so it covers the whole days that hold the window.
 
-        Every day is a UTC day. Hours are kept for 90 days and days for 730, counted from the start of today in UTC, and a
-        window that starts earlier is refused with `400`, not answered with zeros. For days in another time zone, ask by the
-        hour and group the hours, within the last 90 days.
+        Every day is a UTC day, and days are kept for ever. Hours are kept for 90 days, counted from the start of today in UTC,
+        and a window of hours that starts earlier is refused with `400`, not answered with zeros. For days in another time
+        zone, ask by the hour and group the hours, within the last 90 days. Older than 730 days, the referrer and language are
+        kept by the month, so a breakdown that reaches them covers whole months.
       security:
         - dpop: ['shortlinks:read']
         - dpop: ['shortlinks:admin']
@@ -592,15 +593,16 @@ components:
       description: |
         Where the visitors came from and which language they asked for. Visitors only: bots are never in it. It is counted per UTC
         day, so it covers the whole days that hold the window, which `from` and `to` say, also when the series is by the hour.
+        Older than 730 days it is kept by the month, so where the window reaches those days it covers whole months.
       properties:
         from:
           type: string
           format: date-time
-          description: The start of the first day. Included.
+          description: The start of the first day, or of the first month. Included.
         to:
           type: string
           format: date-time
-          description: The end of the last day. Not included.
+          description: The end of the last day, or of the last month. Not included.
         referrers:
           $ref: '#/components/schemas/ClickReferrers'
         languages:

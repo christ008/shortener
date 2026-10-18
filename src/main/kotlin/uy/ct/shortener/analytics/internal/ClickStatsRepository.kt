@@ -11,15 +11,20 @@ import java.time.Instant
 data class ClickRow(val bucket: Instant, val device: DeviceClass, val clicks: Long)
 
 /**
- * What a link's visitors were counted under in a day: a [FromReferrer] or an [InLanguage], and how many.
+ * What a link's visitors were counted under: a [FromReferrer] or an [InLanguage], how many, and the days they were counted in, from
+ * [start] up to [end]. Days older than 730 are kept by the month, so a row that reaches them covers whole months.
  */
 sealed interface BreakdownRow {
 
     val visitors: Long
 
-    data class FromReferrer(val referrer: Referrer, override val visitors: Long) : BreakdownRow
+    val start: Instant
 
-    data class InLanguage(val language: Language, override val visitors: Long) : BreakdownRow
+    val end: Instant
+
+    data class FromReferrer(val referrer: Referrer, override val visitors: Long, override val start: Instant, override val end: Instant) : BreakdownRow
+
+    data class InLanguage(val language: Language, override val visitors: Long, override val start: Instant, override val end: Instant) : BreakdownRow
 }
 
 /**
@@ -35,8 +40,8 @@ interface ClickStatsRepository {
     fun read(shortCode: ShortCode, window: StatsWindow): List<ClickRow>
 
     /**
-     * Returns the visitors of [shortCode] over the days of [days], added up by referrer and by language. A value nobody was counted
-     * under has no row.
+     * Returns the visitors of [shortCode] over the days of [days], added up by referrer and by language, with the days each covers: a
+     * month kept by the month counts whole when it overlaps [days]. A value nobody was counted under has no row.
      *
      * @throws StorageUnavailableException if storage cannot be reached right now
      */

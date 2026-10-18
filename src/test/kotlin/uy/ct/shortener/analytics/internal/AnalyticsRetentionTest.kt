@@ -40,14 +40,14 @@ class AnalyticsRetentionTest {
     private fun runs(outcome: String) = registry.timer("analytics.retention", "outcome", outcome).count()
 
     @Test
-    fun `steps until there is nothing left, and counts what it folded and deleted`() {
+    fun `steps until there is nothing left, and counts what it folded`() {
         val store = ScriptedStore(RetentionStep.Progress(48, 0), RetentionStep.Progress(24, 3), RetentionStep.Done)
 
         retention(store).run()
 
         assertThat(store.calls).isEqualTo(3)
         assertThat(registry.counter("analytics.retention.hours.folded").count()).isEqualTo(72.0)
-        assertThat(registry.counter("analytics.retention.rows.deleted").count()).isEqualTo(3.0)
+        assertThat(registry.counter("analytics.retention.days.folded").count()).isEqualTo(3.0)
         assertThat(runs("done")).isEqualTo(1L)
     }
 
@@ -98,8 +98,8 @@ class AnalyticsRetentionTest {
             retention(ScriptedStore(RetentionStep.Progress(0, 5))).run()
 
             assertThat(log.events.map { it.message }).containsExactly(
-                "Analytics retention folded 24 hourly rows into days and deleted 2 daily rows",
-                "Analytics retention folded 0 hourly rows into days and deleted 5 daily rows",
+                "Analytics retention folded 24 hourly rows into days and 2 days into months",
+                "Analytics retention folded 0 hourly rows into days and 5 days into months",
             )
         }
     }
