@@ -178,7 +178,7 @@ public final class DpopClient {
         return args.length > index ? args[index] : null;
     }
 
-    private void run(Command command) throws Exception {
+    private void run(Command command) throws IOException, InterruptedException {
         if (command instanceof Keygen keygen) {
             keygen(keygen.clientId());
         } else if (command instanceof Register register) {
