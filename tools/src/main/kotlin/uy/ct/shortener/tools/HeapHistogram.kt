@@ -70,7 +70,9 @@ internal object HeapHistogram {
                         dump[body + idSize, text]
                         utf8[id(dump, body, idSize)] = String(text, StandardCharsets.UTF_8)
                     }
+
                     0x02 -> classNames[id(dump, body + 4, idSize)] = id(dump, body + 4 + idSize + 4, idSize)
+
                     0x0C, 0x1C -> readHeapDump(dump, body, (body + length).toInt(), idSize, tally, buckets)
                 }
                 position = (body + length).toInt()
@@ -104,7 +106,6 @@ internal object HeapHistogram {
                     context.out.println(f("   <= %,8d B: %,8d  %7s MB", it.key.substring(array.length + 1).toLong(), it.value[0], d(it.value[1] / 1e6, 1)))
                 }
         }
-
     }
 
     private fun printSelected(context: Context, tally: Tally, utf8: Map<Long, String>, classNames: Map<Long, Long>) {

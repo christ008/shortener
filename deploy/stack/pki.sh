@@ -49,13 +49,14 @@ random_secret() { head -c 33 /dev/urandom | base64; }
 quietly() { quiet_output=$("$@" 2>&1) || { echo "$quiet_output" >&2; return 1; }; }
 
 key_pair() { # FILE: a P-256 key, PKCS#8, not encrypted
-  local file=$1
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$file"
+  key_out=$1
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$key_out"
 }
 
 encrypted_key() { # FILE PASSWORD_FILE: a P-256 key, PKCS#8, encrypted with the password
-  local file=$1 password_file=$2
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 -iter 600000 -passout "file:$password_file" -out "$file"
+  key_out=$1
+  key_password_file=$2
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 -iter 600000 -passout "file:$key_password_file" -out "$key_out"
 }
 
 ca_request() {
@@ -69,16 +70,16 @@ ca_container() {
   echo "$id"
 }
 
-epoch() { local file=$1 field=$2; date -d "$(openssl x509 -in "$file" -noout "-$field" | cut -d= -f2)" +%s; }
+epoch() { epoch_file=$1; epoch_field=$2; date -d "$(openssl x509 -in "$epoch_file" -noout "-$epoch_field" | cut -d= -f2)" +%s; }
 
-end_date() { local file=$1; openssl x509 -in "$file" -noout -enddate | cut -d= -f2; }
+end_date() { end_file=$1; openssl x509 -in "$end_file" -noout -enddate | cut -d= -f2; }
 
-days_left() { local file=$1; echo $(( ( $(epoch "$file" enddate) - $(date +%s) ) / 86400 )); }
+days_left() { days_file=$1; echo $(( ( $(epoch "$days_file" enddate) - $(date +%s) ) / 86400 )); }
 
 # The moment two thirds of a certificate's life are over, in epoch seconds: when it is due for renewal.
-renew_at() { local file=$1; echo $(( $(epoch "$file" startdate) + ( $(epoch "$file" enddate) - $(epoch "$file" startdate) ) * 2 / 3 )); }
+renew_at() { renew_file=$1; echo $(( $(epoch "$renew_file" startdate) + ( $(epoch "$renew_file" enddate) - $(epoch "$renew_file" startdate) ) * 2 / 3 )); }
 
-hash12() { local file=$1; sha256sum "$file" | cut -c1-12; }
+hash12() { hash_file=$1; sha256sum "$hash_file" | cut -c1-12; }
 
 # CERT then the arguments of `openssl pkey` that read its key: whether the key is the certificate's.
 key_matches() {
@@ -89,13 +90,13 @@ key_matches() {
 
 # name of the identity, what it may be used for, who signs it, how long it lives, and its names
 role_settings() {
-  local role=$1
-  case "$role" in
+  settings_role=$1
+  case "$settings_role" in
     edge)      cn=edge;               eku=client; provisioner=pki;    lifetime=720h;  dns="" ;;
     shortener) cn=shortener-app;      eku=both;   provisioner=pki;    lifetime=720h;  dns="DNS:shortener," ;;
     migrator)  cn=shortener-migrator; eku=client; provisioner=pki;    lifetime=720h;  dns="" ;;
     postgres)  cn=postgres;           eku=server; provisioner=pki-db; lifetime=8760h; dns="DNS:postgres," ;;
-    *) echo "unknown role '$role': one of $roles" >&2; exit 1 ;;
+    *) echo "unknown role '$settings_role': one of $roles" >&2; exit 1 ;;
   esac
 }
 

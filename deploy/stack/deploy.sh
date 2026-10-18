@@ -123,7 +123,7 @@ deploy() { # [FILES AS -c ARGUMENTS]: all of them, unless it is told which
   docker stack deploy ${1:-$args} --with-registry-auth --resolve-image "${RESOLVE_IMAGE:-always}" --detach=true "$stack"
 }
 
-tag_of() { local service=$1; docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$service" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
+tag_of() { tag_service=$1; docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$tag_service" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
 current=$(tag_of shortener)
 
 database_has_certificate() { # a task of the database is running with the certificate's secret, on any node: the swarm's own API, not the containers of this node
