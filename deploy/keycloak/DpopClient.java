@@ -100,6 +100,8 @@ public final class DpopClient {
     private static final String REFRESH_TOKEN = "refresh_token";
     private static final String ERROR = "error";
     private static final String DPOP_NONCE = "DPoP-Nonce";
+    private static final String ERROR_PREFIX = "DpopClient: ";
+    private static final String DEBUG_VARIABLE = "DPOP_DEBUG";
 
     private static final String USAGE = """
             usage: java DpopClient.java keygen CLIENT_ID
@@ -126,17 +128,17 @@ public final class DpopClient {
         try {
             new DpopClient().run(command.get());
         } catch (Failure failure) {
-            System.err.println("DpopClient: " + failure.getMessage());
-            if (System.getenv("DPOP_DEBUG") != null) failure.printStackTrace();
+            System.err.println(ERROR_PREFIX + failure.getMessage());
+            if (System.getenv(DEBUG_VARIABLE) != null) failure.printStackTrace();
             System.exit(1);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            System.err.println("DpopClient: " + interrupted);
-            if (System.getenv("DPOP_DEBUG") != null) interrupted.printStackTrace();
+            System.err.println(ERROR_PREFIX + interrupted);
+            if (System.getenv(DEBUG_VARIABLE) != null) interrupted.printStackTrace();
             System.exit(1);
         } catch (Exception unexpected) {
-            System.err.println("DpopClient: " + unexpected);
-            if (System.getenv("DPOP_DEBUG") != null) unexpected.printStackTrace();
+            System.err.println(ERROR_PREFIX + unexpected);
+            if (System.getenv(DEBUG_VARIABLE) != null) unexpected.printStackTrace();
             System.exit(1);
         }
     }
