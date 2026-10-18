@@ -118,12 +118,13 @@ public final class DpopClient {
     // ---- the command line -------------------------------------------------------------------------------------------
 
     public static void main(String[] args) {
-        if (!validArguments(args)) {
+        Optional<Command> command = parse(args);
+        if (command.isEmpty()) {
             System.err.println(USAGE);
             System.exit(2);
         }
         try {
-            new DpopClient().run(args);
+            new DpopClient().run(command.get());
         } catch (Failure failure) {
             System.err.println("DpopClient: " + failure.getMessage());
             if (System.getenv("DPOP_DEBUG") != null) failure.printStackTrace();
@@ -135,24 +136,48 @@ public final class DpopClient {
         }
     }
 
-    static boolean validArguments(String[] args) {
-        return args.length > 0 && switch (args[0]) {
-            case "keygen" -> args.length == 2;
-            case "register" -> args.length == 4;
-            case "token" -> args.length == 3;
-            case "call", "login" -> args.length == 5 || args.length == 6;
-            default -> false;
-        };
+    /** One command of the line, with the arguments it takes. */
+    private sealed interface Command permits Keygen, Register, FetchToken, Call, Login {}
+
+    private record Keygen(String clientId) implements Command {}
+
+    private record Register(String name, String invitation, Path keyFile) implements Command {}
+
+    private record FetchToken(Path keyFile, String clientId) implements Command {}
+
+    private record Call(Path keyFile, String clientId, String method, String url, String body) implements Command {}
+
+    private record Login(String user, String password, String method, String url, String body) implements Command {}
+
+    /** The command the arguments make, or nothing when they make none. */
+    static Optional<Command> parse(String[] args) {
+        int count = args.length;
+        String word = count == 0 ? "" : args[0];
+        if (word.equals("keygen") && count == 2) return Optional.of(new Keygen(args[1]));
+        if (word.equals("register") && count == 4) return Optional.of(new Register(args[1], args[2], Path.of(args[3])));
+        if (word.equals("token") && count == 3) return Optional.of(new FetchToken(Path.of(args[1]), args[2]));
+        if (word.equals("call") && (count == 5 || count == 6)) {
+            return Optional.of(new Call(Path.of(args[1]), args[2], args[3], args[4], count > 5 ? args[5] : null));
+        }
+        if (word.equals("login") && (count == 5 || count == 6)) {
+            return Optional.of(new Login(args[1], args[2], args[3], args[4], count > 5 ? args[5] : null));
+        }
+        return Optional.empty();
     }
 
-    private void run(String[] args) throws Exception {
-        switch (args[0]) {
-            case "keygen" -> keygen(args[1]);
-            case "register" -> register(args[1], args[2], Path.of(args[3]));
-            case "token" -> System.out.println(fetchToken(Path.of(args[1]), args[2], newKey()).accessToken());
-            case "call" -> printCall(Path.of(args[1]), args[2], args[3], args[4], args.length > 5 ? args[5] : null);
-            case "login" -> login(args[1], args[2], args[3], args[4], args.length > 5 ? args[5] : null);
-            default -> throw new IllegalStateException("unreachable: " + args[0]);
+    private void run(Command command) throws Exception {
+        if (command instanceof Keygen keygen) {
+            keygen(keygen.clientId());
+        } else if (command instanceof Register register) {
+            register(register.name(), register.invitation(), register.keyFile());
+        } else if (command instanceof FetchToken fetch) {
+            System.out.println(fetchToken(fetch.keyFile(), fetch.clientId(), newKey()).accessToken());
+        } else if (command instanceof Call call) {
+            printCall(call.keyFile(), call.clientId(), call.method(), call.url(), call.body());
+        } else if (command instanceof Login login) {
+            login(login.user(), login.password(), login.method(), login.url(), login.body());
+        } else {
+            throw new IllegalStateException("unreachable: " + command);
         }
     }
 
@@ -289,7 +314,8 @@ public final class DpopClient {
         String challenge = B64.encodeToString(sha256(verifier));
         String state = UUID.randomUUID().toString();
 
-        String code = signIn(user, password, new AuthorizationRequest(clientId, redirect, scope, state, challenge, jkt));
+        String code = new KeycloakLogin(issuer).signIn(user, password,
+                new KeycloakLogin.AuthorizationRequest(clientId, redirect, scope, state, challenge, jkt));
 
         Json tokens = Json.parse(postToken(form(GRANT_TYPE, "authorization_code", CLIENT_ID, clientId, "code", code,
                 "redirect_uri", redirect, "code_verifier", verifier), dpopKey));
@@ -385,56 +411,79 @@ public final class DpopClient {
         return form(GRANT_TYPE, REFRESH_TOKEN, CLIENT_ID, clientId, REFRESH_TOKEN, refreshToken);
     }
 
-    /** The parameters of the authorization request, which the login page is asked for. */
-    private record AuthorizationRequest(String clientId, String redirect, String scope, String state, String challenge, String jkt) {}
+    /** The browser part of the login: the login page of Keycloak, the form submitted on it, and the redirect that carries the code. */
+    private static final class KeycloakLogin {
+        private static final Pattern FORM_TAG = Pattern.compile("<form\\b[^>]*>", Pattern.CASE_INSENSITIVE);
+        private static final Pattern ACTION = Pattern.compile("\\baction=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
 
-    /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
-    private String signIn(String user, String password, AuthorizationRequest request) throws Exception {
-        HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
-        Map<String, String> cookies = new LinkedHashMap<>();
-        String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, request.clientId(),
-                "redirect_uri", request.redirect(), "scope", request.scope(), "state", request.state(), "code_challenge", request.challenge(),
-                "code_challenge_method", "S256", "dpop_jkt", request.jkt());
+        /** The parameters of the authorization request, which the login page is asked for. */
+        record AuthorizationRequest(String clientId, String redirect, String scope, String state, String challenge, String jkt) {}
 
-        HttpResponse<String> page = send(browser, HttpRequest.newBuilder(uri(authUrl)).timeout(TIMEOUT).GET().build());
-        remember(cookies, page);
-        String action = loginFormAction(page.body())
-                .orElseThrow(() -> new Failure("no login form (status " + page.statusCode() + "): " + excerpt(page.body(), 500)));
+        private final String issuer;
 
-        HttpResponse<String> submitted = send(browser, HttpRequest.newBuilder(uri(action))
-                .timeout(TIMEOUT)
-                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .header("Cookie", cookieHeader(cookies))
-                .POST(HttpRequest.BodyPublishers.ofString(form("username", user, "password", password, "credentialId", "")))
-                .build());
-        String location = submitted.headers().firstValue("Location").orElseThrow(() -> new Failure(
-                "the login did not redirect (status " + submitted.statusCode() + "): " + excerpt(submitted.body(), 300)));
-
-        Map<String, String> returned = queryOf(location);
-        if (returned.containsKey(ERROR)) {
-            throw new Failure("the login was refused: " + returned.get(ERROR) + " " + returned.getOrDefault("error_description", ""));
+        KeycloakLogin(String issuer) {
+            this.issuer = issuer;
         }
-        if (!request.state().equals(returned.get("state"))) throw new Failure("state mismatch");
-        String code = returned.get("code");
-        if (code == null) throw new Failure("the redirect carries no code: " + location);
-        int query = location.indexOf('?');
-        System.out.println("1. signed in as " + user + "; redirected to " + (query < 0 ? location : location.substring(0, query)) + " with a code");
-        return code;
-    }
 
-    private static final Pattern FORM_TAG = Pattern.compile("<form\\b[^>]*>", Pattern.CASE_INSENSITIVE);
-    private static final Pattern ACTION = Pattern.compile("\\baction=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+        /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
+        String signIn(String user, String password, AuthorizationRequest request) throws Exception {
+            HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
+            Map<String, String> cookies = new LinkedHashMap<>();
+            String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, request.clientId(),
+                    "redirect_uri", request.redirect(), "scope", request.scope(), "state", request.state(), "code_challenge", request.challenge(),
+                    "code_challenge_method", "S256", "dpop_jkt", request.jkt());
 
-    /** The action of the login form of Keycloak, whatever order its attributes come in. */
-    static Optional<String> loginFormAction(String html) {
-        Matcher forms = FORM_TAG.matcher(html);
-        while (forms.find()) {
-            String tag = forms.group();
-            if (!tag.contains("id=\"kc-form-login\"")) continue;
-            Matcher action = ACTION.matcher(tag);
-            if (action.find()) return Optional.of(action.group(1).replace("&amp;", "&"));
+            HttpResponse<String> page = send(browser, HttpRequest.newBuilder(uri(authUrl)).timeout(TIMEOUT).GET().build());
+            remember(cookies, page);
+            String action = loginFormAction(page.body())
+                    .orElseThrow(() -> new Failure("no login form (status " + page.statusCode() + "): " + excerpt(page.body(), 500)));
+
+            HttpResponse<String> submitted = send(browser, HttpRequest.newBuilder(uri(action))
+                    .timeout(TIMEOUT)
+                    .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .header("Cookie", cookieHeader(cookies))
+                    .POST(HttpRequest.BodyPublishers.ofString(form("username", user, "password", password, "credentialId", "")))
+                    .build());
+            String location = submitted.headers().firstValue("Location").orElseThrow(() -> new Failure(
+                    "the login did not redirect (status " + submitted.statusCode() + "): " + excerpt(submitted.body(), 300)));
+
+            Map<String, String> returned = queryOf(location);
+            if (returned.containsKey(ERROR)) {
+                throw new Failure("the login was refused: " + returned.get(ERROR) + " " + returned.getOrDefault("error_description", ""));
+            }
+            if (!request.state().equals(returned.get("state"))) throw new Failure("state mismatch");
+            String code = returned.get("code");
+            if (code == null) throw new Failure("the redirect carries no code: " + location);
+            int query = location.indexOf('?');
+            System.out.println("1. signed in as " + user + "; redirected to " + (query < 0 ? location : location.substring(0, query)) + " with a code");
+            return code;
         }
-        return Optional.empty();
+
+        /** The action of the login form of Keycloak, whatever order its attributes come in. */
+        static Optional<String> loginFormAction(String html) {
+            Matcher forms = FORM_TAG.matcher(html);
+            while (forms.find()) {
+                String tag = forms.group();
+                if (!tag.contains("id=\"kc-form-login\"")) continue;
+                Matcher action = ACTION.matcher(tag);
+                if (action.find()) return Optional.of(action.group(1).replace("&amp;", "&"));
+            }
+            return Optional.empty();
+        }
+
+        private static void remember(Map<String, String> cookies, HttpResponse<?> response) {
+            for (String header : response.headers().allValues("Set-Cookie")) {
+                String pair = header.split(";", 2)[0];
+                int equals = pair.indexOf('=');
+                if (equals > 0) cookies.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
+            }
+        }
+
+        private static String cookieHeader(Map<String, String> cookies) {
+            List<String> pairs = new ArrayList<>();
+            cookies.forEach((name, value) -> pairs.add(name + "=" + value));
+            return String.join("; ", pairs);
+        }
     }
 
     /**
@@ -677,20 +726,6 @@ public final class DpopClient {
                     nameAndValue.length > 1 ? URLDecoder.decode(nameAndValue[1], StandardCharsets.UTF_8) : "");
         }
         return parameters;
-    }
-
-    private static void remember(Map<String, String> cookies, HttpResponse<?> response) {
-        for (String header : response.headers().allValues("Set-Cookie")) {
-            String pair = header.split(";", 2)[0];
-            int equals = pair.indexOf('=');
-            if (equals > 0) cookies.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
-        }
-    }
-
-    private static String cookieHeader(Map<String, String> cookies) {
-        List<String> pairs = new ArrayList<>();
-        cookies.forEach((name, value) -> pairs.add(name + "=" + value));
-        return String.join("; ", pairs);
     }
 
     /** The text of an HTML page or any text, on one line and cut short, for an error message. */

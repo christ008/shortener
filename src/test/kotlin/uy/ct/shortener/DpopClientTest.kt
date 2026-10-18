@@ -604,7 +604,7 @@ class DpopClientTest {
 
     @Test
     fun `finds the action of the login form whatever order its attributes come in`() {
-        val client = compiled.load("DpopClient")
+        val client = compiled.load("DpopClient\$KeycloakLogin")
         fun action(html: String) = (client.invoke("loginFormAction", html) as Optional<*>).orElse(null)
 
         assertThat(action("""<form id="kc-form-login" onsubmit="x" action="/a?b=1&amp;c=2" method="post">""")).isEqualTo("/a?b=1&c=2")
