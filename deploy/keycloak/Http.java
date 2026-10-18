@@ -11,6 +11,8 @@ import java.util.List;
 
 /** The transport of the client: the timeouts, the headers it reads and writes, and the helpers of a URL or a form. */
 final class Http {
+    private Http() {}
+
     static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
 
     static final Duration TIMEOUT = Duration.ofSeconds(30);

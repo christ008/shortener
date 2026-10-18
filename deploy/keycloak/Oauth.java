@@ -1,6 +1,8 @@
 
 /** The names of the protocols, as Keycloak speaks them: OAuth 2.0, OpenID Connect and the DPoP extension. */
 final class Oauth {
+    private Oauth() {}
+
     static final String TOKEN_ENDPOINT_PATH = "/protocol/openid-connect/token";
 
     static final String DEFAULT_TOKEN_URL = "http://localhost:8180/realms/shortener" + TOKEN_ENDPOINT_PATH;

@@ -14,6 +14,8 @@ import java.util.UUID;
 
 /** JSON Web Signatures and the DPoP proofs of RFC 9449: signed with ES256, and the base64url text they are made of. */
 final class Jose {
+    private Jose() {}
+
     static final Base64.Encoder B64 = Base64.getUrlEncoder().withoutPadding();
 
     static final Base64.Decoder B64_DECODER = Base64.getUrlDecoder();

@@ -20,6 +20,8 @@ import java.util.Map;
 
 /** The key material of the client: the P-256 keys, their JWKs, their thumbprints, and the key file. */
 final class Keys {
+    private Keys() {}
+
     static final String P256 = "P-256";
 
     /** A new client key as a private JWK and a public one, in that order. */
