@@ -42,7 +42,7 @@ jobs:
         run: ./gradlew test
       - name: Coverage report (a measurement, not a gate)
         if: always()
-        run: ./gradlew koverHtmlReport koverXmlReport -x test
+        run: ./gradlew koverHtmlReport koverXmlReport dpopClientReport -x test
       - name: Keep the coverage report
         if: always()
         uses: actions/upload-artifact@v7

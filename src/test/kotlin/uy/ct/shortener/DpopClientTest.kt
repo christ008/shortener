@@ -30,6 +30,7 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.Optional
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -233,9 +234,21 @@ class DpopClientTest {
         }
     }
 
-    private fun run(vararg args: String, environment: Map<String, String> = emptyMap()): Output {
+    /**
+     * The client as a command. The build gives the compiled class and the JaCoCo agent, so that the runs are measured, and the file
+     * is run the way the scripts run it, when `asFile` says so or the build gives nothing (as in an IDE).
+     */
+    private fun clientCommand(java: String, args: Array<out String>, asFile: Boolean): List<String> {
+        val classes = System.getProperty("dpopClient.classes")
+        if (asFile || classes == null) return listOf(java, "-XX:TieredStopAtLevel=1", "deploy/keycloak/DpopClient.java") + args
+        val agent = System.getProperty("dpopClient.agent")
+        val data = Files.createDirectories(Path.of(System.getProperty("dpopClient.data"))).resolve("${UUID.randomUUID()}.exec")
+        return listOf(java, "-javaagent:$agent=destfile=$data,includes=DpopClient*", "-XX:TieredStopAtLevel=1", "-cp", classes, "DpopClient") + args
+    }
+
+    private fun run(vararg args: String, environment: Map<String, String> = emptyMap(), asFile: Boolean = false): Output {
         val java = Path.of(javaHomeOfTheClient, "bin", "java").toString()
-        val process = ProcessBuilder(listOf(java, "-XX:TieredStopAtLevel=1", "deploy/keycloak/DpopClient.java") + args)
+        val process = ProcessBuilder(clientCommand(java, args, asFile))
             .apply {
                 environment().remove("TRACEPARENT")
                 environment()["TOKEN_URL"] = "$baseUrl/realms/shortener/protocol/openid-connect/token"
@@ -363,6 +376,14 @@ class DpopClientTest {
 
         assertThat(output.exitCode).describedAs(output.stderr).isZero()
         assertThat(received.single().headers["traceparent"]).isEqualTo(traceparent)
+    }
+
+    @Test
+    fun `runs as a single file, the way the scripts run it`() {
+        val output = run(asFile = true)
+
+        assertThat(output.exitCode).isEqualTo(2)
+        assertThat(output.stderr).startsWith("usage: java DpopClient.java")
     }
 
     @Test
