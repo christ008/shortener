@@ -4,12 +4,13 @@
 set -eu
 
 read_secret() { # NAME: sets NAME to the content of the file that NAME_FILE names, when it is set, and forgets NAME_FILE
-  eval "file=\${$1_FILE:-}"
+  local name=$1
+  eval "file=\${${name}_FILE:-}"
   [ -n "$file" ] || return 0
-  [ -r "$file" ] || { echo "entrypoint: $1_FILE names $file, which cannot be read" >&2; exit 1; }
-  eval "$1=\$(cat \"\$file\")"
-  export "${1?}"
-  unset "$1_FILE"
+  [ -r "$file" ] || { echo "entrypoint: ${name}_FILE names $file, which cannot be read" >&2; exit 1; }
+  eval "$name=\$(cat \"\$file\")"
+  export "${name?}"
+  unset "${name}_FILE"
 }
 
 read_secret KC_DB_PASSWORD

@@ -114,4 +114,4 @@ where name in ('max_connections', 'shared_buffers', 'effective_cache_size', 'wor
                'random_page_cost', 'effective_io_concurrency', 'max_wal_size', 'checkpoint_timeout',
                'autovacuum_vacuum_scale_factor', 'autovacuum_max_workers', 'track_io_timing',
                'shared_preload_libraries', 'log_min_duration_statement')
-order by name;
+order by name asc;

@@ -54,19 +54,19 @@ internal object HeapHistogram {
         val buckets = HashMap<String, LongArray>()
         try {
             var headerEnd = 0
-            while (dump.get(headerEnd).toInt() != 0) headerEnd++
+            while (dump[headerEnd].toInt() != 0) headerEnd++
             headerEnd++
             val idSize = dump.getInt(headerEnd)
             if (idSize != 4 && idSize != 8) throw Failure("${arguments[1]} does not look like an HPROF dump: identifiers of $idSize bytes")
 
             var position = headerEnd + 12
             while (position < dump.limit()) {
-                val tag = dump.get(position).toInt() and 0xFF
+                val tag = dump[position].toInt() and 0xFF
                 val length = Integer.toUnsignedLong(dump.getInt(position + 5))
                 val body = position + 9
                 if (tag == 0x01) {
                     val text = ByteArray(length.toInt() - idSize)
-                    dump.get(body + idSize, text)
+                    dump[body + idSize, text]
                     utf8[id(dump, body, idSize)] = String(text, StandardCharsets.UTF_8)
                 } else if (tag == 0x02) {
                     classNames[id(dump, body + 4, idSize)] = id(dump, body + 4 + idSize + 4, idSize)
@@ -111,7 +111,7 @@ internal object HeapHistogram {
     private fun readHeapDump(dump: ByteBuffer, start: Int, end: Int, idSize: Int, tally: Tally, buckets: HashMap<String, LongArray>) {
         var p = start
         while (p < end) {
-            val sub = dump.get(p++).toInt() and 0xFF
+            val sub = dump[p++].toInt() and 0xFF
             when (sub) {
                 0x21 -> {
                     val classId = id(dump, p + idSize + 4, idSize)
@@ -129,7 +129,7 @@ internal object HeapHistogram {
 
                 0x23 -> {
                     val elements = dump.getInt(p + idSize + 4)
-                    val type = dump.get(p + idSize + 8).toInt()
+                    val type = dump[p + idSize + 8].toInt()
                     val bytes = elements.toLong() * TYPE_SIZE.getValue(type)
                     val kind = TYPE_NAME.getValue(type)
                     val bucket = if (elements == 0) 0L else 1L shl maxOf(0, 64 - (bytes - 1).countLeadingZeroBits())
@@ -163,13 +163,13 @@ internal object HeapHistogram {
         val constants = dump.getShort(p).toInt() and 0xFFFF
         p += 2
         repeat(constants) {
-            val type = dump.get(p + 2).toInt()
+            val type = dump[p + 2].toInt()
             p += 3 + if (type == 2) idSize else TYPE_SIZE.getValue(type)
         }
         val statics = dump.getShort(p).toInt() and 0xFFFF
         p += 2
         repeat(statics) {
-            val type = dump.get(p + idSize).toInt()
+            val type = dump[p + idSize].toInt()
             p += idSize + 1 + if (type == 2) idSize else TYPE_SIZE.getValue(type)
         }
         val fields = dump.getShort(p).toInt() and 0xFFFF

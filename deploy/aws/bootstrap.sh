@@ -30,7 +30,7 @@ set -eu
 swap=${SWAP_GB:-2}
 cosign=${COSIGN_VERSION:-3.0.6}
 overlays=${OVERLAYS:-ACME=1 KEYCLOAK=1 POSTGRES_HA=1}
-has_overlay() { case " $overlays " in *" $1=1 "*) return 0 ;; *) return 1 ;; esac; }
+has_overlay() { local name=$1; case " $overlays " in *" $name=1 "*) return 0 ;; *) return 1 ;; esac; }
 
 echo "== packages"
 sudo apt-get update -qq

@@ -90,6 +90,17 @@ public final class DpopClient {
     private static final Base64.Decoder B64_DECODER = Base64.getUrlDecoder();
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    private static final String ES256 = "ES256";
+    private static final String P256 = "P-256";
+    private static final String CONTENT_TYPE = "Content-Type";
+    private static final String CLIENT_ID = "client_id";
+    private static final String WWW_AUTHENTICATE = "WWW-Authenticate";
+    private static final String GRANT_TYPE = "grant_type";
+    private static final String ACCESS_TOKEN = "access_token";
+    private static final String REFRESH_TOKEN = "refresh_token";
+    private static final String ERROR = "error";
+    private static final String DPOP_NONCE = "DPoP-Nonce";
+
     private static final String USAGE = """
             usage: java DpopClient.java keygen CLIENT_ID
                    java DpopClient.java register NAME INVITATION KEY_FILE
@@ -181,9 +192,9 @@ public final class DpopClient {
         ECPublicKey pub = ecPublic(pair);
         Map<String, Object> publicJwk = new LinkedHashMap<>();
         publicJwk.put("kty", "EC");
-        publicJwk.put("crv", "P-256");
+        publicJwk.put("crv", P256);
         publicJwk.put("kid", clientId + "-key-1");
-        publicJwk.put("alg", "ES256");
+        publicJwk.put("alg", ES256);
         publicJwk.put("use", "sig");
         publicJwk.put("x", coordinate(pub.getW().getAffineX()));
         publicJwk.put("y", coordinate(pub.getW().getAffineY()));
@@ -214,12 +225,12 @@ public final class DpopClient {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("client_name", name);
         metadata.put("token_endpoint_auth_method", "private_key_jwt");
-        metadata.put("token_endpoint_auth_signing_alg", "ES256");
+        metadata.put("token_endpoint_auth_signing_alg", ES256);
         metadata.put("grant_types", List.of("client_credentials"));
         metadata.put("jwks", Map.of("keys", List.of(jwks.get(1))));
         String endpoint = issuer + "/clients-registrations/openid-connect";
         HttpResponse<String> response = send(HttpRequest.newBuilder(uri(endpoint)).timeout(TIMEOUT)
-                .header("Authorization", "Bearer " + invitation).header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + invitation).header(CONTENT_TYPE, "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(Json.write(metadata))).build());
         if (response.statusCode() != 201) {
             try {
@@ -229,7 +240,7 @@ public final class DpopClient {
             }
             throw new Failure("the registration was refused (" + response.statusCode() + "): " + excerpt(response.body(), 300));
         }
-        String clientId = Json.parse(response.body()).string("client_id");
+        String clientId = Json.parse(response.body()).string(CLIENT_ID);
         if (clientId == null) throw new Failure("the identity provider registered the client but did not say its id: " + excerpt(response.body(), 300));
         System.out.println("registered: " + clientId);
         System.out.println("private key: " + keyFile + " (keep it: it is the only way to be this client, and it cannot be recovered)");
@@ -254,7 +265,7 @@ public final class DpopClient {
         Token token = fetchToken(keyFile, clientId, dpopKey);
         HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, token.accessToken(), dpopKey, nonce));
         return new Answer(response.statusCode(), response.headers().firstValue("Location").orElse(null),
-                response.headers().allValues("WWW-Authenticate"), response.body());
+                response.headers().allValues(WWW_AUTHENTICATE), response.body());
     }
 
     /**
@@ -275,10 +286,10 @@ public final class DpopClient {
 
         String code = signIn(user, password, clientId, redirect, scope, state, challenge, jkt);
 
-        Json tokens = Json.parse(postToken(form("grant_type", "authorization_code", "client_id", clientId, "code", code,
+        Json tokens = Json.parse(postToken(form(GRANT_TYPE, "authorization_code", CLIENT_ID, clientId, "code", code,
                 "redirect_uri", redirect, "code_verifier", verifier), dpopKey));
-        String accessToken = tokens.string("access_token");
-        String refreshToken = tokens.string("refresh_token");
+        String accessToken = tokens.string(ACCESS_TOKEN);
+        String refreshToken = tokens.string(REFRESH_TOKEN);
         if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + tokens);
         System.out.println("2. token_type " + tokens.string("token_type") + ", refresh token "
                 + (refreshToken == null ? "NOT issued" : "issued"));
@@ -289,9 +300,9 @@ public final class DpopClient {
         String latestAccess = accessToken;
         if (refreshToken != null) {
             Json refreshed = Json.parse(postToken(refreshForm(clientId, refreshToken), dpopKey));
-            latestAccess = refreshed.string("access_token");
+            latestAccess = refreshed.string(ACCESS_TOKEN);
             if (latestAccess == null) throw new Failure("refreshing did not return an access_token: " + refreshed);
-            String rotated = refreshed.string("refresh_token");
+            String rotated = refreshed.string(REFRESH_TOKEN);
             System.out.println("4. refreshed with the same key; new token bound to it: " + jkt.equals(confirmationOf(latestAccess))
                     + ", refresh token rotated: " + (rotated != null && !refreshToken.equals(rotated)));
             System.out.println("   reusing the old refresh token: " + (accepts(refreshForm(clientId, refreshToken), dpopKey)
@@ -303,7 +314,7 @@ public final class DpopClient {
         String accessToUse = latestAccess;
         HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, accessToUse, dpopKey, nonce));
         System.out.println("5. " + method + " " + url + " -> " + response.statusCode());
-        response.headers().allValues("WWW-Authenticate").forEach(header -> System.out.println("   WWW-Authenticate: " + header));
+        response.headers().allValues(WWW_AUTHENTICATE).forEach(header -> System.out.println("   WWW-Authenticate: " + header));
         System.out.println("   " + response.body());
     }
 
@@ -314,9 +325,9 @@ public final class DpopClient {
     /** Authenticates the client with a signed assertion, and asks for a token bound to {@code dpopKey}. */
     private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws Exception {
         PrivateKey clientKey = readPrivateKey(keyFile);
-        Json answer = Json.parse(postToken(() -> form("grant_type", "client_credentials", "client_id", clientId,
+        Json answer = Json.parse(postToken(() -> form(GRANT_TYPE, "client_credentials", CLIENT_ID, clientId,
                 "client_assertion_type", CLIENT_ASSERTION_TYPE, "client_assertion", assertion(clientKey, clientId)), dpopKey));
-        String accessToken = answer.string("access_token");
+        String accessToken = answer.string(ACCESS_TOKEN);
         if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + answer);
         return new Token(accessToken, answer.string("token_type"));
     }
@@ -331,7 +342,7 @@ public final class DpopClient {
         claims.put("jti", UUID.randomUUID().toString());
         claims.put("iat", now);
         claims.put("exp", now + 60);
-        return jwt(clientKey, Map.of("alg", "ES256"), claims);
+        return jwt(clientKey, Map.of("alg", ES256), claims);
     }
 
     private String postToken(String form, KeyPair dpopKey) throws Exception {
@@ -345,7 +356,7 @@ public final class DpopClient {
     private String postToken(Supplier<String> form, KeyPair dpopKey) throws Exception {
         HttpResponse<String> response = sendProved(tokenUrl, nonce -> HttpRequest.newBuilder(uri(tokenUrl))
                 .timeout(TIMEOUT)
-                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .header("DPoP", proof(dpopKey, "POST", tokenUrl, null, nonce))
                 .POST(HttpRequest.BodyPublishers.ofString(form.get()))
                 .build());
@@ -365,7 +376,7 @@ public final class DpopClient {
     }
 
     private static String refreshForm(String clientId, String refreshToken) {
-        return form("grant_type", "refresh_token", "client_id", clientId, "refresh_token", refreshToken);
+        return form(GRANT_TYPE, REFRESH_TOKEN, CLIENT_ID, clientId, REFRESH_TOKEN, refreshToken);
     }
 
     /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
@@ -373,7 +384,7 @@ public final class DpopClient {
                           String challenge, String jkt) throws Exception {
         HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
         Map<String, String> cookies = new LinkedHashMap<>();
-        String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", "client_id", clientId,
+        String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, clientId,
                 "redirect_uri", redirect, "scope", scope, "state", state, "code_challenge", challenge,
                 "code_challenge_method", "S256", "dpop_jkt", jkt);
 
@@ -384,7 +395,7 @@ public final class DpopClient {
 
         HttpResponse<String> submitted = send(browser, HttpRequest.newBuilder(uri(action))
                 .timeout(TIMEOUT)
-                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .header("Cookie", cookieHeader(cookies))
                 .POST(HttpRequest.BodyPublishers.ofString(form("username", user, "password", password, "credentialId", "")))
                 .build());
@@ -392,8 +403,8 @@ public final class DpopClient {
                 "the login did not redirect (status " + submitted.statusCode() + "): " + excerpt(submitted.body(), 300)));
 
         Map<String, String> returned = queryOf(location);
-        if (returned.containsKey("error")) {
-            throw new Failure("the login was refused: " + returned.get("error") + " " + returned.getOrDefault("error_description", ""));
+        if (returned.containsKey(ERROR)) {
+            throw new Failure("the login was refused: " + returned.get(ERROR) + " " + returned.getOrDefault("error_description", ""));
         }
         if (!state.equals(returned.get("state"))) throw new Failure("state mismatch");
         String code = returned.get("code");
@@ -428,7 +439,7 @@ public final class DpopClient {
                 .header("Authorization", "DPoP " + accessToken)
                 .header("DPoP", proof(dpopKey, method, url, accessToken, nonce));
         boolean hasBody = body != null && !body.isEmpty();
-        if (hasBody) request.header("Content-Type", "application/json");
+        if (hasBody) request.header(CONTENT_TYPE, "application/json");
         String traceparent = System.getenv("TRACEPARENT");
         if (traceparent != null && !traceparent.isBlank()) request.header("traceparent", traceparent);
         return request.method(method, hasBody ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody()).build();
@@ -446,10 +457,10 @@ public final class DpopClient {
     private HttpResponse<String> sendProved(String url, Function<String, HttpRequest> build) throws Exception {
         String origin = origin(url);
         HttpResponse<String> response = send(build.apply(nonces.get(origin)));
-        response.headers().firstValue("DPoP-Nonce").ifPresent(nonce -> nonces.put(origin, nonce));
-        if (asksForNonce(response) && response.headers().firstValue("DPoP-Nonce").isPresent()) {
+        response.headers().firstValue(DPOP_NONCE).ifPresent(nonce -> nonces.put(origin, nonce));
+        if (asksForNonce(response) && response.headers().firstValue(DPOP_NONCE).isPresent()) {
             response = send(build.apply(nonces.get(origin)));
-            response.headers().firstValue("DPoP-Nonce").ifPresent(nonce -> nonces.put(origin, nonce));
+            response.headers().firstValue(DPOP_NONCE).ifPresent(nonce -> nonces.put(origin, nonce));
         }
         return response;
     }
@@ -457,11 +468,11 @@ public final class DpopClient {
     /** A resource server asks with a 401 whose challenge has {@code error="use_dpop_nonce"}, an authorization server with a 400 of that error. */
     private static boolean asksForNonce(HttpResponse<String> response) {
         if (response.statusCode() == 401) {
-            return response.headers().allValues("WWW-Authenticate").stream().anyMatch(challenge -> challenge.contains("error=\"use_dpop_nonce\""));
+            return response.headers().allValues(WWW_AUTHENTICATE).stream().anyMatch(challenge -> challenge.contains("error=\"use_dpop_nonce\""));
         }
         if (response.statusCode() == 400) {
             try {
-                return "use_dpop_nonce".equals(Json.parse(response.body()).string("error"));
+                return "use_dpop_nonce".equals(Json.parse(response.body()).string(ERROR));
             } catch (Failure notJson) {
                 return false;
             }
@@ -493,7 +504,7 @@ public final class DpopClient {
     static String proof(KeyPair key, String method, String url, String accessToken, String nonce) {
         URI uri = uri(url);
         Map<String, Object> header = new LinkedHashMap<>();
-        header.put("alg", "ES256");
+        header.put("alg", ES256);
         header.put("typ", "dpop+jwt");
         header.put("jwk", publicJwk(key));
         Map<String, Object> claims = new LinkedHashMap<>();
@@ -534,7 +545,7 @@ public final class DpopClient {
         ECPublicKey pub = ecPublic(key);
         Map<String, Object> jwk = new LinkedHashMap<>();
         jwk.put("kty", "EC");
-        jwk.put("crv", "P-256");
+        jwk.put("crv", P256);
         jwk.put("x", coordinate(pub.getW().getAffineX()));
         jwk.put("y", coordinate(pub.getW().getAffineY()));
         return jwk;
@@ -584,7 +595,7 @@ public final class DpopClient {
             throw new Failure("could not read the key file " + file + ": " + e.getMessage(), e);
         }
         Json jwk = Json.parse(text);
-        if (!"EC".equals(jwk.string("kty")) || !"P-256".equals(jwk.string("crv")) || jwk.string("d") == null) {
+        if (!"EC".equals(jwk.string("kty")) || !P256.equals(jwk.string("crv")) || jwk.string("d") == null) {
             throw new Failure(file + " is not a private P-256 JWK (it needs kty EC, crv P-256 and d)");
         }
         try {
@@ -882,7 +893,7 @@ public final class DpopClient {
                 throw error("an unterminated string");
             }
 
-            private static final Pattern NUMBER = Pattern.compile("-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?");
+            private static final Pattern NUMBER = Pattern.compile("-?(0|[1-9]\\d*)(\\.\\d+)?([eE][+-]?\\d+)?");
 
             private Object readNumber() {
                 Matcher matcher = NUMBER.matcher(text).region(position, text.length());
