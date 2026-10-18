@@ -179,18 +179,12 @@ public final class DpopClient {
     }
 
     private void run(Command command) throws Exception {
-        if (command instanceof Keygen keygen) {
-            keygen(keygen.clientId());
-        } else if (command instanceof Register register) {
-            register(register.name(), register.invitation(), register.keyFile());
-        } else if (command instanceof FetchToken fetch) {
-            System.out.println(fetchToken(fetch.keyFile(), fetch.clientId(), newKey()).accessToken());
-        } else if (command instanceof Call call) {
-            printCall(call.keyFile(), call.clientId(), call.method(), call.url(), call.body());
-        } else if (command instanceof Login login) {
-            login(login.user(), login.password(), login.method(), login.url(), login.body());
-        } else {
-            throw new IllegalStateException("unreachable: " + command);
+        switch (command) {
+            case Keygen(String clientId) -> keygen(clientId);
+            case Register(String name, String invitation, Path keyFile) -> register(name, invitation, keyFile);
+            case FetchToken(Path keyFile, String clientId) -> System.out.println(fetchToken(keyFile, clientId, newKey()).accessToken());
+            case Call(Path keyFile, String clientId, String method, String url, String body) -> printCall(keyFile, clientId, method, url, body);
+            case Login(String user, String password, String method, String url, String body) -> login(user, password, method, url, body);
         }
     }
 
@@ -368,7 +362,7 @@ public final class DpopClient {
     private record Token(String accessToken, String tokenType) {}
 
     /** Authenticates the client with a signed assertion, and asks for a token bound to {@code dpopKey}. */
-    private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws Exception {
+    private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws InterruptedException {
         PrivateKey clientKey = readPrivateKey(keyFile);
         Json answer = Json.parse(postToken(() -> form(GRANT_TYPE, "client_credentials", CLIENT_ID, clientId,
                 "client_assertion_type", CLIENT_ASSERTION_TYPE, "client_assertion", assertion(clientKey, clientId)), dpopKey));
@@ -390,7 +384,7 @@ public final class DpopClient {
         return jwt(clientKey, Map.of("alg", ES256), claims);
     }
 
-    private String postToken(String form, KeyPair dpopKey) throws Exception {
+    private String postToken(String form, KeyPair dpopKey) throws InterruptedException {
         return postToken(() -> form, dpopKey);
     }
 

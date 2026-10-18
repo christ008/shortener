@@ -99,6 +99,7 @@ private const val ACCESS_TOKEN = "access_token"
 private const val REFRESH_TOKEN = "refresh_token"
 private const val ERROR = "error"
 private const val ES256 = "ES256"
+private const val CONTENT_TYPE = "Content-Type"
 private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
 private val TIMEOUT: Duration = Duration.ofSeconds(30)
 private val JSON = JsonMapper.builder().build()
@@ -160,7 +161,7 @@ private class DpopClient {
         val endpoint = "$issuer/clients-registrations/openid-connect"
         val response = calls.send(
             HttpRequest.newBuilder(uri(endpoint)).timeout(TIMEOUT)
-                .header("Authorization", "Bearer $invitation").header("Content-Type", "application/json")
+                .header("Authorization", "Bearer $invitation").header(CONTENT_TYPE, "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(metadata))).build(),
         )
         if (response.statusCode() != 201) {
@@ -235,7 +236,7 @@ private class DpopClient {
     private fun postToken(form: () -> String, key: KeyPair): String {
         val response = calls.sendProved(tokenUrl) { nonce ->
             HttpRequest.newBuilder(uri(tokenUrl)).timeout(TIMEOUT)
-                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .header("DPoP", DpopCalls.proof(key, "POST", tokenUrl, null, nonce))
                 .POST(HttpRequest.BodyPublishers.ofString(form())).build()
         }
@@ -256,7 +257,7 @@ private class DpopClient {
             .header("Authorization", "DPoP $accessToken")
             .header("DPoP", DpopCalls.proof(key, method, url, accessToken, nonce))
         val hasBody = !body.isNullOrEmpty()
-        if (hasBody) request.header("Content-Type", "application/json")
+        if (hasBody) request.header(CONTENT_TYPE, "application/json")
         System.getenv("TRACEPARENT")?.takeIf { it.isNotBlank() }?.let { request.header("traceparent", it) }
         return request.method(method, if (hasBody) HttpRequest.BodyPublishers.ofString(body) else HttpRequest.BodyPublishers.noBody()).build()
     }
@@ -336,7 +337,7 @@ private class BrowserLogin(private val issuer: String) {
 
         val submitted = send(
             HttpRequest.newBuilder(uri(action)).timeout(TIMEOUT)
-                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .header("Cookie", cookies.entries.joinToString("; ") { "${it.key}=${it.value}" })
                 .POST(HttpRequest.BodyPublishers.ofString(form("username" to user, "password" to password, "credentialId" to "")))
                 .build(),
