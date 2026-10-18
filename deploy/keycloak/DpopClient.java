@@ -153,16 +153,24 @@ public final class DpopClient {
     static Optional<Command> parse(String[] args) {
         int count = args.length;
         String word = count == 0 ? "" : args[0];
-        if (word.equals("keygen") && count == 2) return Optional.of(new Keygen(args[1]));
-        if (word.equals("register") && count == 4) return Optional.of(new Register(args[1], args[2], Path.of(args[3])));
-        if (word.equals("token") && count == 3) return Optional.of(new FetchToken(Path.of(args[1]), args[2]));
-        if (word.equals("call") && (count == 5 || count == 6)) {
-            return Optional.of(new Call(Path.of(args[1]), args[2], args[3], args[4], count > 5 ? args[5] : null));
+        switch (word) {
+            case "keygen":
+                return count == 2 ? Optional.of(new Keygen(args[1])) : Optional.empty();
+            case "register":
+                return count == 4 ? Optional.of(new Register(args[1], args[2], Path.of(args[3]))) : Optional.empty();
+            case "token":
+                return count == 3 ? Optional.of(new FetchToken(Path.of(args[1]), args[2])) : Optional.empty();
+            case "call":
+                return count == 5 || count == 6
+                        ? Optional.of(new Call(Path.of(args[1]), args[2], args[3], args[4], count > 5 ? args[5] : null))
+                        : Optional.empty();
+            case "login":
+                return count == 5 || count == 6
+                        ? Optional.of(new Login(args[1], args[2], args[3], args[4], count > 5 ? args[5] : null))
+                        : Optional.empty();
+            default:
+                return Optional.empty();
         }
-        if (word.equals("login") && (count == 5 || count == 6)) {
-            return Optional.of(new Login(args[1], args[2], args[3], args[4], count > 5 ? args[5] : null));
-        }
-        return Optional.empty();
     }
 
     private void run(Command command) throws Exception {
@@ -425,8 +433,20 @@ public final class DpopClient {
             this.issuer = issuer;
         }
 
+        private static Map<String, String> queryOf(String location) {
+            Map<String, String> parameters = new LinkedHashMap<>();
+            String query = uri(location).getRawQuery();
+            if (query == null) return parameters;
+            for (String pair : query.split("&")) {
+                String[] nameAndValue = pair.split("=", 2);
+                parameters.put(URLDecoder.decode(nameAndValue[0], StandardCharsets.UTF_8),
+                        nameAndValue.length > 1 ? URLDecoder.decode(nameAndValue[1], StandardCharsets.UTF_8) : "");
+            }
+            return parameters;
+        }
+
         /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
-        String signIn(String user, String password, AuthorizationRequest request) throws Exception {
+        String signIn(String user, String password, AuthorizationRequest request) throws InterruptedException {
             HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
             Map<String, String> cookies = new LinkedHashMap<>();
             String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, request.clientId(),
@@ -502,7 +522,7 @@ public final class DpopClient {
         return request.method(method, hasBody ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody()).build();
     }
 
-    private HttpResponse<String> send(HttpRequest request) throws Exception {
+    private HttpResponse<String> send(HttpRequest request) throws InterruptedException {
         return send(http, request);
     }
 
@@ -714,18 +734,6 @@ public final class DpopClient {
             encoded.add(URLEncoder.encode(pairs[i], StandardCharsets.UTF_8) + "=" + URLEncoder.encode(pairs[i + 1], StandardCharsets.UTF_8));
         }
         return String.join("&", encoded);
-    }
-
-    private static Map<String, String> queryOf(String location) {
-        Map<String, String> parameters = new LinkedHashMap<>();
-        String query = uri(location).getRawQuery();
-        if (query == null) return parameters;
-        for (String pair : query.split("&")) {
-            String[] nameAndValue = pair.split("=", 2);
-            parameters.put(URLDecoder.decode(nameAndValue[0], StandardCharsets.UTF_8),
-                    nameAndValue.length > 1 ? URLDecoder.decode(nameAndValue[1], StandardCharsets.UTF_8) : "");
-        }
-        return parameters;
     }
 
     /** The text of an HTML page or any text, on one line and cut short, for an error message. */

@@ -19,7 +19,4 @@ fun interface ClickRecorder {
     fun record(click: Click)
 }
 
-object NoClickRecorder : ClickRecorder {
-
-    override fun record(click: Click) = Unit
-}
+val NoClickRecorder: ClickRecorder = ClickRecorder { }
