@@ -162,15 +162,20 @@ public final class DpopClient {
                 return count == 3 ? Optional.of(new FetchToken(Path.of(args[1]), args[2])) : Optional.empty();
             case "call":
                 return count == 5 || count == 6
-                        ? Optional.of(new Call(Path.of(args[1]), args[2], args[3], args[4], count > 5 ? args[5] : null))
+                        ? Optional.of(new Call(Path.of(args[1]), args[2], args[3], args[4], argumentAt(args, 5)))
                         : Optional.empty();
             case "login":
                 return count == 5 || count == 6
-                        ? Optional.of(new Login(args[1], args[2], args[3], args[4], count > 5 ? args[5] : null))
+                        ? Optional.of(new Login(args[1], args[2], args[3], args[4], argumentAt(args, 5)))
                         : Optional.empty();
             default:
                 return Optional.empty();
         }
+    }
+
+    /** The argument at index, or nothing when the line has no such argument: the body of a call is optional. */
+    private static String argumentAt(String[] args, int index) {
+        return args.length > index ? args[index] : null;
     }
 
     private void run(Command command) throws Exception {
@@ -251,7 +256,7 @@ public final class DpopClient {
      * is written before the request, so that a registration that succeeds cannot be left without its key. The identity provider
      * chooses the client id, the scopes and the owner: only the name and the public key are sent.
      */
-    private void register(String name, String invitation, Path keyFile) throws Exception {
+    private void register(String name, String invitation, Path keyFile) throws IOException, InterruptedException {
         if (Files.exists(keyFile)) throw new Failure(keyFile + " exists already: it is not overwritten, name another file");
         List<Map<String, Object>> jwks = newJwks(name);
         try {
@@ -531,7 +536,7 @@ public final class DpopClient {
      * handed none), and keeps the nonce of the answer. When the answer asks for a nonce and gives one, the request is made again
      * once, with a new proof that carries it.
      */
-    private HttpResponse<String> sendProved(String url, Function<String, HttpRequest> build) throws Exception {
+    private HttpResponse<String> sendProved(String url, Function<String, HttpRequest> build) throws InterruptedException {
         String origin = origin(url);
         HttpResponse<String> response = send(build.apply(nonces.get(origin)));
         response.headers().firstValue(DPOP_NONCE).ifPresent(nonce -> nonces.put(origin, nonce));
