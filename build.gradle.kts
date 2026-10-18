@@ -12,7 +12,7 @@ plugins {
     id("org.jetbrains.kotlinx.kover") version "0.9.11"
     id("info.solidsoft.pitest") version "1.19.0"
     id("org.sonarqube") version "7.5.0.8588"
-    id("com.diffplug.spotless") version "8.10.0"
+    id("com.diffplug.spotless") version "8.10.4"
 }
 
 group = "uy.ct"
