@@ -83,14 +83,20 @@ internal object HeapHistogram {
             throw Failure("${arguments[1]} does not look like an HPROF dump: a record of negative length")
         }
 
-        fun name(key: Any): String = if (key is String) key else (classNames[key]?.let { utf8[it] } ?: "?").replace('/', '.')
+        printSummary(context, top, tally, utf8, classNames)
+        printBuckets(context, buckets)
+        printSelected(context, tally, utf8, classNames)
+    }
 
+    private fun printSummary(context: Context, top: Int, tally: Tally, utf8: Map<Long, String>, classNames: Map<Long, Long>) {
         val total = tally.size.values.sum()
         context.out.println(f("%,d objects, ", tally.count.values.sum()) + d(total / 1e6, 0) + " MB shallow")
         context.out.println(f("%7s %10s  class", "MB", "count"))
         tally.size.entries.sortedByDescending { it.value }.take(top)
-            .forEach { context.out.println(f("%7s %,10d  %s", d(it.value / 1e6, 1), tally.count[it.key], name(it.key))) }
+            .forEach { context.out.println(f("%7s %,10d  %s", d(it.value / 1e6, 1), tally.count[it.key], className(it.key, utf8, classNames))) }
+    }
 
+    private fun printBuckets(context: Context, buckets: Map<String, LongArray>) {
         for (array in listOf("byte[]", "char[]")) {
             context.out.println("-- $array by size class (upper bound of bytes): count, total MB")
             buckets.entries.filter { it.key.startsWith("$array/") }.sortedByDescending { it.value[1] }.take(6)
@@ -98,14 +104,21 @@ internal object HeapHistogram {
                     context.out.println(f("   <= %,8d B: %,8d  %7s MB", it.key.substring(array.length + 1).toLong(), it.value[0], d(it.value[1] / 1e6, 1)))
                 }
         }
+
+    }
+
+    private fun printSelected(context: Context, tally: Tally, utf8: Map<Long, String>, classNames: Map<Long, Long>) {
         context.out.println("-- selected classes: count, shallow MB")
         val byName = HashMap<String, Pair<Long, Long>>()
-        tally.size.forEach { (key, bytes) -> if (key !is String) byName[name(key)] = tally.count.getValue(key) to bytes }
+        tally.size.forEach { (key, bytes) -> if (key !is String) byName[className(key, utf8, classNames)] = tally.count.getValue(key) to bytes }
         for (wanted in PER_REQUEST) {
             val (count, bytes) = byName[wanted] ?: continue
             context.out.println(f("   %,8d %7s  %s", count, d(bytes / 1e6, 1), wanted))
         }
     }
+
+    private fun className(key: Any, utf8: Map<Long, String>, classNames: Map<Long, Long>): String =
+        if (key is String) key else (classNames[key]?.let { utf8[it] } ?: "?").replace('/', '.')
 
     /** The sub-records of one heap dump record, counting the objects and arrays in it and skipping the rest. */
     private fun readHeapDump(dump: ByteBuffer, start: Int, end: Int, idSize: Int, tally: Tally, buckets: HashMap<String, LongArray>) {

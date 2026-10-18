@@ -750,26 +750,34 @@ public final class DpopClient {
             } else if (value instanceof Number || value instanceof Boolean) {
                 out.append(value);
             } else if (value instanceof Map<?, ?> map) {
-                out.append('{');
-                boolean first = true;
-                for (Map.Entry<?, ?> entry : map.entrySet()) {
-                    if (!first) out.append(',');
-                    first = false;
-                    writeString(out, String.valueOf(entry.getKey()));
-                    out.append(':');
-                    write(out, entry.getValue());
-                }
-                out.append('}');
+                writeMembers(out, map);
             } else if (value instanceof List<?> list) {
-                out.append('[');
-                for (int i = 0; i < list.size(); i++) {
-                    if (i > 0) out.append(',');
-                    write(out, list.get(i));
-                }
-                out.append(']');
+                writeItems(out, list);
             } else {
                 throw new IllegalArgumentException("cannot write " + value.getClass());
             }
+        }
+
+        private static void writeMembers(StringBuilder out, Map<?, ?> map) {
+            out.append('{');
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) out.append(',');
+                first = false;
+                writeString(out, String.valueOf(entry.getKey()));
+                out.append(':');
+                write(out, entry.getValue());
+            }
+            out.append('}');
+        }
+
+        private static void writeItems(StringBuilder out, List<?> list) {
+            out.append('[');
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) out.append(',');
+                write(out, list.get(i));
+            }
+            out.append(']');
         }
 
         private static void writeString(StringBuilder out, String text) {
@@ -873,32 +881,35 @@ public final class DpopClient {
                     char c = text.charAt(position++);
                     if (c == '"') return out.toString();
                     if (c < 0x20) throw error("a control character in a string");
-                    if (c != '\\') {
+                    if (c == '\\') {
+                        if (position >= text.length()) throw error("an unterminated string");
+                        appendEscape(out, text.charAt(position++));
+                    } else {
                         out.append(c);
-                        continue;
-                    }
-                    if (position >= text.length()) break;
-                    char escaped = text.charAt(position++);
-                    switch (escaped) {
-                        case '"', '\\', '/' -> out.append(escaped);
-                        case 'b' -> out.append('\b');
-                        case 'f' -> out.append('\f');
-                        case 'n' -> out.append('\n');
-                        case 'r' -> out.append('\r');
-                        case 't' -> out.append('\t');
-                        case 'u' -> {
-                            if (position + 4 > text.length()) throw error("a short \\u escape");
-                            try {
-                                out.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
-                            } catch (NumberFormatException e) {
-                                throw error("a bad \\u escape");
-                            }
-                            position += 4;
-                        }
-                        default -> throw error("a bad escape \\" + escaped);
                     }
                 }
                 throw error("an unterminated string");
+            }
+
+            private void appendEscape(StringBuilder out, char escaped) {
+                switch (escaped) {
+                    case '"', '\\', '/' -> out.append(escaped);
+                    case 'b' -> out.append('\b');
+                    case 'f' -> out.append('\f');
+                    case 'n' -> out.append('\n');
+                    case 'r' -> out.append('\r');
+                    case 't' -> out.append('\t');
+                    case 'u' -> {
+                        if (position + 4 > text.length()) throw error("a short \\u escape");
+                        try {
+                            out.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
+                        } catch (NumberFormatException e) {
+                            throw error("a bad \\u escape");
+                        }
+                        position += 4;
+                    }
+                    default -> throw error("a bad escape \\" + escaped);
+                }
             }
 
             private static final Pattern NUMBER = Pattern.compile("-?(0|[1-9]\\d*)(\\.\\d+)?([eE][+-]?\\d+)?");

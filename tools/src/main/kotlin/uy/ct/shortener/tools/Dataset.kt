@@ -133,7 +133,7 @@ object Dataset : Tool("Dataset", "usage: tools/run Dataset COUNT [--seed N] [--t
             when (val argument = remaining.next()) {
                 "--seed" -> seed = whole(argument, valueOf(argument))
 
-                "--threads" -> threads = whole(argument, valueOf(argument)).also { if (it !in 1..1024) throw Usage("--threads must be 1 to 1024") }.toInt()
+                "--threads" -> threads = threadCount(argument, valueOf(argument))
 
                 "--out" -> out = valueOf(argument)
 
@@ -147,8 +147,18 @@ object Dataset : Tool("Dataset", "usage: tools/run Dataset COUNT [--seed N] [--t
             }
         }
         if (count == null) throw Usage("COUNT is missing")
-        if (verify && count > MAX_VERIFIED) throw Usage("--verify holds every value in memory: at most ${number(MAX_VERIFIED)} codes, was ${number(count)}")
+        checkVerifiable(count, verify)
         return Request(count, seed, threads, out, verify)
+    }
+
+    private fun threadCount(option: String, text: String): Int {
+        val threads = text.toLongOrNull() ?: throw Usage("$option needs a whole number, was '$text'")
+        if (threads !in 1..1024) throw Usage("--threads must be 1 to 1024")
+        return threads.toInt()
+    }
+
+    private fun checkVerifiable(count: Long, verify: Boolean) {
+        if (verify && count > MAX_VERIFIED) throw Usage("--verify holds every value in memory: at most ${number(MAX_VERIFIED)} codes, was ${number(count)}")
     }
 
     private fun parseCount(text: String): Long {
