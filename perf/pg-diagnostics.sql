@@ -8,12 +8,13 @@
 \pset null '-'
 \pset footer off
 \x auto
+\set max_connections_setting 'max_connections'
 
 \echo
 \echo '== Connections against the limit (an instance holds up to 10; instances x 10 must stay well below max_connections)'
 select count(*)                                                                         as used,
-       current_setting('max_connections')::int                                          as max_connections,
-       round(100.0 * count(*) / current_setting('max_connections')::int, 1)             as pct_used
+       current_setting(:'max_connections_setting')::int                                          as max_connections,
+       round(100.0 * count(*) / current_setting(:'max_connections_setting')::int, 1)             as pct_used
 from pg_stat_activity;
 
 \echo
@@ -110,7 +111,7 @@ order by xid_age desc;
 \echo '== Settings that matter most here'
 select name, setting, unit, source
 from pg_settings
-where name in ('max_connections', 'shared_buffers', 'effective_cache_size', 'work_mem', 'maintenance_work_mem',
+where name in (:'max_connections_setting', 'shared_buffers', 'effective_cache_size', 'work_mem', 'maintenance_work_mem',
                'random_page_cost', 'effective_io_concurrency', 'max_wal_size', 'checkpoint_timeout',
                'autovacuum_vacuum_scale_factor', 'autovacuum_max_workers', 'track_io_timing',
                'shared_preload_libraries', 'log_min_duration_statement')

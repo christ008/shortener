@@ -493,7 +493,7 @@ public final class DpopClient {
         return uri.getScheme() + "://" + uri.getRawAuthority();
     }
 
-    private static HttpResponse<String> send(HttpClient client, HttpRequest request) throws Exception {
+    private static HttpResponse<String> send(HttpClient client, HttpRequest request) throws InterruptedException {
         try {
             return client.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException unreachable) {
