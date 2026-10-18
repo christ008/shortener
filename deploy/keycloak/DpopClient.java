@@ -290,7 +290,7 @@ public final class DpopClient {
         System.out.println("try it:  java DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
     }
 
-    private void printCall(Path keyFile, String clientId, String method, String url, String body) throws Exception {
+    private void printCall(Path keyFile, String clientId, String method, String url, String body) throws InterruptedException {
         Answer answer = answer(keyFile, clientId, method, url, body);
         System.out.println(answer.status());
         if (answer.location() != null) System.out.println("Location: " + answer.location());
@@ -316,7 +316,7 @@ public final class DpopClient {
      * can be read: the code is bound to the key, the token is bound to it, a refresh keeps it, and the old refresh token
      * is (or is not) refused.
      */
-    private void login(String user, String password, String method, String url, String body) throws Exception {
+    private void login(String user, String password, String method, String url, String body) throws InterruptedException {
         String clientId = env("CLIENT_ID", "shortener-ui");
         String redirect = env("REDIRECT_URI", "http://localhost:3000/app/auth/callback");
         String scope = env("SCOPE", "shortlinks:create shortlinks:claim shortlinks:read shortlinks:delete");
