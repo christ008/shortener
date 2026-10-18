@@ -203,6 +203,15 @@ public final class DpopClient {
         return List.of(privateJwk, publicJwk);
     }
 
+    /** Leaves the key file readable by its owner alone; a file system without POSIX permissions has nothing to restrict. */
+    private static void restrictToOwner(Path keyFile) throws IOException {
+        try {
+            Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
+        } catch (UnsupportedOperationException ignored) {
+            // not a POSIX file system: nothing more can be done here
+        }
+    }
+
     /**
      * Registers a client with the invitation an administrator made (an initial access token of the realm: one use, with a
      * deadline). The key is made here and its private half never leaves the file, which is made readable by its owner alone and
@@ -214,11 +223,7 @@ public final class DpopClient {
         List<Map<String, Object>> jwks = newJwks(name);
         try {
             Files.writeString(keyFile, Json.write(jwks.get(0)) + "\n", StandardOpenOption.CREATE_NEW);
-            try {
-                Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
-            } catch (UnsupportedOperationException ignored) {
-                // not a POSIX file system: nothing more can be done here
-            }
+            restrictToOwner(keyFile);
         } catch (IOException e) {
             throw new Failure("could not write the key file " + keyFile + ": " + e.getMessage(), e);
         }
@@ -284,7 +289,7 @@ public final class DpopClient {
         String challenge = B64.encodeToString(sha256(verifier));
         String state = UUID.randomUUID().toString();
 
-        String code = signIn(user, password, clientId, redirect, scope, state, challenge, jkt);
+        String code = signIn(user, password, new AuthorizationRequest(clientId, redirect, scope, state, challenge, jkt));
 
         Json tokens = Json.parse(postToken(form(GRANT_TYPE, "authorization_code", CLIENT_ID, clientId, "code", code,
                 "redirect_uri", redirect, "code_verifier", verifier), dpopKey));
@@ -307,7 +312,8 @@ public final class DpopClient {
                     + ", refresh token rotated: " + (rotated != null && !refreshToken.equals(rotated)));
             System.out.println("   reusing the old refresh token: " + (accepts(refreshForm(clientId, refreshToken), dpopKey)
                     ? "ACCEPTED (rotation is not enforced)" : "refused, as rotation requires"));
-            System.out.println("   refreshing with a different key: " + (accepts(refreshForm(clientId, rotated != null ? rotated : refreshToken), newKey())
+            String refreshWith = rotated != null ? rotated : refreshToken;
+            System.out.println("   refreshing with a different key: " + (accepts(refreshForm(clientId, refreshWith), newKey())
                     ? "ACCEPTED (the refresh token is not bound to the key)" : "refused"));
         }
 
@@ -379,14 +385,16 @@ public final class DpopClient {
         return form(GRANT_TYPE, REFRESH_TOKEN, CLIENT_ID, clientId, REFRESH_TOKEN, refreshToken);
     }
 
+    /** The parameters of the authorization request, which the login page is asked for. */
+    private record AuthorizationRequest(String clientId, String redirect, String scope, String state, String challenge, String jkt) {}
+
     /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
-    private String signIn(String user, String password, String clientId, String redirect, String scope, String state,
-                          String challenge, String jkt) throws Exception {
+    private String signIn(String user, String password, AuthorizationRequest request) throws Exception {
         HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
         Map<String, String> cookies = new LinkedHashMap<>();
-        String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, clientId,
-                "redirect_uri", redirect, "scope", scope, "state", state, "code_challenge", challenge,
-                "code_challenge_method", "S256", "dpop_jkt", jkt);
+        String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, request.clientId(),
+                "redirect_uri", request.redirect(), "scope", request.scope(), "state", request.state(), "code_challenge", request.challenge(),
+                "code_challenge_method", "S256", "dpop_jkt", request.jkt());
 
         HttpResponse<String> page = send(browser, HttpRequest.newBuilder(uri(authUrl)).timeout(TIMEOUT).GET().build());
         remember(cookies, page);
@@ -406,7 +414,7 @@ public final class DpopClient {
         if (returned.containsKey(ERROR)) {
             throw new Failure("the login was refused: " + returned.get(ERROR) + " " + returned.getOrDefault("error_description", ""));
         }
-        if (!state.equals(returned.get("state"))) throw new Failure("state mismatch");
+        if (!request.state().equals(returned.get("state"))) throw new Failure("state mismatch");
         String code = returned.get("code");
         if (code == null) throw new Failure("the redirect carries no code: " + location);
         int query = location.indexOf('?');

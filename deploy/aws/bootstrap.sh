@@ -49,8 +49,8 @@ sudo usermod -aG docker "$USER"
 if ! command -v cosign >/dev/null; then
   tmp=$(mktemp -d)
   base=https://github.com/sigstore/cosign/releases/download/v$cosign
-  curl -fsSL "$base/cosign-linux-arm64" -o "$tmp/cosign-linux-arm64"
-  curl -fsSL "$base/cosign_checksums.txt" -o "$tmp/checksums"
+  curl -fsSL --proto '=https' --tlsv1.2 "$base/cosign-linux-arm64" -o "$tmp/cosign-linux-arm64"
+  curl -fsSL --proto '=https' --tlsv1.2 "$base/cosign_checksums.txt" -o "$tmp/checksums"
   (cd "$tmp" && grep ' cosign-linux-arm64$' checksums | sha256sum -c -)
   sudo install -m 0755 "$tmp/cosign-linux-arm64" /usr/local/bin/cosign
   rm -rf "$tmp"

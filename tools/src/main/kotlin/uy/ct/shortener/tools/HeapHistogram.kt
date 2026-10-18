@@ -64,14 +64,14 @@ internal object HeapHistogram {
                 val tag = dump[position].toInt() and 0xFF
                 val length = Integer.toUnsignedLong(dump.getInt(position + 5))
                 val body = position + 9
-                if (tag == 0x01) {
-                    val text = ByteArray(length.toInt() - idSize)
-                    dump[body + idSize, text]
-                    utf8[id(dump, body, idSize)] = String(text, StandardCharsets.UTF_8)
-                } else if (tag == 0x02) {
-                    classNames[id(dump, body + 4, idSize)] = id(dump, body + 4 + idSize + 4, idSize)
-                } else if (tag == 0x0C || tag == 0x1C) {
-                    readHeapDump(dump, body, (body + length).toInt(), idSize, tally, buckets)
+                when (tag) {
+                    0x01 -> {
+                        val text = ByteArray(length.toInt() - idSize)
+                        dump[body + idSize, text]
+                        utf8[id(dump, body, idSize)] = String(text, StandardCharsets.UTF_8)
+                    }
+                    0x02 -> classNames[id(dump, body + 4, idSize)] = id(dump, body + 4 + idSize + 4, idSize)
+                    0x0C, 0x1C -> readHeapDump(dump, body, (body + length).toInt(), idSize, tally, buckets)
                 }
                 position = (body + length).toInt()
             }
