@@ -32,13 +32,14 @@ stack=${2:-shortener}
 if [ -f .env ]; then
   # shellcheck disable=SC2034  # `value` is read by the eval below
   while IFS='=' read -r key value; do
-    case "$key" in ''|'#'*) continue ;; esac
+    case "$key" in ''|'#'*) continue ;; *) ;; esac
     case "$key" in
       [A-Za-z_]*) ;;
       *) echo ".env: '$key' is not a variable name" >&2; exit 1 ;;
     esac
     case "$key" in
       *[!A-Za-z0-9_]*) echo ".env: '$key' is not a variable name" >&2; exit 1 ;;
+      *) ;;
     esac
     value=${value#\'}
     value=${value%\'}
@@ -103,7 +104,7 @@ export NGINX_CONF_HASH EDGE_UPSTREAM_CONF_HASH PROMETHEUS_CONF_HASH POSTGRES_CON
 if [ -n "${PKI_CA:-}${PKI:-}" ]; then
   pki_env=$(deploy/stack/pki.sh env)
   while IFS='=' read -r key value; do
-    case "$key" in PKI_[A-Z0-9_]*) export "$key=$value" ;; esac
+    case "$key" in PKI_[A-Z0-9_]*) export "$key=$value" ;; *) ;; esac
   done <<EOF
 $pki_env
 EOF
@@ -122,7 +123,7 @@ deploy() { # [FILES AS -c ARGUMENTS]: all of them, unless it is told which
   docker stack deploy ${1:-$args} --with-registry-auth --resolve-image "${RESOLVE_IMAGE:-always}" --detach=true "$stack"
 }
 
-tag_of() { docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$1" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
+tag_of() { tag_service=$1; docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${stack}_$tag_service" 2>/dev/null | sed 's/@.*//; s/.*://' || true; }
 current=$(tag_of shortener)
 
 database_has_certificate() { # a task of the database is running with the certificate's secret, on any node: the swarm's own API, not the containers of this node

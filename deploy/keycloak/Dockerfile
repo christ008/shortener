@@ -12,5 +12,6 @@ COPY --from=builder /opt/keycloak/ /opt/keycloak/
 # Keycloak (uid 1000) can make the cache of its gzipped static files (without it, every request that accepts gzip is a 404).
 RUN mkdir -m 1777 /opt/keycloak/data/tmp
 COPY --chmod=0555 entrypoint.sh /opt/keycloak/bin/shortener-entrypoint.sh
+USER 1000
 ENTRYPOINT ["/opt/keycloak/bin/shortener-entrypoint.sh"]
 CMD ["start", "--optimized"]

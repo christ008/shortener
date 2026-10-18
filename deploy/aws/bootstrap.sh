@@ -30,7 +30,7 @@ set -eu
 swap=${SWAP_GB:-2}
 cosign=${COSIGN_VERSION:-3.0.6}
 overlays=${OVERLAYS:-ACME=1 KEYCLOAK=1 POSTGRES_HA=1}
-has_overlay() { case " $overlays " in *" $1=1 "*) return 0 ;; *) return 1 ;; esac; }
+has_overlay() { overlay_name=$1; case " $overlays " in *" $overlay_name=1 "*) return 0 ;; *) return 1 ;; esac; }
 
 echo "== packages"
 sudo apt-get update -qq
@@ -49,8 +49,8 @@ sudo usermod -aG docker "$USER"
 if ! command -v cosign >/dev/null; then
   tmp=$(mktemp -d)
   base=https://github.com/sigstore/cosign/releases/download/v$cosign
-  curl -fsSL "$base/cosign-linux-arm64" -o "$tmp/cosign-linux-arm64"
-  curl -fsSL "$base/cosign_checksums.txt" -o "$tmp/checksums"
+  curl -fsSL --proto '=https' --tlsv1.2 "$base/cosign-linux-arm64" -o "$tmp/cosign-linux-arm64"
+  curl -fsSL --proto '=https' --tlsv1.2 "$base/cosign_checksums.txt" -o "$tmp/checksums"
   (cd "$tmp" && grep ' cosign-linux-arm64$' checksums | sha256sum -c -)
   sudo install -m 0755 "$tmp/cosign-linux-arm64" /usr/local/bin/cosign
   rm -rf "$tmp"

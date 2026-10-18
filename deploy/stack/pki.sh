@@ -49,11 +49,14 @@ random_secret() { head -c 33 /dev/urandom | base64; }
 quietly() { quiet_output=$("$@" 2>&1) || { echo "$quiet_output" >&2; return 1; }; }
 
 key_pair() { # FILE: a P-256 key, PKCS#8, not encrypted
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$1"
+  key_out=$1
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$key_out"
 }
 
 encrypted_key() { # FILE PASSWORD_FILE: a P-256 key, PKCS#8, encrypted with the password
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 -iter 600000 -passout "file:$2" -out "$1"
+  key_out=$1
+  key_password_file=$2
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -v2 aes-256-cbc -v2prf hmacWithSHA256 -iter 600000 -passout "file:$key_password_file" -out "$key_out"
 }
 
 ca_request() {
@@ -67,32 +70,33 @@ ca_container() {
   echo "$id"
 }
 
-epoch() { date -d "$(openssl x509 -in "$1" -noout "-$2" | cut -d= -f2)" +%s; }
+epoch() { epoch_file=$1; epoch_field=$2; date -d "$(openssl x509 -in "$epoch_file" -noout "-$epoch_field" | cut -d= -f2)" +%s; }
 
-end_date() { openssl x509 -in "$1" -noout -enddate | cut -d= -f2; }
+end_date() { end_file=$1; openssl x509 -in "$end_file" -noout -enddate | cut -d= -f2; }
 
-days_left() { echo $(( ( $(epoch "$1" enddate) - $(date +%s) ) / 86400 )); }
+days_left() { days_file=$1; echo $(( ( $(epoch "$days_file" enddate) - $(date +%s) ) / 86400 )); }
 
 # The moment two thirds of a certificate's life are over, in epoch seconds: when it is due for renewal.
-renew_at() { echo $(( $(epoch "$1" startdate) + ( $(epoch "$1" enddate) - $(epoch "$1" startdate) ) * 2 / 3 )); }
+renew_at() { renew_file=$1; echo $(( $(epoch "$renew_file" startdate) + ( $(epoch "$renew_file" enddate) - $(epoch "$renew_file" startdate) ) * 2 / 3 )); }
 
-hash12() { sha256sum "$1" | cut -c1-12; }
+hash12() { hash_file=$1; sha256sum "$hash_file" | cut -c1-12; }
 
 # CERT then the arguments of `openssl pkey` that read its key: whether the key is the certificate's.
 key_matches() {
-  cert=$1
+  candidate=$1
   shift
-  [ "$(openssl x509 -in "$cert" -noout -pubkey)" = "$(openssl pkey "$@" -pubout)" ]
+  [ "$(openssl x509 -in "$candidate" -noout -pubkey)" = "$(openssl pkey "$@" -pubout)" ]
 }
 
 # name of the identity, what it may be used for, who signs it, how long it lives, and its names
 role_settings() {
-  case "$1" in
+  settings_role=$1
+  case "$settings_role" in
     edge)      cn=edge;               eku=client; provisioner=pki;    lifetime=720h;  dns="" ;;
     shortener) cn=shortener-app;      eku=both;   provisioner=pki;    lifetime=720h;  dns="DNS:shortener," ;;
     migrator)  cn=shortener-migrator; eku=client; provisioner=pki;    lifetime=720h;  dns="" ;;
     postgres)  cn=postgres;           eku=server; provisioner=pki-db; lifetime=8760h; dns="DNS:postgres," ;;
-    *) echo "unknown role '$1': one of $roles" >&2; exit 1 ;;
+    *) echo "unknown role '$settings_role': one of $roles" >&2; exit 1 ;;
   esac
 }
 
@@ -116,6 +120,7 @@ issue_role() {
     || { echo "the CA returned a certificate for another key" >&2; exit 1; }
   case "$role" in
     shortener|migrator) openssl pkcs8 -topk8 -nocrypt -in "$key.new" -outform DER -out "${key}_der.new"; mv -f "${key}_der.new" "${key}_der" ;;
+    *) ;;
   esac
   mv -f "$key.new" "$key"
   mv -f "$cert.new" "$cert"
@@ -245,7 +250,7 @@ EOF
     for file in "$secrets"/pki_*; do
       [ -f "$file" ] || continue
       name=$(basename "$file")
-      case "$name" in *[!a-z_]*) continue ;; esac
+      case "$name" in *[!a-z_]*) continue ;; *) ;; esac
       label=$(echo "${name#pki_}" | tr '[:lower:]' '[:upper:]')
       echo "PKI_${label}_HASH=$(hash12 "$file")"
       case "$name" in
@@ -255,6 +260,7 @@ EOF
           echo "PKI_${label}_NOT_AFTER=$(date -u -d "@$(epoch "$file" enddate)" +%Y-%m-%dT%H:%M:%SZ)"
           echo "PKI_${label}_RENEW_AFTER=$(date -u -d "@$(renew_at "$file")" +%Y-%m-%dT%H:%M:%SZ)"
           ;;
+        *) ;;
       esac
     done
     echo "PKI_LEAF_TEMPLATE_HASH=$(hash12 "$repo/deploy/pki/leaf.tpl")"

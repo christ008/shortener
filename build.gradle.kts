@@ -1,3 +1,6 @@
+import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.springframework.boot.gradle.tasks.aot.ProcessAot
 
 plugins {
@@ -198,6 +201,75 @@ kover {
  *   Sonar refuses a file indexed as both. The build output, the caches, the IDE folders and the raw results of the perf runs are left out.
  * - Needs Automatic Analysis switched off on the project, because the two cannot both feed it.
  */
+// The DPoP client, which DpopClientTest runs in its own JVM. The tests run the classes compiled here for 17, under the JaCoCo agent,
+// and each run writes its data; dpopClientReport turns the data into an XML report that SonarCloud reads beside the Kover one.
+apply(plugin = "jacoco")
+
+configure<JacocoPluginExtension> {
+    toolVersion = "0.8.14"
+}
+
+// Kover measures the application in the test JVM, so the JaCoCo agent stays out of the test tasks: it is for the client's JVMs only.
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> { isEnabled = false }
+}
+
+val dpopClientClasses = layout.buildDirectory.dir("dpop-client/classes")
+val dpopClientData = layout.buildDirectory.dir("dpop-client/data")
+val dpopClientXml = layout.buildDirectory.file("reports/jacoco/dpopClient.xml")
+
+// The runtime agent, which carries its own dependencies; the plain jar of the agent does not start a JVM.
+val dpopClientAgent by configurations.creating
+dependencies {
+    dpopClientAgent("org.jacoco:org.jacoco.agent:0.8.14:runtime")
+}
+
+val compileDpopClient = tasks.register<JavaCompile>("compileDpopClient") {
+    group = "verification"
+    description = "Compiles deploy/keycloak/DpopClient.java for Java 25, for the tests that measure the client."
+    source(file("deploy/keycloak/DpopClient.java"))
+    classpath = files()
+    destinationDirectory.set(dpopClientClasses)
+    options.release.set(25)
+    options.compilerArgs.addAll(listOf("-proc:none", "-Xlint:all", "-Werror"))
+}
+
+tasks.test {
+    dependsOn(compileDpopClient, dpopClientAgent)
+    doFirst {
+        delete(dpopClientData)
+        systemProperty("dpopClient.classes", dpopClientClasses.get().asFile.path)
+        systemProperty("dpopClient.agent", dpopClientAgent.singleFile.path)
+        systemProperty("dpopClient.data", dpopClientData.get().asFile.path)
+    }
+}
+
+// The same suite against the Kotlin reference, the executable JAR of tools/: the two implementations answer the same.
+tasks.register<Test>("dpopJarParity") {
+    group = "verification"
+    description = "Runs DpopClientTest against the Kotlin DPoP client's executable JAR (tools/build/libs/dpop.jar)."
+    dependsOn(gradle.includedBuild("tools").task(":dpopJar"))
+    filter { includeTestsMatching("uy.ct.shortener.DpopClientTest") }
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    systemProperty("dpopClient.jar", gradle.includedBuild("tools").projectDir.resolve("build/libs/dpop.jar").path)
+    useJUnitPlatform()
+}
+
+val dpopClientReport = tasks.register<JacocoReport>("dpopClientReport") {
+    group = "verification"
+    description = "Writes the JaCoCo report of the DPoP client, which SonarCloud reads beside the Kover one."
+    executionData.setFrom(dpopClientData.map { data -> data.asFileTree.matching { include("*.exec") } })
+    classDirectories.setFrom(dpopClientClasses)
+    sourceDirectories.setFrom(files("deploy/keycloak"))
+    reports {
+        xml.required.set(true)
+        xml.outputLocation.set(dpopClientXml)
+        html.required.set(false)
+        csv.required.set(false)
+    }
+}
+
 sonar {
     properties {
         property("sonar.host.url", "https://sonarcloud.io")
@@ -213,7 +285,10 @@ sonar {
             ).joinToString(","),
         )
         property("sonar.coverage.exclusions", "tools/src/main/**")
-        property("sonar.coverage.jacoco.xmlReportPaths", layout.buildDirectory.file("reports/kover/report.xml").get().asFile.path)
+        property(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            listOf(layout.buildDirectory.file("reports/kover/report.xml").get().asFile.path, dpopClientXml.get().asFile.path).joinToString(","),
+        )
     }
 }
 

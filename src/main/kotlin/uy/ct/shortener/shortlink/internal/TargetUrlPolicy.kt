@@ -15,9 +15,7 @@ fun interface TargetUrlPolicy {
     fun require(target: URI): URI
 }
 
-object AnyTarget : TargetUrlPolicy {
-    override fun require(target: URI): URI = target
-}
+val AnyTarget: TargetUrlPolicy = TargetUrlPolicy { target -> target }
 
 /**
  * Accepts a target whose host is one of [hosts]. An entry is a host name, matched exactly, or `*.` followed by a

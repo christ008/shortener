@@ -33,6 +33,7 @@ k6() { # RATE DURATION CREATE_SHARE [k6 options...]: a run of perf/k6/mixed.js, 
   shift 3
   docker run --rm --network host --cpuset-cpus "${K6_CPUSET:-4,5,10,11}" -v "$ROOT/perf/k6:/scripts:ro" -v "$ROOT/deploy/keycloak/dev-keys:/keys:ro" -v "$OUT:/out" \
     -e RATE="$rate" -e DURATION="$duration" -e CREATE_SHARE="$share" -e SEEDS=300 -e MAX_VUS="$MAXVUS" grafana/k6 run --quiet "$@" /scripts/mixed.js </dev/null 2>&1
+  return
 }
 k6 2000 20s 0.005 >"$OUT/warmup.txt"
 k6 "$RATE" "$DUR" "$SHARE" --summary-export /out/k6.json >"$OUT/k6.txt"

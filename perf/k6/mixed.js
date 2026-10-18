@@ -9,10 +9,10 @@ const ISSUER = __ENV.ISSUER || 'http://localhost:8180/realms/shortener';
 const TOKEN_URL = __ENV.TOKEN_URL || `${ISSUER}/protocol/openid-connect/token`;
 const CLIENT_ID = __ENV.CLIENT_ID || 'demo-client';
 const CLIENT_KEY = JSON.parse(open(__ENV.CLIENT_KEY_FILE || '/keys/demo-client.jwk.json'));
-const SEEDS = parseInt(__ENV.SEEDS || '500');
-const CREATE_SHARE = parseFloat(__ENV.CREATE_SHARE || '0.01');
-const DATASET_HOT = parseInt(__ENV.DATASET_HOT || '0');
-const DATASET_HOT_SHARE = parseFloat(__ENV.DATASET_HOT_SHARE || '0.8');
+const SEEDS = Number.parseInt(__ENV.SEEDS || '500');
+const CREATE_SHARE = Number.parseFloat(__ENV.CREATE_SHARE || '0.01');
+const DATASET_HOT = Number.parseInt(__ENV.DATASET_HOT || '0');
+const DATASET_HOT_SHARE = Number.parseFloat(__ENV.DATASET_HOT_SHARE || '0.8');
 
 // The file `tools/run Dataset --out` writes: a code and a newline, 8 bytes each, so the code at index i is the one at byte 8 * i. It is read
 // by position, a code per request, and not loaded: 10M codes are 80 MB, and each VU would have its own copy.
@@ -37,11 +37,11 @@ export const options = {
   scenarios: {
     mixed: {
       executor: 'constant-arrival-rate',
-      rate: parseInt(__ENV.RATE || '500'),
+      rate: Number.parseInt(__ENV.RATE || '500'),
       timeUnit: '1s',
       duration: __ENV.DURATION || '60s',
-      preAllocatedVUs: parseInt(__ENV.VUS || '200'),
-      maxVUs: parseInt(__ENV.MAX_VUS || '1000'),
+      preAllocatedVUs: Number.parseInt(__ENV.VUS || '200'),
+      maxVUs: Number.parseInt(__ENV.MAX_VUS || '1000'),
     },
   },
   thresholds: {

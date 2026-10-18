@@ -70,7 +70,7 @@ flowchart LR
 
 ## Run it
 
-Needs Docker and JDK 25. The reference DPoP client needs JDK 17 or newer.
+Needs Docker and JDK 25. The reference DPoP client needs JDK 25 too. Its Kotlin twin is published as `dpop.jar`, a CI artifact, and needs a JRE 25.
 
 ```bash
 deploy/keycloak/dev-setup     # once: generates keys and passwords (builds its tools the first time)

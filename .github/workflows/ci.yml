@@ -25,11 +25,6 @@ jobs:
         with:
           fetch-depth: 0  # SonarCloud needs the history to blame lines and to tell new code
       - uses: actions/setup-java@v6
-        id: jdk17
-        with:
-          distribution: temurin
-          java-version: '17'  # the baseline of deploy/keycloak/DpopClient.java, which DpopClientTest runs on this JDK
-      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
@@ -37,12 +32,19 @@ jobs:
       - name: Lint (Spotless)
         run: ./gradlew spotlessCheck
       - name: Run the tests (Testcontainers starts Postgres), and those of the tools
-        env:
-          DPOP_CLIENT_JAVA_HOME: ${{ steps.jdk17.outputs.path }}
         run: ./gradlew test
+      - name: The Kotlin DPoP client passes the same suite as the Java one
+        run: ./gradlew dpopJarParity -x test
+      - name: Build the Kotlin DPoP client as an executable JAR
+        run: ./gradlew -p tools dpopJar
+      - name: Keep the DPoP client JAR, to download
+        uses: actions/upload-artifact@v7
+        with:
+          name: dpop-client
+          path: tools/build/libs/dpop.jar
       - name: Coverage report (a measurement, not a gate)
         if: always()
-        run: ./gradlew koverHtmlReport koverXmlReport -x test
+        run: ./gradlew koverHtmlReport koverXmlReport dpopClientReport -x test
       - name: Keep the coverage report
         if: always()
         uses: actions/upload-artifact@v7

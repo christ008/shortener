@@ -14,12 +14,9 @@ data class Click(val shortCode: ShortCode, val device: DeviceClass, val referrer
  * - [NoClickRecorder] is the switched-off counting: it keeps nothing.
  * - An implementation never blocks and never throws.
  */
-interface ClickRecorder {
+fun interface ClickRecorder {
 
     fun record(click: Click)
 }
 
-object NoClickRecorder : ClickRecorder {
-
-    override fun record(click: Click) = Unit
-}
+val NoClickRecorder: ClickRecorder = ClickRecorder { }

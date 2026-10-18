@@ -37,8 +37,8 @@ for build in $BUILDS; do
     lite-serial|lite-g1|lite-zgc|lite-parallel|lite-serial-coh|lite-g1-coh|lite-zgc-coh|lite-parallel-coh)
       collector=${build#lite-}
       headers=
-      case $collector in *-coh) collector=${collector%-coh}; headers=-XX:+UseCompactObjectHeaders;; esac
-      case $collector in serial) flag=-XX:+UseSerialGC;; g1) flag=-XX:+UseG1GC;; zgc) flag=-XX:+UseZGC;; parallel) flag=-XX:+UseParallelGC;; esac
+      case $collector in *-coh) collector=${collector%-coh}; headers=-XX:+UseCompactObjectHeaders;; *) ;; esac
+      case $collector in serial) flag=-XX:+UseSerialGC;; g1) flag=-XX:+UseG1GC;; zgc) flag=-XX:+UseZGC;; parallel) flag=-XX:+UseParallelGC;; *) echo "unknown collector: $collector" >&2; exit 1 ;; esac
       # shellcheck disable=SC2086
       bench shortener-bench:lite java -XX:MaxRAMPercentage=70 "$flag" $headers -Xlog:gc:stdout -jar /app.jar;;
     ce-Os|oracle-v3|oracle-O3-v3) bench "shortener-bench:$build";;

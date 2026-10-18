@@ -30,7 +30,7 @@ JDK 25 as compact source files. What that left, measured on one machine, one run
 - **They need a JDK 25**, the application's, to build them (17, then 21, until 2026-10-07: `Dataset` uses stream gatherers, final in 24,
   and 25 is the LTS after it). `tools/run` says so when the java it finds is older, or is a JRE (no `lib/ct.sym`, which `-Xjdk-release`
   reads). A JRE 25 runs them once built. The bytecode is 25 and `-Xjdk-release=25` keeps a later API out. CI builds and runs them on
-  25 in the `stack` job. The DPoP client stays at 17 ([0020](0020-dpop-client-in-java.md)).
+  25 in the `stack` job. The DPoP client is at 25 too ([0020](0020-dpop-client-in-java.md), amended 2026-10-18).
   - Cost: a machine with only a JDK 21 can no longer run the tools, which `./gradlew -p tools installDist` did before. The README
     already asks for a JDK 25 for the application, and `JAVA_HOME` is what `tools/run` reads first.
 - **`tools/run TOOL` is still how a tool starts**, with the same names (`Realms`, `DevSetup`, `Smoke`, `Report`), so `perf/*.sh`,

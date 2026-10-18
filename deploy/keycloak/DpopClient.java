@@ -51,7 +51,7 @@ import java.util.regex.Pattern;
  * (docs/OPERATING.md lists some) and do what this does: one key for each token, a proof for each request, the nonce kept and
  * repeated.
  *
- * <p>Needs a JDK 17 or newer. One source file, run by the {@code java} launcher.
+ * <p>Needs a JDK 25 or newer. One source file, run by the {@code java} launcher.
  *
  * <pre>
  *   java DpopClient.java keygen CLIENT_ID                 prints a private and a public JWK for a new client key
@@ -90,6 +90,17 @@ public final class DpopClient {
     private static final Base64.Decoder B64_DECODER = Base64.getUrlDecoder();
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    private static final String ES256 = "ES256";
+    private static final String P256 = "P-256";
+    private static final String CONTENT_TYPE = "Content-Type";
+    private static final String CLIENT_ID = "client_id";
+    private static final String WWW_AUTHENTICATE = "WWW-Authenticate";
+    private static final String GRANT_TYPE = "grant_type";
+    private static final String ACCESS_TOKEN = "access_token";
+    private static final String REFRESH_TOKEN = "refresh_token";
+    private static final String ERROR = "error";
+    private static final String DPOP_NONCE = "DPoP-Nonce";
+
     private static final String USAGE = """
             usage: java DpopClient.java keygen CLIENT_ID
                    java DpopClient.java register NAME INVITATION KEY_FILE
@@ -107,12 +118,13 @@ public final class DpopClient {
     // ---- the command line -------------------------------------------------------------------------------------------
 
     public static void main(String[] args) {
-        if (!validArguments(args)) {
+        Optional<Command> command = parse(args);
+        if (command.isEmpty()) {
             System.err.println(USAGE);
             System.exit(2);
         }
         try {
-            new DpopClient().run(args);
+            new DpopClient().run(command.get());
         } catch (Failure failure) {
             System.err.println("DpopClient: " + failure.getMessage());
             if (System.getenv("DPOP_DEBUG") != null) failure.printStackTrace();
@@ -124,24 +136,61 @@ public final class DpopClient {
         }
     }
 
-    static boolean validArguments(String[] args) {
-        return args.length > 0 && switch (args[0]) {
-            case "keygen" -> args.length == 2;
-            case "register" -> args.length == 4;
-            case "token" -> args.length == 3;
-            case "call", "login" -> args.length == 5 || args.length == 6;
-            default -> false;
-        };
+    /** One command of the line, with the arguments it takes. */
+    private sealed interface Command permits Keygen, Register, FetchToken, Call, Login {}
+
+    private record Keygen(String clientId) implements Command {}
+
+    private record Register(String name, String invitation, Path keyFile) implements Command {}
+
+    private record FetchToken(Path keyFile, String clientId) implements Command {}
+
+    private record Call(Path keyFile, String clientId, String method, String url, String body) implements Command {}
+
+    private record Login(String user, String password, String method, String url, String body) implements Command {}
+
+    /** The command the arguments make, or nothing when they make none. */
+    static Optional<Command> parse(String[] args) {
+        int count = args.length;
+        String word = count == 0 ? "" : args[0];
+        switch (word) {
+            case "keygen":
+                return count == 2 ? Optional.of(new Keygen(args[1])) : Optional.empty();
+            case "register":
+                return count == 4 ? Optional.of(new Register(args[1], args[2], Path.of(args[3]))) : Optional.empty();
+            case "token":
+                return count == 3 ? Optional.of(new FetchToken(Path.of(args[1]), args[2])) : Optional.empty();
+            case "call":
+                return count == 5 || count == 6
+                        ? Optional.of(new Call(Path.of(args[1]), args[2], args[3], args[4], argumentAt(args, 5)))
+                        : Optional.empty();
+            case "login":
+                return count == 5 || count == 6
+                        ? Optional.of(new Login(args[1], args[2], args[3], args[4], argumentAt(args, 5)))
+                        : Optional.empty();
+            default:
+                return Optional.empty();
+        }
     }
 
-    private void run(String[] args) throws Exception {
-        switch (args[0]) {
-            case "keygen" -> keygen(args[1]);
-            case "register" -> register(args[1], args[2], Path.of(args[3]));
-            case "token" -> System.out.println(fetchToken(Path.of(args[1]), args[2], newKey()).accessToken());
-            case "call" -> printCall(Path.of(args[1]), args[2], args[3], args[4], args.length > 5 ? args[5] : null);
-            case "login" -> login(args[1], args[2], args[3], args[4], args.length > 5 ? args[5] : null);
-            default -> throw new IllegalStateException("unreachable: " + args[0]);
+    /** The argument at index, or nothing when the line has no such argument: the body of a call is optional. */
+    private static String argumentAt(String[] args, int index) {
+        return args.length > index ? args[index] : null;
+    }
+
+    private void run(Command command) throws Exception {
+        if (command instanceof Keygen keygen) {
+            keygen(keygen.clientId());
+        } else if (command instanceof Register register) {
+            register(register.name(), register.invitation(), register.keyFile());
+        } else if (command instanceof FetchToken fetch) {
+            System.out.println(fetchToken(fetch.keyFile(), fetch.clientId(), newKey()).accessToken());
+        } else if (command instanceof Call call) {
+            printCall(call.keyFile(), call.clientId(), call.method(), call.url(), call.body());
+        } else if (command instanceof Login login) {
+            login(login.user(), login.password(), login.method(), login.url(), login.body());
+        } else {
+            throw new IllegalStateException("unreachable: " + command);
         }
     }
 
@@ -181,9 +230,9 @@ public final class DpopClient {
         ECPublicKey pub = ecPublic(pair);
         Map<String, Object> publicJwk = new LinkedHashMap<>();
         publicJwk.put("kty", "EC");
-        publicJwk.put("crv", "P-256");
+        publicJwk.put("crv", P256);
         publicJwk.put("kid", clientId + "-key-1");
-        publicJwk.put("alg", "ES256");
+        publicJwk.put("alg", ES256);
         publicJwk.put("use", "sig");
         publicJwk.put("x", coordinate(pub.getW().getAffineX()));
         publicJwk.put("y", coordinate(pub.getW().getAffineY()));
@@ -192,44 +241,49 @@ public final class DpopClient {
         return List.of(privateJwk, publicJwk);
     }
 
+    /** Leaves the key file readable by its owner alone; a file system without POSIX permissions has nothing to restrict. */
+    private static void restrictToOwner(Path keyFile) throws IOException {
+        try {
+            Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
+        } catch (UnsupportedOperationException _) {
+            // not a POSIX file system: nothing more can be done here
+        }
+    }
+
     /**
      * Registers a client with the invitation an administrator made (an initial access token of the realm: one use, with a
      * deadline). The key is made here and its private half never leaves the file, which is made readable by its owner alone and
      * is written before the request, so that a registration that succeeds cannot be left without its key. The identity provider
      * chooses the client id, the scopes and the owner: only the name and the public key are sent.
      */
-    private void register(String name, String invitation, Path keyFile) throws Exception {
+    private void register(String name, String invitation, Path keyFile) throws IOException, InterruptedException {
         if (Files.exists(keyFile)) throw new Failure(keyFile + " exists already: it is not overwritten, name another file");
         List<Map<String, Object>> jwks = newJwks(name);
         try {
             Files.writeString(keyFile, Json.write(jwks.get(0)) + "\n", StandardOpenOption.CREATE_NEW);
-            try {
-                Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
-            } catch (UnsupportedOperationException ignored) {
-                // not a POSIX file system: nothing more can be done here
-            }
+            restrictToOwner(keyFile);
         } catch (IOException e) {
             throw new Failure("could not write the key file " + keyFile + ": " + e.getMessage(), e);
         }
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("client_name", name);
         metadata.put("token_endpoint_auth_method", "private_key_jwt");
-        metadata.put("token_endpoint_auth_signing_alg", "ES256");
+        metadata.put("token_endpoint_auth_signing_alg", ES256);
         metadata.put("grant_types", List.of("client_credentials"));
         metadata.put("jwks", Map.of("keys", List.of(jwks.get(1))));
         String endpoint = issuer + "/clients-registrations/openid-connect";
         HttpResponse<String> response = send(HttpRequest.newBuilder(uri(endpoint)).timeout(TIMEOUT)
-                .header("Authorization", "Bearer " + invitation).header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + invitation).header(CONTENT_TYPE, "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(Json.write(metadata))).build());
         if (response.statusCode() != 201) {
             try {
                 Files.deleteIfExists(keyFile);
-            } catch (IOException ignored) {
+            } catch (IOException _) {
                 // the registration failed and so the key means nothing; a leftover file is harmless
             }
             throw new Failure("the registration was refused (" + response.statusCode() + "): " + excerpt(response.body(), 300));
         }
-        String clientId = Json.parse(response.body()).string("client_id");
+        String clientId = Json.parse(response.body()).string(CLIENT_ID);
         if (clientId == null) throw new Failure("the identity provider registered the client but did not say its id: " + excerpt(response.body(), 300));
         System.out.println("registered: " + clientId);
         System.out.println("private key: " + keyFile + " (keep it: it is the only way to be this client, and it cannot be recovered)");
@@ -254,7 +308,7 @@ public final class DpopClient {
         Token token = fetchToken(keyFile, clientId, dpopKey);
         HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, token.accessToken(), dpopKey, nonce));
         return new Answer(response.statusCode(), response.headers().firstValue("Location").orElse(null),
-                response.headers().allValues("WWW-Authenticate"), response.body());
+                response.headers().allValues(WWW_AUTHENTICATE), response.body());
     }
 
     /**
@@ -273,12 +327,13 @@ public final class DpopClient {
         String challenge = B64.encodeToString(sha256(verifier));
         String state = UUID.randomUUID().toString();
 
-        String code = signIn(user, password, clientId, redirect, scope, state, challenge, jkt);
+        String code = new KeycloakLogin(issuer).signIn(user, password,
+                new KeycloakLogin.AuthorizationRequest(clientId, redirect, scope, state, challenge, jkt));
 
-        Json tokens = Json.parse(postToken(form("grant_type", "authorization_code", "client_id", clientId, "code", code,
+        Json tokens = Json.parse(postToken(form(GRANT_TYPE, "authorization_code", CLIENT_ID, clientId, "code", code,
                 "redirect_uri", redirect, "code_verifier", verifier), dpopKey));
-        String accessToken = tokens.string("access_token");
-        String refreshToken = tokens.string("refresh_token");
+        String accessToken = tokens.string(ACCESS_TOKEN);
+        String refreshToken = tokens.string(REFRESH_TOKEN);
         if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + tokens);
         System.out.println("2. token_type " + tokens.string("token_type") + ", refresh token "
                 + (refreshToken == null ? "NOT issued" : "issued"));
@@ -289,21 +344,22 @@ public final class DpopClient {
         String latestAccess = accessToken;
         if (refreshToken != null) {
             Json refreshed = Json.parse(postToken(refreshForm(clientId, refreshToken), dpopKey));
-            latestAccess = refreshed.string("access_token");
+            latestAccess = refreshed.string(ACCESS_TOKEN);
             if (latestAccess == null) throw new Failure("refreshing did not return an access_token: " + refreshed);
-            String rotated = refreshed.string("refresh_token");
+            String rotated = refreshed.string(REFRESH_TOKEN);
             System.out.println("4. refreshed with the same key; new token bound to it: " + jkt.equals(confirmationOf(latestAccess))
                     + ", refresh token rotated: " + (rotated != null && !refreshToken.equals(rotated)));
             System.out.println("   reusing the old refresh token: " + (accepts(refreshForm(clientId, refreshToken), dpopKey)
                     ? "ACCEPTED (rotation is not enforced)" : "refused, as rotation requires"));
-            System.out.println("   refreshing with a different key: " + (accepts(refreshForm(clientId, rotated != null ? rotated : refreshToken), newKey())
+            String refreshWith = rotated != null ? rotated : refreshToken;
+            System.out.println("   refreshing with a different key: " + (accepts(refreshForm(clientId, refreshWith), newKey())
                     ? "ACCEPTED (the refresh token is not bound to the key)" : "refused"));
         }
 
         String accessToUse = latestAccess;
         HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, accessToUse, dpopKey, nonce));
         System.out.println("5. " + method + " " + url + " -> " + response.statusCode());
-        response.headers().allValues("WWW-Authenticate").forEach(header -> System.out.println("   WWW-Authenticate: " + header));
+        response.headers().allValues(WWW_AUTHENTICATE).forEach(header -> System.out.println("   WWW-Authenticate: " + header));
         System.out.println("   " + response.body());
     }
 
@@ -314,9 +370,9 @@ public final class DpopClient {
     /** Authenticates the client with a signed assertion, and asks for a token bound to {@code dpopKey}. */
     private Token fetchToken(Path keyFile, String clientId, KeyPair dpopKey) throws Exception {
         PrivateKey clientKey = readPrivateKey(keyFile);
-        Json answer = Json.parse(postToken(() -> form("grant_type", "client_credentials", "client_id", clientId,
+        Json answer = Json.parse(postToken(() -> form(GRANT_TYPE, "client_credentials", CLIENT_ID, clientId,
                 "client_assertion_type", CLIENT_ASSERTION_TYPE, "client_assertion", assertion(clientKey, clientId)), dpopKey));
-        String accessToken = answer.string("access_token");
+        String accessToken = answer.string(ACCESS_TOKEN);
         if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + answer);
         return new Token(accessToken, answer.string("token_type"));
     }
@@ -331,7 +387,7 @@ public final class DpopClient {
         claims.put("jti", UUID.randomUUID().toString());
         claims.put("iat", now);
         claims.put("exp", now + 60);
-        return jwt(clientKey, Map.of("alg", "ES256"), claims);
+        return jwt(clientKey, Map.of("alg", ES256), claims);
     }
 
     private String postToken(String form, KeyPair dpopKey) throws Exception {
@@ -342,10 +398,10 @@ public final class DpopClient {
      * Posts a form to the token endpoint with a proof of {@code dpopKey}, and returns the body of the 200 it must answer. The form
      * is made again for a request that is repeated with a nonce.
      */
-    private String postToken(Supplier<String> form, KeyPair dpopKey) throws Exception {
+    private String postToken(Supplier<String> form, KeyPair dpopKey) throws InterruptedException {
         HttpResponse<String> response = sendProved(tokenUrl, nonce -> HttpRequest.newBuilder(uri(tokenUrl))
                 .timeout(TIMEOUT)
-                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .header("DPoP", proof(dpopKey, "POST", tokenUrl, null, nonce))
                 .POST(HttpRequest.BodyPublishers.ofString(form.get()))
                 .build());
@@ -359,63 +415,100 @@ public final class DpopClient {
         try {
             postToken(form, dpopKey);
             return true;
-        } catch (Refused refused) {
+        } catch (Refused _) {
             return false;
         }
     }
 
     private static String refreshForm(String clientId, String refreshToken) {
-        return form("grant_type", "refresh_token", "client_id", clientId, "refresh_token", refreshToken);
+        return form(GRANT_TYPE, REFRESH_TOKEN, CLIENT_ID, clientId, REFRESH_TOKEN, refreshToken);
     }
 
-    /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
-    private String signIn(String user, String password, String clientId, String redirect, String scope, String state,
-                          String challenge, String jkt) throws Exception {
-        HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
-        Map<String, String> cookies = new LinkedHashMap<>();
-        String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", "client_id", clientId,
-                "redirect_uri", redirect, "scope", scope, "state", state, "code_challenge", challenge,
-                "code_challenge_method", "S256", "dpop_jkt", jkt);
+    /** The browser part of the login: the login page of Keycloak, the form submitted on it, and the redirect that carries the code. */
+    private static final class KeycloakLogin {
+        private static final Pattern FORM_TAG = Pattern.compile("<form\\b[^>]*>", Pattern.CASE_INSENSITIVE);
+        private static final Pattern ACTION = Pattern.compile("\\baction=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
 
-        HttpResponse<String> page = send(browser, HttpRequest.newBuilder(uri(authUrl)).timeout(TIMEOUT).GET().build());
-        remember(cookies, page);
-        String action = loginFormAction(page.body())
-                .orElseThrow(() -> new Failure("no login form (status " + page.statusCode() + "): " + excerpt(page.body(), 500)));
+        /** The parameters of the authorization request, which the login page is asked for. */
+        record AuthorizationRequest(String clientId, String redirect, String scope, String state, String challenge, String jkt) {}
 
-        HttpResponse<String> submitted = send(browser, HttpRequest.newBuilder(uri(action))
-                .timeout(TIMEOUT)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .header("Cookie", cookieHeader(cookies))
-                .POST(HttpRequest.BodyPublishers.ofString(form("username", user, "password", password, "credentialId", "")))
-                .build());
-        String location = submitted.headers().firstValue("Location").orElseThrow(() -> new Failure(
-                "the login did not redirect (status " + submitted.statusCode() + "): " + excerpt(submitted.body(), 300)));
+        private final String issuer;
 
-        Map<String, String> returned = queryOf(location);
-        if (returned.containsKey("error")) {
-            throw new Failure("the login was refused: " + returned.get("error") + " " + returned.getOrDefault("error_description", ""));
+        KeycloakLogin(String issuer) {
+            this.issuer = issuer;
         }
-        if (!state.equals(returned.get("state"))) throw new Failure("state mismatch");
-        String code = returned.get("code");
-        if (code == null) throw new Failure("the redirect carries no code: " + location);
-        int query = location.indexOf('?');
-        System.out.println("1. signed in as " + user + "; redirected to " + (query < 0 ? location : location.substring(0, query)) + " with a code");
-        return code;
-    }
 
-    private static final Pattern FORM_TAG = Pattern.compile("<form\\b[^>]*>", Pattern.CASE_INSENSITIVE);
-    private static final Pattern ACTION = Pattern.compile("\\baction=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
-
-    /** The action of the login form of Keycloak, whatever order its attributes come in. */
-    static Optional<String> loginFormAction(String html) {
-        Matcher forms = FORM_TAG.matcher(html);
-        while (forms.find()) {
-            String tag = forms.group();
-            if (!tag.contains("id=\"kc-form-login\"")) continue;
-            Matcher action = ACTION.matcher(tag);
-            if (action.find()) return Optional.of(action.group(1).replace("&amp;", "&"));
+        private static Map<String, String> queryOf(String location) {
+            Map<String, String> parameters = new LinkedHashMap<>();
+            String query = uri(location).getRawQuery();
+            if (query == null) return parameters;
+            for (String pair : query.split("&")) {
+                String[] nameAndValue = pair.split("=", 2);
+                parameters.put(URLDecoder.decode(nameAndValue[0], StandardCharsets.UTF_8),
+                        nameAndValue.length > 1 ? URLDecoder.decode(nameAndValue[1], StandardCharsets.UTF_8) : "");
+            }
+            return parameters;
         }
-        return Optional.empty();
+
+        /** Opens the login page, submits the credentials, and returns the authorization code of the redirect. */
+        String signIn(String user, String password, AuthorizationRequest request) throws InterruptedException {
+            HttpClient browser = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).followRedirects(HttpClient.Redirect.NEVER).build();
+            Map<String, String> cookies = new LinkedHashMap<>();
+            String authUrl = issuer + "/protocol/openid-connect/auth?" + form("response_type", "code", CLIENT_ID, request.clientId(),
+                    "redirect_uri", request.redirect(), "scope", request.scope(), "state", request.state(), "code_challenge", request.challenge(),
+                    "code_challenge_method", "S256", "dpop_jkt", request.jkt());
+
+            HttpResponse<String> page = send(browser, HttpRequest.newBuilder(uri(authUrl)).timeout(TIMEOUT).GET().build());
+            remember(cookies, page);
+            String action = loginFormAction(page.body())
+                    .orElseThrow(() -> new Failure("no login form (status " + page.statusCode() + "): " + excerpt(page.body(), 500)));
+
+            HttpResponse<String> submitted = send(browser, HttpRequest.newBuilder(uri(action))
+                    .timeout(TIMEOUT)
+                    .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .header("Cookie", cookieHeader(cookies))
+                    .POST(HttpRequest.BodyPublishers.ofString(form("username", user, "password", password, "credentialId", "")))
+                    .build());
+            String location = submitted.headers().firstValue("Location").orElseThrow(() -> new Failure(
+                    "the login did not redirect (status " + submitted.statusCode() + "): " + excerpt(submitted.body(), 300)));
+
+            Map<String, String> returned = queryOf(location);
+            if (returned.containsKey(ERROR)) {
+                throw new Failure("the login was refused: " + returned.get(ERROR) + " " + returned.getOrDefault("error_description", ""));
+            }
+            if (!request.state().equals(returned.get("state"))) throw new Failure("state mismatch");
+            String code = returned.get("code");
+            if (code == null) throw new Failure("the redirect carries no code: " + location);
+            int query = location.indexOf('?');
+            System.out.println("1. signed in as " + user + "; redirected to " + (query < 0 ? location : location.substring(0, query)) + " with a code");
+            return code;
+        }
+
+        /** The action of the login form of Keycloak, whatever order its attributes come in. */
+        static Optional<String> loginFormAction(String html) {
+            Matcher forms = FORM_TAG.matcher(html);
+            while (forms.find()) {
+                String tag = forms.group();
+                if (!tag.contains("id=\"kc-form-login\"")) continue;
+                Matcher action = ACTION.matcher(tag);
+                if (action.find()) return Optional.of(action.group(1).replace("&amp;", "&"));
+            }
+            return Optional.empty();
+        }
+
+        private static void remember(Map<String, String> cookies, HttpResponse<?> response) {
+            for (String header : response.headers().allValues("Set-Cookie")) {
+                String pair = header.split(";", 2)[0];
+                int equals = pair.indexOf('=');
+                if (equals > 0) cookies.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
+            }
+        }
+
+        private static String cookieHeader(Map<String, String> cookies) {
+            List<String> pairs = new ArrayList<>();
+            cookies.forEach((name, value) -> pairs.add(name + "=" + value));
+            return String.join("; ", pairs);
+        }
     }
 
     /**
@@ -428,13 +521,13 @@ public final class DpopClient {
                 .header("Authorization", "DPoP " + accessToken)
                 .header("DPoP", proof(dpopKey, method, url, accessToken, nonce));
         boolean hasBody = body != null && !body.isEmpty();
-        if (hasBody) request.header("Content-Type", "application/json");
+        if (hasBody) request.header(CONTENT_TYPE, "application/json");
         String traceparent = System.getenv("TRACEPARENT");
         if (traceparent != null && !traceparent.isBlank()) request.header("traceparent", traceparent);
         return request.method(method, hasBody ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody()).build();
     }
 
-    private HttpResponse<String> send(HttpRequest request) throws Exception {
+    private HttpResponse<String> send(HttpRequest request) throws InterruptedException {
         return send(http, request);
     }
 
@@ -443,13 +536,13 @@ public final class DpopClient {
      * handed none), and keeps the nonce of the answer. When the answer asks for a nonce and gives one, the request is made again
      * once, with a new proof that carries it.
      */
-    private HttpResponse<String> sendProved(String url, Function<String, HttpRequest> build) throws Exception {
+    private HttpResponse<String> sendProved(String url, Function<String, HttpRequest> build) throws InterruptedException {
         String origin = origin(url);
         HttpResponse<String> response = send(build.apply(nonces.get(origin)));
-        response.headers().firstValue("DPoP-Nonce").ifPresent(nonce -> nonces.put(origin, nonce));
-        if (asksForNonce(response) && response.headers().firstValue("DPoP-Nonce").isPresent()) {
+        response.headers().firstValue(DPOP_NONCE).ifPresent(nonce -> nonces.put(origin, nonce));
+        if (asksForNonce(response) && response.headers().firstValue(DPOP_NONCE).isPresent()) {
             response = send(build.apply(nonces.get(origin)));
-            response.headers().firstValue("DPoP-Nonce").ifPresent(nonce -> nonces.put(origin, nonce));
+            response.headers().firstValue(DPOP_NONCE).ifPresent(nonce -> nonces.put(origin, nonce));
         }
         return response;
     }
@@ -457,12 +550,12 @@ public final class DpopClient {
     /** A resource server asks with a 401 whose challenge has {@code error="use_dpop_nonce"}, an authorization server with a 400 of that error. */
     private static boolean asksForNonce(HttpResponse<String> response) {
         if (response.statusCode() == 401) {
-            return response.headers().allValues("WWW-Authenticate").stream().anyMatch(challenge -> challenge.contains("error=\"use_dpop_nonce\""));
+            return response.headers().allValues(WWW_AUTHENTICATE).stream().anyMatch(challenge -> challenge.contains("error=\"use_dpop_nonce\""));
         }
         if (response.statusCode() == 400) {
             try {
-                return "use_dpop_nonce".equals(Json.parse(response.body()).string("error"));
-            } catch (Failure notJson) {
+                return "use_dpop_nonce".equals(Json.parse(response.body()).string(ERROR));
+            } catch (Failure _) {
                 return false;
             }
         }
@@ -474,7 +567,7 @@ public final class DpopClient {
         return uri.getScheme() + "://" + uri.getRawAuthority();
     }
 
-    private static HttpResponse<String> send(HttpClient client, HttpRequest request) throws Exception {
+    private static HttpResponse<String> send(HttpClient client, HttpRequest request) throws InterruptedException {
         try {
             return client.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException unreachable) {
@@ -493,7 +586,7 @@ public final class DpopClient {
     static String proof(KeyPair key, String method, String url, String accessToken, String nonce) {
         URI uri = uri(url);
         Map<String, Object> header = new LinkedHashMap<>();
-        header.put("alg", "ES256");
+        header.put("alg", ES256);
         header.put("typ", "dpop+jwt");
         header.put("jwk", publicJwk(key));
         Map<String, Object> claims = new LinkedHashMap<>();
@@ -534,7 +627,7 @@ public final class DpopClient {
         ECPublicKey pub = ecPublic(key);
         Map<String, Object> jwk = new LinkedHashMap<>();
         jwk.put("kty", "EC");
-        jwk.put("crv", "P-256");
+        jwk.put("crv", P256);
         jwk.put("x", coordinate(pub.getW().getAffineX()));
         jwk.put("y", coordinate(pub.getW().getAffineY()));
         return jwk;
@@ -584,7 +677,7 @@ public final class DpopClient {
             throw new Failure("could not read the key file " + file + ": " + e.getMessage(), e);
         }
         Json jwk = Json.parse(text);
-        if (!"EC".equals(jwk.string("kty")) || !"P-256".equals(jwk.string("crv")) || jwk.string("d") == null) {
+        if (!"EC".equals(jwk.string("kty")) || !P256.equals(jwk.string("crv")) || jwk.string("d") == null) {
             throw new Failure(file + " is not a private P-256 JWK (it needs kty EC, crv P-256 and d)");
         }
         try {
@@ -648,32 +741,6 @@ public final class DpopClient {
         return String.join("&", encoded);
     }
 
-    private static Map<String, String> queryOf(String location) {
-        Map<String, String> parameters = new LinkedHashMap<>();
-        String query = uri(location).getRawQuery();
-        if (query == null) return parameters;
-        for (String pair : query.split("&")) {
-            String[] nameAndValue = pair.split("=", 2);
-            parameters.put(URLDecoder.decode(nameAndValue[0], StandardCharsets.UTF_8),
-                    nameAndValue.length > 1 ? URLDecoder.decode(nameAndValue[1], StandardCharsets.UTF_8) : "");
-        }
-        return parameters;
-    }
-
-    private static void remember(Map<String, String> cookies, HttpResponse<?> response) {
-        for (String header : response.headers().allValues("Set-Cookie")) {
-            String pair = header.split(";", 2)[0];
-            int equals = pair.indexOf('=');
-            if (equals > 0) cookies.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
-        }
-    }
-
-    private static String cookieHeader(Map<String, String> cookies) {
-        List<String> pairs = new ArrayList<>();
-        cookies.forEach((name, value) -> pairs.add(name + "=" + value));
-        return String.join("; ", pairs);
-    }
-
     /** The text of an HTML page or any text, on one line and cut short, for an error message. */
     private static String excerpt(String text, int length) {
         String plain = text.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
@@ -731,26 +798,34 @@ public final class DpopClient {
             } else if (value instanceof Number || value instanceof Boolean) {
                 out.append(value);
             } else if (value instanceof Map<?, ?> map) {
-                out.append('{');
-                boolean first = true;
-                for (Map.Entry<?, ?> entry : map.entrySet()) {
-                    if (!first) out.append(',');
-                    first = false;
-                    writeString(out, String.valueOf(entry.getKey()));
-                    out.append(':');
-                    write(out, entry.getValue());
-                }
-                out.append('}');
+                writeMembers(out, map);
             } else if (value instanceof List<?> list) {
-                out.append('[');
-                for (int i = 0; i < list.size(); i++) {
-                    if (i > 0) out.append(',');
-                    write(out, list.get(i));
-                }
-                out.append(']');
+                writeItems(out, list);
             } else {
                 throw new IllegalArgumentException("cannot write " + value.getClass());
             }
+        }
+
+        private static void writeMembers(StringBuilder out, Map<?, ?> map) {
+            out.append('{');
+            boolean first = true;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) out.append(',');
+                first = false;
+                writeString(out, String.valueOf(entry.getKey()));
+                out.append(':');
+                write(out, entry.getValue());
+            }
+            out.append('}');
+        }
+
+        private static void writeItems(StringBuilder out, List<?> list) {
+            out.append('[');
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) out.append(',');
+                write(out, list.get(i));
+            }
+            out.append(']');
         }
 
         private static void writeString(StringBuilder out, String text) {
@@ -854,35 +929,38 @@ public final class DpopClient {
                     char c = text.charAt(position++);
                     if (c == '"') return out.toString();
                     if (c < 0x20) throw error("a control character in a string");
-                    if (c != '\\') {
+                    if (c == '\\') {
+                        if (position >= text.length()) throw error("an unterminated string");
+                        appendEscape(out, text.charAt(position++));
+                    } else {
                         out.append(c);
-                        continue;
-                    }
-                    if (position >= text.length()) break;
-                    char escaped = text.charAt(position++);
-                    switch (escaped) {
-                        case '"', '\\', '/' -> out.append(escaped);
-                        case 'b' -> out.append('\b');
-                        case 'f' -> out.append('\f');
-                        case 'n' -> out.append('\n');
-                        case 'r' -> out.append('\r');
-                        case 't' -> out.append('\t');
-                        case 'u' -> {
-                            if (position + 4 > text.length()) throw error("a short \\u escape");
-                            try {
-                                out.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
-                            } catch (NumberFormatException e) {
-                                throw error("a bad \\u escape");
-                            }
-                            position += 4;
-                        }
-                        default -> throw error("a bad escape \\" + escaped);
                     }
                 }
                 throw error("an unterminated string");
             }
 
-            private static final Pattern NUMBER = Pattern.compile("-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?");
+            private void appendEscape(StringBuilder out, char escaped) {
+                switch (escaped) {
+                    case '"', '\\', '/' -> out.append(escaped);
+                    case 'b' -> out.append('\b');
+                    case 'f' -> out.append('\f');
+                    case 'n' -> out.append('\n');
+                    case 'r' -> out.append('\r');
+                    case 't' -> out.append('\t');
+                    case 'u' -> {
+                        if (position + 4 > text.length()) throw error("a short \\u escape");
+                        try {
+                            out.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
+                        } catch (NumberFormatException _) {
+                            throw error("a bad \\u escape");
+                        }
+                        position += 4;
+                    }
+                    default -> throw error("a bad escape \\" + escaped);
+                }
+            }
+
+            private static final Pattern NUMBER = Pattern.compile("-?(0|[1-9]\\d*)(\\.\\d+)?([eE][+-]?\\d+)?");
 
             private Object readNumber() {
                 Matcher matcher = NUMBER.matcher(text).region(position, text.length());

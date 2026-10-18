@@ -2,8 +2,7 @@
  * One task for each script a person runs: `./gradlew tasks --group tooling` lists them. A task only starts the script, which can
  * still be run by hand (docs/adr/0026-scripting-standard.md). Settings are Gradle properties: `./gradlew keygen -Pclient=my-client`.
  *
- * - Tasks run with the project's JDK 25 toolchain. The tools of `tools/` need only a JDK 17 or newer, and `DpopClient.java` is
- *   written for 17.
+ * - Tasks run with the project's JDK 25 toolchain. The tools of `tools/` and `DpopClient.java` are both written for 25.
  * - A task that needs a setting says which one when it is missing.
  * - `devSetup` takes the defaults, because Gradle has no terminal. Run `deploy/keycloak/dev-setup` to be asked.
  */
