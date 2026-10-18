@@ -398,7 +398,7 @@ public final class DpopClient {
      * Posts a form to the token endpoint with a proof of {@code dpopKey}, and returns the body of the 200 it must answer. The form
      * is made again for a request that is repeated with a nonce.
      */
-    private String postToken(Supplier<String> form, KeyPair dpopKey) throws Exception {
+    private String postToken(Supplier<String> form, KeyPair dpopKey) throws InterruptedException {
         HttpResponse<String> response = sendProved(tokenUrl, nonce -> HttpRequest.newBuilder(uri(tokenUrl))
                 .timeout(TIMEOUT)
                 .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
