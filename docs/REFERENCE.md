@@ -161,7 +161,7 @@ change one, expose it as described under [Tunables](#tunables).
 
 Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`. Scripts that compute are Kotlin tools in
 `tools/`, built by `tools/run` the first time and when a source changes (JDK 25). The one exception is
-`DpopClient.java`, a single Java file for JDK 25 or newer with no build, which the tools do not use. See
+`DpopClient.java` and the classes beside it, a Java client for JDK 25 or newer with no build, which the tools do not use. See
 [ADR 0026](adr/0026-scripting-standard.md), [0029](adr/0029-tools-in-kotlin.md) and [0020](adr/0020-dpop-client-in-java.md).
 
 | Script | Is for | Kind |
@@ -183,7 +183,7 @@ Scripts that start programs are POSIX `sh`, checked with `shellcheck --shell=sh`
 | `Report` | read GC logs, heap dumps and bench results (`summary`, `cpu`); query Prometheus | Kotlin |
 | `Dataset` | distinct short codes, in parallel, for loads that the redirect cache does not absorb | Kotlin |
 | `ClientKeys`, `DpopCalls` | client keys, and DPoP sign-in and calls, for `DevSetup` and `Smoke` | Kotlin |
-| `deploy/keycloak/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
+| `deploy/keycloak/dpop/DpopClient.java` | sign in and call the API with DPoP; make client keys | Java |
 | `perf/bench.sh`, `run-all.sh`, `profile.sh`, `tune-connections.sh` | run the load test (scenarios `app`, `edge`, `full`), profile | sh |
 | `perf/compare-builds.sh`, `perf/builds/jvm.sh`, `perf/builds/native.sh` | run one load on several builds, and make the images of a JDK (with or without the AOT cache) and of a native image with a given GraalVM | sh |
 | `perf/scrub-k6-summary.sh` | remove the DPoP key and the token from a k6 summary | sh |

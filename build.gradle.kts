@@ -209,9 +209,14 @@ configure<JacocoPluginExtension> {
     toolVersion = "0.8.14"
 }
 
-// Kover measures the application in the test JVM, so the JaCoCo agent stays out of the test tasks: it is for the client's JVMs only.
+// Kover measures the application in the test JVM. JaCoCo measures the client's classes in that same JVM, where the suite calls them
+// in process, and the client's own JVMs; it does not measure anything else of the application, so the two do not overlap.
+val clientClasses = listOf("dpop.*")
 tasks.withType<Test>().configureEach {
-    extensions.configure<JacocoTaskExtension> { isEnabled = false }
+    extensions.configure<JacocoTaskExtension> {
+        isEnabled = name == "test"
+        includes = clientClasses
+    }
 }
 
 val dpopClientClasses = layout.buildDirectory.dir("dpop-client/classes")
@@ -226,8 +231,8 @@ dependencies {
 
 val compileDpopClient = tasks.register<JavaCompile>("compileDpopClient") {
     group = "verification"
-    description = "Compiles deploy/keycloak/DpopClient.java for Java 25, for the tests that measure the client."
-    source(file("deploy/keycloak/DpopClient.java"))
+    description = "Compiles deploy/keycloak/dpop/DpopClient.java for Java 25, for the tests that measure the client."
+    source(fileTree("deploy/keycloak/dpop") { include("*.java") })
     classpath = files()
     destinationDirectory.set(dpopClientClasses)
     options.release.set(25)
@@ -259,9 +264,9 @@ tasks.register<Test>("dpopJarParity") {
 val dpopClientReport = tasks.register<JacocoReport>("dpopClientReport") {
     group = "verification"
     description = "Writes the JaCoCo report of the DPoP client, which SonarCloud reads beside the Kover one."
-    executionData.setFrom(dpopClientData.map { data -> data.asFileTree.matching { include("*.exec") } })
+    executionData.setFrom(dpopClientData.map { data -> data.asFileTree.matching { include("*.exec") } }, layout.buildDirectory.dir("jacoco").map { dir -> dir.asFileTree.matching { include("test*.exec") } })
     classDirectories.setFrom(dpopClientClasses)
-    sourceDirectories.setFrom(files("deploy/keycloak"))
+    sourceDirectories.setFrom(files("deploy/keycloak/dpop"))
     reports {
         xml.required.set(true)
         xml.outputLocation.set(dpopClientXml)
@@ -412,7 +417,7 @@ tasks.withType<Test> {
         "deploy/stack/overlays/compose.postgres-ha.yaml",
         "deploy/edge/keycloak.conf",
         "deploy/stack/.env.example",
-        "deploy/keycloak/DpopClient.java",
+        "deploy/keycloak/dpop/DpopClient.java",
         "deploy/postgres/bootstrap.sql",
     )
 }

@@ -214,8 +214,8 @@ the `shortener` realm and its static files only. The master realm and the consol
 2. **Make the keys and the realm.** The realm holds only public keys:
 
    ```bash
-   java deploy/keycloak/DpopClient.java keygen demo-client  > demo.keys
-   java deploy/keycloak/DpopClient.java keygen admin-client > admin.keys
+   java deploy/keycloak/dpop/DpopClient.java keygen demo-client  > demo.keys
+   java deploy/keycloak/dpop/DpopClient.java keygen admin-client > admin.keys
    sed -n 2p demo.keys  > demo-client.public.json
    sed -n 2p admin.keys > admin-client.public.json
    ./gradlew productionRealm -Pdemo=demo-client.public.json -Padmin=admin-client.public.json
@@ -324,12 +324,12 @@ Verified on Keycloak 26.8.0: a person who asks for level 2 and has a code config
 A client is a program, a script or an application of a developer that creates links through the API, and it is known to the service by its key. Nobody registers without an invitation, and an invitation is made by an administrator in the console: Clients, Initial access token, Create, with a count of 1 and
 a deadline (seven days is plenty). The token is shown once. Give it to the person by a channel you trust.
 
-The person, with a JDK 25 or newer and `deploy/keycloak/DpopClient.java`:
+The person, with a JDK 25 or newer and `deploy/keycloak/dpop/DpopClient.java`:
 
 ```bash
 export ISSUER=https://shortener.example.com/realms/shortener TOKEN_URL=$ISSUER/protocol/openid-connect/token
-java deploy/keycloak/DpopClient.java register ana INVITATION ana.jwk.json
-java deploy/keycloak/DpopClient.java call ana.jwk.json CLIENT_ID POST https://shortener.example.com/api/short-links '{"targetUrl":"https://example.com/a/long/path"}'
+java deploy/keycloak/dpop/DpopClient.java register ana INVITATION ana.jwk.json
+java deploy/keycloak/dpop/DpopClient.java call ana.jwk.json CLIENT_ID POST https://shortener.example.com/api/short-links '{"targetUrl":"https://example.com/a/long/path"}'
 ```
 
 `register` makes the key and writes its private half to `ana.jwk.json` (readable by its owner alone, never overwritten) before it asks, registers the public half, and prints the client id. A refused

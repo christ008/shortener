@@ -25,7 +25,7 @@ import java.util.Base64
  * - [readPrivate] reads the `d` of a private JWK file, to sign with it. A file that is not a private P-256 JWK is a [Failure].
  * - [newKeyPair] makes the key of one proof, and [publicJwk] is what the proof carries in its header.
  *
- * Does not use `deploy/keycloak/DpopClient.java` (docs/adr/0029-tools-in-kotlin.md).
+ * Does not use `deploy/keycloak/dpop/DpopClient.java` (docs/adr/0029-tools-in-kotlin.md).
  */
 object ClientKeys {
 

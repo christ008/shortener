@@ -44,7 +44,19 @@ class ToolingTasksTest {
             "deploy/postgres/entrypoint.sh", "deploy/postgres/replica-entrypoint.sh", "deploy/postgres/restore-test.sh", // inside the Postgres image
             "deploy/postgres/set-role-passwords.sh", "deploy/postgres/keycloak-database.sh", "deploy/postgres/include-diagnostics.sh", "deploy/postgres/replication.sh", // inside Postgres
             "deploy/keycloak/dev-setup", // the script starts the DevSetup tool, and is listed through devSetup and devPasswords
-            "deploy/keycloak/DpopClient.java", // listed through its tasks
+            "deploy/keycloak/dpop/DpopClient.java", // listed through its tasks
+            "deploy/keycloak/dpop/package-info.java", // the documentation of the package of the client
+            "deploy/keycloak/dpop/Console.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/Failure.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/Http.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/Jose.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/Json.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/KeycloakLogin.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/Keys.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/Oauth.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/Refused.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/SystemConsole.java", // a class of the client, compiled and run by DpopClient.java
+            "deploy/keycloak/dpop/TokenEndpoint.java", // a class of the client, compiled and run by DpopClient.java
             "perf/smoke.sh", // the shim of tools/run that the workflows call, listed through smoke
         )
         val scripts = listOf("deploy", "tools").flatMap { root ->

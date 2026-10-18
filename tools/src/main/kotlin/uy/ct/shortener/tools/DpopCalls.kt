@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - [issuer] is the audience of the assertion: [tokenUrl] without its path, unless given.
  * - The identity provider refusing, an answer that is not a token, and a server that is not there are a [Failure].
  *
- * Does not use `deploy/keycloak/DpopClient.java` (docs/adr/0029-tools-in-kotlin.md).
+ * Does not use `deploy/keycloak/dpop/DpopClient.java` (docs/adr/0029-tools-in-kotlin.md).
  */
 class DpopCalls(
     private val tokenUrl: String = DEFAULT_TOKEN_URL,

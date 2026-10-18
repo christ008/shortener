@@ -26,7 +26,7 @@ import java.util.regex.Pattern
 import kotlin.system.exitProcess
 
 /**
- * The reference client of the Kotlin side: the same commands, arguments and output as `deploy/keycloak/DpopClient.java`, which
+ * The reference client of the Kotlin side: the same commands, arguments and output as `deploy/keycloak/dpop/DpopClient.java`, which
  * the scripts run. `keygen`, `token` and `call` are [DpopCalls] and [ClientKeys]; `register` and `login` are here.
  *
  * - Run it with `./gradlew dpopJar` and `java -jar tools/build/libs/dpop.jar`. It needs the JRE of the tools' build (JDK 25).
@@ -58,11 +58,11 @@ private fun report(message: String, error: Throwable) {
     if (System.getenv("DPOP_DEBUG") != null) error.printStackTrace()
 }
 
-private const val USAGE = """usage: java DpopClient.java keygen CLIENT_ID
-       java DpopClient.java register NAME INVITATION KEY_FILE
-       java DpopClient.java token KEY_FILE CLIENT_ID
-       java DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
-       java DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]"""
+private const val USAGE = """usage: java deploy/keycloak/dpop/DpopClient.java keygen CLIENT_ID
+       java deploy/keycloak/dpop/DpopClient.java register NAME INVITATION KEY_FILE
+       java deploy/keycloak/dpop/DpopClient.java token KEY_FILE CLIENT_ID
+       java deploy/keycloak/dpop/DpopClient.java call KEY_FILE CLIENT_ID METHOD URL [JSON_BODY]
+       java deploy/keycloak/dpop/DpopClient.java login USER PASSWORD METHOD URL [JSON_BODY]"""
 
 private sealed interface Command {
     data class Keygen(val clientId: String) : Command
@@ -176,7 +176,7 @@ private class DpopClient {
             ?: throw Failure("the identity provider registered the client but did not say its id: ${excerpt(response.body(), 300)}")
         println("registered: $clientId")
         println("private key: $keyFile (keep it: it is the only way to be this client, and it cannot be recovered)")
-        println("try it:  java DpopClient.java call $keyFile $clientId GET <API URL>/api/short-links")
+        println("try it:  java deploy/keycloak/dpop/DpopClient.java call $keyFile $clientId GET <API URL>/api/short-links")
     }
 
     /**
