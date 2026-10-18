@@ -209,9 +209,15 @@ configure<JacocoPluginExtension> {
     toolVersion = "0.8.14"
 }
 
-// Kover measures the application in the test JVM, so the JaCoCo agent stays out of the test tasks: it is for the client's JVMs only.
+// Kover measures the application in the test JVM. JaCoCo measures the client's classes in that same JVM, where the suite calls them
+// in process, and the client's own JVMs; it does not measure anything else of the application, so the two do not overlap.
+val clientClasses = listOf("Console", "DpopClient", "Failure", "Http", "Jose", "Json", "KeycloakLogin", "Keys", "Oauth", "Refused",
+    "SystemConsole", "TokenEndpoint").map { "$it*" }
 tasks.withType<Test>().configureEach {
-    extensions.configure<JacocoTaskExtension> { isEnabled = false }
+    extensions.configure<JacocoTaskExtension> {
+        isEnabled = name == "test"
+        includes = clientClasses
+    }
 }
 
 val dpopClientClasses = layout.buildDirectory.dir("dpop-client/classes")
@@ -259,7 +265,7 @@ tasks.register<Test>("dpopJarParity") {
 val dpopClientReport = tasks.register<JacocoReport>("dpopClientReport") {
     group = "verification"
     description = "Writes the JaCoCo report of the DPoP client, which SonarCloud reads beside the Kover one."
-    executionData.setFrom(dpopClientData.map { data -> data.asFileTree.matching { include("*.exec") } })
+    executionData.setFrom(dpopClientData.map { data -> data.asFileTree.matching { include("*.exec") } }, layout.buildDirectory.dir("jacoco").map { dir -> dir.asFileTree.matching { include("test*.exec") } })
     classDirectories.setFrom(dpopClientClasses)
     sourceDirectories.setFrom(files("deploy/keycloak"))
     reports {

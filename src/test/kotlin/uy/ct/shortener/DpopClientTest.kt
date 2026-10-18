@@ -672,7 +672,12 @@ class DpopClientTest {
 
     private fun Any.invokeMethod(name: String, vararg arguments: Any?): Any? = Loaded(javaClass).invokeOn(this, name, *arguments)
 
+    /**
+     * The client's classes, for the calls made in process: the ones the build compiled and measures, when the build gives them, so
+     * that the coverage of these calls is the coverage of those classes; otherwise compiled here.
+     */
     private val compiled: Compiled by lazy {
+        System.getProperty("dpopClient.classes")?.let { return@lazy Compiled(Path.of(it)) }
         val classes = Files.createDirectories(directory.resolve("client-classes"))
         val problems = compileForJdk25(classes)
         check(problems.isEmpty()) { "DpopClient.java does not compile for JDK 25:\n" + problems.joinToString("\n") }
