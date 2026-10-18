@@ -179,12 +179,18 @@ public final class DpopClient {
     }
 
     private void run(Command command) throws Exception {
-        switch (command) {
-            case Keygen(String clientId) -> keygen(clientId);
-            case Register(String name, String invitation, Path keyFile) -> register(name, invitation, keyFile);
-            case FetchToken(Path keyFile, String clientId) -> System.out.println(fetchToken(keyFile, clientId, newKey()).accessToken());
-            case Call(Path keyFile, String clientId, String method, String url, String body) -> printCall(keyFile, clientId, method, url, body);
-            case Login(String user, String password, String method, String url, String body) -> login(user, password, method, url, body);
+        if (command instanceof Keygen keygen) {
+            keygen(keygen.clientId());
+        } else if (command instanceof Register register) {
+            register(register.name(), register.invitation(), register.keyFile());
+        } else if (command instanceof FetchToken fetch) {
+            System.out.println(fetchToken(fetch.keyFile(), fetch.clientId(), newKey()).accessToken());
+        } else if (command instanceof Call call) {
+            printCall(call.keyFile(), call.clientId(), call.method(), call.url(), call.body());
+        } else if (command instanceof Login login) {
+            login(login.user(), login.password(), login.method(), login.url(), login.body());
+        } else {
+            throw new IllegalStateException("unreachable: " + command);
         }
     }
 
@@ -297,7 +303,7 @@ public final class DpopClient {
     /** What the API answered to a call: the status, the {@code Location} if any, the {@code WWW-Authenticate} challenges, the body. */
     private record Answer(int status, String location, List<String> challenges, String body) {}
 
-    private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws Exception {
+    private Answer answer(Path keyFile, String clientId, String method, String url, String body) throws InterruptedException {
         KeyPair dpopKey = newKey();
         Token token = fetchToken(keyFile, clientId, dpopKey);
         HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, token.accessToken(), dpopKey, nonce));
@@ -405,7 +411,7 @@ public final class DpopClient {
         return response.body();
     }
 
-    private boolean accepts(String form, KeyPair dpopKey) throws Exception {
+    private boolean accepts(String form, KeyPair dpopKey) throws InterruptedException {
         try {
             postToken(form, dpopKey);
             return true;
