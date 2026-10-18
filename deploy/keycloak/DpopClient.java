@@ -116,26 +116,59 @@ public final class DpopClient {
             : tokenUrl);
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
     private final Map<String, String> nonces = new HashMap<>();
+    private final Console console;
+
+    private DpopClient(Console console) {
+        this.console = console;
+    }
 
     // ---- the command line -------------------------------------------------------------------------------------------
 
     public static void main(String[] args) {
+        Console console = new SystemConsole();
         Optional<Command> command = parse(args);
         if (command.isEmpty()) {
-            System.err.println(USAGE);
+            console.err(USAGE);
             System.exit(2);
         }
         try {
-            new DpopClient().run(command.get());
+            new DpopClient(console).run(command.get());
         } catch (Failure failure) {
-            System.err.println(ERROR_PREFIX + failure.getMessage());
-            if (System.getenv(DEBUG_VARIABLE) != null) failure.printStackTrace();
+            console.err(ERROR_PREFIX + failure.getMessage());
+            if (System.getenv(DEBUG_VARIABLE) != null) console.trace(failure);
             System.exit(1);
         } catch (Exception unexpected) {
             if (unexpected instanceof InterruptedException) Thread.currentThread().interrupt();
-            System.err.println(ERROR_PREFIX + unexpected);
-            if (System.getenv(DEBUG_VARIABLE) != null) unexpected.printStackTrace();
+            console.err(ERROR_PREFIX + unexpected);
+            if (System.getenv(DEBUG_VARIABLE) != null) console.trace(unexpected);
             System.exit(1);
+        }
+    }
+
+    /** Where the client writes: what it prints for the person or the script, and what it says about a failure. */
+    private interface Console {
+        void out(String text);
+
+        void err(String text);
+
+        void trace(Throwable error);
+    }
+
+    /** The process's own output. The only place that writes to System.out and System.err. */
+    private static final class SystemConsole implements Console {
+        @Override
+        public void out(String text) {
+            System.out.println(text);
+        }
+
+        @Override
+        public void err(String text) {
+            System.err.println(text);
+        }
+
+        @Override
+        public void trace(Throwable error) {
+            error.printStackTrace(System.err);
         }
     }
 
@@ -187,7 +220,7 @@ public final class DpopClient {
         } else if (command instanceof Register register) {
             register(register.name(), register.invitation(), register.keyFile());
         } else if (command instanceof FetchToken fetch) {
-            System.out.println(fetchToken(fetch.keyFile(), fetch.clientId(), newKey()).accessToken());
+            console.out(fetchToken(fetch.keyFile(), fetch.clientId(), newKey()).accessToken());
         } else if (command instanceof Call call) {
             printCall(call.keyFile(), call.clientId(), call.method(), call.url(), call.body());
         } else if (command instanceof Login login) {
@@ -221,10 +254,10 @@ public final class DpopClient {
 
     // ---- the commands -----------------------------------------------------------------------------------------------
 
-    private static void keygen(String clientId) {
+    private void keygen(String clientId) {
         List<Map<String, Object>> jwks = newJwks(clientId);
-        System.out.println(Json.write(jwks.get(0)));
-        System.out.println(Json.write(jwks.get(1)));
+        console.out(Json.write(jwks.get(0)));
+        console.out(Json.write(jwks.get(1)));
     }
 
     /** A new client key as a private JWK and a public one, in that order. */
@@ -288,17 +321,17 @@ public final class DpopClient {
         }
         String clientId = Json.parse(response.body()).string(CLIENT_ID);
         if (clientId == null) throw new Failure("the identity provider registered the client but did not say its id: " + excerpt(response.body(), 300));
-        System.out.println("registered: " + clientId);
-        System.out.println("private key: " + keyFile + " (keep it: it is the only way to be this client, and it cannot be recovered)");
-        System.out.println("try it:  java DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
+        console.out("registered: " + clientId);
+        console.out("private key: " + keyFile + " (keep it: it is the only way to be this client, and it cannot be recovered)");
+        console.out("try it:  java DpopClient.java call " + keyFile + " " + clientId + " GET <API URL>/api/short-links");
     }
 
     private void printCall(Path keyFile, String clientId, String method, String url, String body) throws InterruptedException {
         Answer answer = answer(keyFile, clientId, method, url, body);
-        System.out.println(answer.status());
-        if (answer.location() != null) System.out.println("Location: " + answer.location());
-        answer.challenges().forEach(header -> System.out.println("WWW-Authenticate: " + header));
-        System.out.println(answer.body());
+        console.out(String.valueOf(answer.status()));
+        if (answer.location() != null) console.out("Location: " + answer.location());
+        answer.challenges().forEach(header -> console.out("WWW-Authenticate: " + header));
+        console.out(answer.body());
     }
 
     // ---- a call to the API -------------------------------------------------------------------------------------------
@@ -330,7 +363,7 @@ public final class DpopClient {
         String challenge = B64.encodeToString(sha256(verifier));
         String state = UUID.randomUUID().toString();
 
-        String code = new KeycloakLogin(issuer).signIn(user, password,
+        String code = new KeycloakLogin(issuer, console).signIn(user, password,
                 new KeycloakLogin.AuthorizationRequest(clientId, redirect, scope, state, challenge, jkt));
 
         Json tokens = Json.parse(postToken(form(GRANT_TYPE, "authorization_code", CLIENT_ID, clientId, "code", code,
@@ -338,11 +371,11 @@ public final class DpopClient {
         String accessToken = tokens.string(ACCESS_TOKEN);
         String refreshToken = tokens.string(REFRESH_TOKEN);
         if (accessToken == null) throw new Failure("the token endpoint did not return an access_token: " + tokens);
-        System.out.println("2. token_type " + tokens.string("token_type") + ", refresh token "
+        console.out("2. token_type " + tokens.string("token_type") + ", refresh token "
                 + (refreshToken == null ? "NOT issued" : "issued"));
-        System.out.println("3. access token header " + jwtPart(accessToken, 0));
-        System.out.println("   claims " + jwtPart(accessToken, 1));
-        System.out.println("   bound to this client's key: " + jkt.equals(confirmationOf(accessToken)));
+        console.out("3. access token header " + jwtPart(accessToken, 0));
+        console.out("   claims " + jwtPart(accessToken, 1));
+        console.out("   bound to this client's key: " + jkt.equals(confirmationOf(accessToken)));
 
         String latestAccess = accessToken;
         if (refreshToken != null) {
@@ -350,20 +383,20 @@ public final class DpopClient {
             latestAccess = refreshed.string(ACCESS_TOKEN);
             if (latestAccess == null) throw new Failure("refreshing did not return an access_token: " + refreshed);
             String rotated = refreshed.string(REFRESH_TOKEN);
-            System.out.println("4. refreshed with the same key; new token bound to it: " + jkt.equals(confirmationOf(latestAccess))
+            console.out("4. refreshed with the same key; new token bound to it: " + jkt.equals(confirmationOf(latestAccess))
                     + ", refresh token rotated: " + (rotated != null && !refreshToken.equals(rotated)));
-            System.out.println("   reusing the old refresh token: " + (accepts(refreshForm(clientId, refreshToken), dpopKey)
+            console.out("   reusing the old refresh token: " + (accepts(refreshForm(clientId, refreshToken), dpopKey)
                     ? "ACCEPTED (rotation is not enforced)" : "refused, as rotation requires"));
             String refreshWith = rotated != null ? rotated : refreshToken;
-            System.out.println("   refreshing with a different key: " + (accepts(refreshForm(clientId, refreshWith), newKey())
+            console.out("   refreshing with a different key: " + (accepts(refreshForm(clientId, refreshWith), newKey())
                     ? "ACCEPTED (the refresh token is not bound to the key)" : "refused"));
         }
 
         String accessToUse = latestAccess;
         HttpResponse<String> response = sendProved(url, nonce -> apiRequest(method, url, body, accessToUse, dpopKey, nonce));
-        System.out.println("5. " + method + " " + url + " -> " + response.statusCode());
-        response.headers().allValues(WWW_AUTHENTICATE).forEach(header -> System.out.println("   WWW-Authenticate: " + header));
-        System.out.println("   " + response.body());
+        console.out("5. " + method + " " + url + " -> " + response.statusCode());
+        response.headers().allValues(WWW_AUTHENTICATE).forEach(header -> console.out("   WWW-Authenticate: " + header));
+        console.out("   " + response.body());
     }
 
     // ---- the identity provider --------------------------------------------------------------------------------------
@@ -436,9 +469,11 @@ public final class DpopClient {
         record AuthorizationRequest(String clientId, String redirect, String scope, String state, String challenge, String jkt) {}
 
         private final String issuer;
+        private final Console console;
 
-        KeycloakLogin(String issuer) {
+        KeycloakLogin(String issuer, Console console) {
             this.issuer = issuer;
+            this.console = console;
         }
 
         private static Map<String, String> queryOf(String location) {
@@ -483,7 +518,7 @@ public final class DpopClient {
             String code = returned.get("code");
             if (code == null) throw new Failure("the redirect carries no code: " + location);
             int query = location.indexOf('?');
-            System.out.println("1. signed in as " + user + "; redirected to " + (query < 0 ? location : location.substring(0, query)) + " with a code");
+            console.out("1. signed in as " + user + "; redirected to " + (query < 0 ? location : location.substring(0, query)) + " with a code");
             return code;
         }
 
