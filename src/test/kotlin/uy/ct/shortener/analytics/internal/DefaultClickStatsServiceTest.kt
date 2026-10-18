@@ -6,6 +6,12 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import uy.ct.shortener.analytics.DeviceCounts
 import uy.ct.shortener.analytics.Granularity
+import uy.ct.shortener.analytics.HostVisitors
+import uy.ct.shortener.analytics.Language
+import uy.ct.shortener.analytics.LanguageVisitors
+import uy.ct.shortener.analytics.Languages
+import uy.ct.shortener.analytics.Referrer
+import uy.ct.shortener.analytics.Referrers
 import uy.ct.shortener.analytics.StatsWindow
 import uy.ct.shortener.shortlink.Actor
 import uy.ct.shortener.shortlink.ClaimResult
@@ -28,12 +34,21 @@ class DefaultClickStatsServiceTest {
 
     private val rows = mutableListOf<ClickRow>()
 
+    private val breakdownRows = mutableListOf<BreakdownRow>()
+
     private val reads = mutableListOf<Pair<ShortCode, StatsWindow>>()
+
+    private val breakdownReads = mutableListOf<Pair<ShortCode, StatsWindow>>()
 
     private val repository = object : ClickStatsRepository {
         override fun read(shortCode: ShortCode, window: StatsWindow): List<ClickRow> {
             reads += shortCode to window
             return rows.toList()
+        }
+
+        override fun breakdown(shortCode: ShortCode, days: StatsWindow): List<BreakdownRow> {
+            breakdownReads += shortCode to days
+            return breakdownRows.toList()
         }
     }
 
@@ -108,5 +123,87 @@ class DefaultClickStatsServiceTest {
 
         assertThat(stats.points).hasSize(3)
         assertThat(stats.total).isEqualTo(DeviceCounts.NONE)
+    }
+
+    @Test
+    fun `the breakdown covers the whole UTC days the window touches`() {
+        val stats = service.stats(known, StatsWindow.of(Granularity.Hour, at("2026-10-12T22:00:00Z"), at("2026-10-13T02:00:00Z")))
+
+        assertThat(breakdownReads.single().second).isEqualTo(StatsWindow(Granularity.Day, at("2026-10-12T00:00:00Z"), at("2026-10-14T00:00:00Z")))
+        assertThat(stats.breakdown.start).isEqualTo(at("2026-10-12T00:00:00Z"))
+        assertThat(stats.breakdown.end).isEqualTo(at("2026-10-14T00:00:00Z"))
+    }
+
+    @Test
+    fun `shows the hosts with the most visitors first, ties by name, beside those that came direct`() {
+        breakdownRows += listOf(
+            BreakdownRow.FromReferrer(Referrer.Host("b.example"), 3),
+            BreakdownRow.FromReferrer(Referrer.Host("a.example"), 3),
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 9),
+            BreakdownRow.FromReferrer(Referrer.Direct, 4),
+        )
+
+        val referrers = service.stats(known, window).breakdown.referrers
+
+        assertThat(referrers.hosts).containsExactly(HostVisitors("t.co", 9), HostVisitors("a.example", 3), HostVisitors("b.example", 3))
+        assertThat(referrers.direct).isEqualTo(4)
+        assertThat(referrers.other).isZero()
+    }
+
+    @Test
+    fun `adds the hosts past the top 20 to other, with what instances already counted as other`() {
+        breakdownRows += (1..25).map { BreakdownRow.FromReferrer(Referrer.Host("h$it.example"), 100L - it) }
+        breakdownRows += BreakdownRow.FromReferrer(Referrer.Other, 7)
+
+        val referrers = service.stats(known, window).breakdown.referrers
+
+        assertThat(referrers.hosts).hasSize(20)
+        assertThat(referrers.hosts.first()).isEqualTo(HostVisitors("h1.example", 99))
+        assertThat(referrers.hosts.last()).isEqualTo(HostVisitors("h20.example", 80))
+        assertThat(referrers.other).isEqualTo(7L + (21..25).sumOf { 100L - it })
+    }
+
+    @Test
+    fun `shows every language, most first, and those it could not read`() {
+        breakdownRows += listOf(
+            BreakdownRow.InLanguage(Language.Code("en"), 2),
+            BreakdownRow.InLanguage(Language.Code("es"), 5),
+            BreakdownRow.InLanguage(Language.Unknown, 1),
+        )
+
+        val languages = service.stats(known, window).breakdown.languages
+
+        assertThat(languages.codes).containsExactly(LanguageVisitors("es", 5), LanguageVisitors("en", 2))
+        assertThat(languages.unknown).isEqualTo(1)
+    }
+
+    @Test
+    fun `adds up a host or a language that comes in more than one row`() {
+        breakdownRows += listOf(
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 2),
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 3),
+            BreakdownRow.InLanguage(Language.Code("es"), 1),
+            BreakdownRow.InLanguage(Language.Code("es"), 4),
+        )
+
+        val breakdown = service.stats(known, window).breakdown
+
+        assertThat(breakdown.referrers.hosts).containsExactly(HostVisitors("t.co", 5))
+        assertThat(breakdown.languages.codes).containsExactly(LanguageVisitors("es", 5))
+    }
+
+    @Test
+    fun `a link nobody followed has an empty breakdown, not an absent one`() {
+        val breakdown = service.stats(known, window).breakdown
+
+        assertThat(breakdown.referrers).isEqualTo(Referrers(0, emptyList(), 0))
+        assertThat(breakdown.languages).isEqualTo(Languages(emptyList(), 0))
+    }
+
+    @Test
+    fun `reads no breakdown for a link the caller may not see`() {
+        assertFailsWith<ShortLinkNotFoundException> { service.stats(ShortCode("other-code"), window) }
+
+        assertThat(breakdownReads).isEmpty()
     }
 }

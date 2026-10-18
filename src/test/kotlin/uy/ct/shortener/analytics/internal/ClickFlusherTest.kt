@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessResourceFailureException
 import uy.ct.shortener.LogCapture
+import uy.ct.shortener.analytics.Language
+import uy.ct.shortener.analytics.Referrer
 import uy.ct.shortener.shortlink.ShortCode
 import java.time.Duration
 import java.time.Instant
@@ -20,7 +22,7 @@ class ClickFlusherTest {
 
     private val registry = SimpleMeterRegistry()
 
-    private val aggregator = ClickAggregator(100, MutableClock(Instant.parse("2026-10-12T10:15:00Z")), registry)
+    private val aggregator = ClickAggregator(100, MutableClock(Instant.parse("2026-10-12T10:15:00Z")), ReferrerAdmission(50, 100, registry), registry)
 
     private val store = RecordingStore()
 
@@ -28,7 +30,8 @@ class ClickFlusherTest {
 
     private fun flusher(batchSize: Int = 500) = ClickFlusher(aggregator, store, batchSize, Duration.ofSeconds(10), registry, logger)
 
-    private fun record(code: String, times: Int = 1) = repeat(times) { aggregator.record(ShortCode(code), DeviceClass.DESKTOP) }
+    private fun record(code: String, times: Int = 1) =
+        repeat(times) { aggregator.record(Click(ShortCode(code), DeviceClass.BOT, Referrer.Direct, Language.Unknown)) }
 
     private fun flushes(outcome: String) = registry.timer("analytics.flush", "outcome", outcome).count()
 

@@ -7,11 +7,16 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import uy.ct.shortener.analytics.Breakdown
 import uy.ct.shortener.analytics.ClickPoint
 import uy.ct.shortener.analytics.ClickStats
 import uy.ct.shortener.analytics.ClickStatsService
 import uy.ct.shortener.analytics.DeviceCounts
 import uy.ct.shortener.analytics.Granularity
+import uy.ct.shortener.analytics.HostVisitors
+import uy.ct.shortener.analytics.LanguageVisitors
+import uy.ct.shortener.analytics.Languages
+import uy.ct.shortener.analytics.Referrers
 import uy.ct.shortener.analytics.StatsWindow
 import uy.ct.shortener.analytics.internal.MutableClock
 import uy.ct.shortener.shortlink.ShortCode
@@ -31,11 +36,16 @@ class ClickStatsWebTest {
 
     private val counts = mutableMapOf<Instant, DeviceCounts>()
 
+    private var referrers = Referrers(0, emptyList(), 0)
+
+    private var languages = Languages(emptyList(), 0)
+
     private val service = object : ClickStatsService {
         override fun stats(shortCode: ShortCode, window: StatsWindow): ClickStats {
             if (shortCode.value == "missing") throw ShortLinkNotFoundException(shortCode)
             asked += shortCode to window
-            return ClickStats(shortCode, window, window.buckets.map { ClickPoint(it, counts.getOrDefault(it, DeviceCounts.NONE)) })
+            val days = StatsWindow.of(Granularity.Day, window.start, window.end)
+            return ClickStats(shortCode, window, window.buckets.map { ClickPoint(it, counts.getOrDefault(it, DeviceCounts.NONE)) }, Breakdown(days.start, days.end, referrers, languages))
         }
     }
 
@@ -89,9 +99,11 @@ class ClickStatsWebTest {
     }
 
     @Test
-    fun `answers the link, the window it covered, the total and a point for every bucket`() {
+    fun `answers the link, the window it covered, the total, a point for every bucket and the breakdown of whole days`() {
         counts[at("2026-10-12T09:00:00Z")] = DeviceCounts(desktop = 5, mobile = 3, bot = 2)
         counts[at("2026-10-12T10:00:00Z")] = DeviceCounts(desktop = 1, mobile = 0, bot = 0)
+        referrers = Referrers(direct = 4, hosts = listOf(HostVisitors("t.co", 3)), other = 2)
+        languages = Languages(codes = listOf(LanguageVisitors("es", 6)), unknown = 3)
 
         val body = stats("?granularity=hour&from=2026-10-12T09:00:00Z&to=2026-10-12T11:00:00Z").response.contentAsString
 
@@ -99,7 +111,10 @@ class ClickStatsWebTest {
             """{"shortCode":"abc1234","granularity":"hour","from":"2026-10-12T09:00:00Z","to":"2026-10-12T11:00:00Z",""" +
                 """"total":{"visitors":9,"desktop":6,"mobile":3,"bot":2},""" +
                 """"series":[{"start":"2026-10-12T09:00:00Z","visitors":8,"desktop":5,"mobile":3,"bot":2},""" +
-                """{"start":"2026-10-12T10:00:00Z","visitors":1,"desktop":1,"mobile":0,"bot":0}]}""",
+                """{"start":"2026-10-12T10:00:00Z","visitors":1,"desktop":1,"mobile":0,"bot":0}],""" +
+                """"breakdown":{"from":"2026-10-12T00:00:00Z","to":"2026-10-13T00:00:00Z",""" +
+                """"referrers":{"direct":4,"hosts":[{"host":"t.co","visitors":3}],"other":2},""" +
+                """"languages":{"codes":[{"code":"es","visitors":6}],"unknown":3}}}""",
         )
     }
 

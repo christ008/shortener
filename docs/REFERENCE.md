@@ -153,8 +153,8 @@ credentials from Compose through Spring Boot's Docker Compose support, and reach
 ### Everything else
 
 Scope names (`shortener.shortlink.scopes.*`), the claim that names the owner (`shortener.security.client-id-claim`, `owner`), the
-audience, the access-token type and the click counting (`shortener.analytics.*`: `enabled`, `flush-interval` 10 s, `max-entries` 50,000
-and `batch-size` 500, [ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md)) are properties with defaults in `application.yaml`. The stack does not pass them through; to
+audience, the access-token type and the click counting (`shortener.analytics.*`: `enabled`, `flush-interval` 10 s, `max-entries` 50,000,
+`batch-size` 500, `referrers.per-link-and-day` 50 and `referrers.tracked` 2,000, [ADR 0037](adr/0037-click-analytics-counted-off-the-hot-path.md)) are properties with defaults in `application.yaml`. The stack does not pass them through; to
 change one, expose it as described under [Tunables](#tunables).
 
 ## Scripts
