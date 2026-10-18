@@ -8,11 +8,15 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace
 import org.springframework.boot.jdbc.test.autoconfigure.JdbcTest
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.JdbcTemplate
 import uy.ct.shortener.TestcontainersConfiguration
 import uy.ct.shortener.analytics.internal.RetentionStep
+import java.sql.SQLException
 import java.time.LocalDate
 import javax.sql.DataSource
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /**
  * `analytics_retention` (migration V9) against real Postgres, through [JdbcRetentionStore]: one step folds the oldest UTC day of
@@ -185,5 +189,22 @@ class JdbcRetentionStoreTest {
         }
 
         assertThat(store.step()).isEqualTo(RetentionStep.Progress(hoursFolded = 1, daysFolded = 0))
+    }
+
+    @Test
+    fun `a month of daily counts is stored by its first day`() {
+        assertRefusedByCheck(
+            "insert into link_click_monthly_device (short_code, month, device_class, clicks) values ('m', date '2024-02-15', 'bot', array_fill(0::bigint, array[31]))",
+        )
+    }
+
+    @Test
+    fun `a month of referrers and languages is stored by its first day`() {
+        assertRefusedByCheck("insert into link_click_monthly (short_code, month, dimension, value, clicks) values ('m', date '2024-02-15', 'referrer', 't.co', 1)")
+    }
+
+    private fun assertRefusedByCheck(statement: String) {
+        val failure = assertFailsWith<DataIntegrityViolationException> { jdbc.update(statement) }
+        assertThat(assertIs<SQLException>(failure.mostSpecificCause).sqlState).isEqualTo("23514")
     }
 }

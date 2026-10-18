@@ -28,7 +28,7 @@ CREATE TABLE link_click_monthly_device
     device_class TEXT     NOT NULL,
     clicks       BIGINT[] NOT NULL,
     CONSTRAINT link_click_monthly_device_pkey PRIMARY KEY (short_code, month, device_class),
-    CONSTRAINT link_click_monthly_device_month CHECK (month = date_trunc('month', month)::DATE),
+    CONSTRAINT link_click_monthly_device_month CHECK (extract(DAY FROM month) = 1),
     CONSTRAINT link_click_monthly_device_class CHECK (device_class IN ('desktop', 'mobile', 'bot')),
     CONSTRAINT link_click_monthly_device_days CHECK (cardinality(clicks) = 31)
 );
@@ -42,7 +42,7 @@ CREATE TABLE link_click_monthly
     value      TEXT   NOT NULL,
     clicks     BIGINT NOT NULL,
     CONSTRAINT link_click_monthly_pkey PRIMARY KEY (short_code, month, dimension, value),
-    CONSTRAINT link_click_monthly_month CHECK (month = date_trunc('month', month)::DATE),
+    CONSTRAINT link_click_monthly_month CHECK (extract(DAY FROM month) = 1),
     CONSTRAINT link_click_monthly_dimension CHECK (dimension IN ('referrer', 'language')),
     CONSTRAINT link_click_monthly_value_length CHECK (length(value) BETWEEN 1 AND 255),
     CONSTRAINT link_click_monthly_clicks_positive CHECK (clicks > 0)
