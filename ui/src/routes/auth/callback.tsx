@@ -1,50 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { Anchor, Center, Stack, Text } from '@mantine/core';
+import { createFileRoute, Link, redirect } from '@tanstack/react-router';
+import { Anchor, Center, Stack } from '@mantine/core';
 import { completeSignIn } from '../../auth/session';
 import { ProblemAlert } from '../../components/ProblemAlert';
 
+/**
+ * Where the identity provider sends the person back. The code is exchanged once, by the loader: a route is not preloaded, so a
+ * link that is hovered cannot spend the code first. A success goes to the links, and a failure is shown here.
+ */
 export const Route = createFileRoute('/auth/callback')({
+    preload: false,
+    loader: async () => {
+        try {
+            await completeSignIn(new URL(window.location.href));
+        } catch (error) {
+            return { problem: error instanceof Error ? error.message : 'Sign-in failed.' };
+        }
+        throw redirect({
+            to: '/links',
+            search: { page: 0, sort: 'createdAt,desc' },
+            replace: true,
+        });
+    },
     component: CallbackPage,
 });
 
 function CallbackPage() {
-    const navigate = useNavigate();
-    const [problem, setProblem] = useState<string | null>(null);
-    // The code may be used once. A second run of the effect, from development's strict mode, must not try again.
-    const started = useRef(false);
-
-    useEffect(() => {
-        if (started.current) {
-            return;
-        }
-        started.current = true;
-        completeSignIn(new URL(window.location.href))
-            .then(() =>
-                navigate({
-                    to: '/links',
-                    search: { page: 0, sort: 'createdAt,desc' },
-                    replace: true,
-                })
-            )
-            .catch((error: unknown) =>
-                setProblem(error instanceof Error ? error.message : 'Sign-in failed.')
-            );
-    }, [navigate]);
-
+    const { problem } = Route.useLoaderData();
     return (
         <Center mih="100vh" p="md">
             <Stack align="center" maw={420}>
-                {problem ? (
-                    <>
-                        <ProblemAlert message={problem} />
-                        <Anchor component={Link} to="/">
-                            Back to sign-in
-                        </Anchor>
-                    </>
-                ) : (
-                    <Text c="dimmed">Signing you in…</Text>
-                )}
+                <ProblemAlert message={problem} />
+                <Anchor component={Link} to="/">
+                    Back to sign-in
+                </Anchor>
             </Stack>
         </Center>
     );

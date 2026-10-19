@@ -10,7 +10,9 @@ ENV VITE_ISSUER=${VITE_ISSUER}
 WORKDIR /app
 RUN corepack enable
 COPY .yarnrc.yml package.json yarn.lock ./
-RUN yarn install --immutable
+# The build scripts of the dependencies are not run: the app needs none of them to build, and an install script is code that runs
+# with the build's secrets in reach.
+RUN yarn install --immutable --mode=skip-build
 COPY . .
 RUN yarn build
 

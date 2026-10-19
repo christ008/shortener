@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { queryOptions, useQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { Alert, Button, Group, Pagination, Select, Stack, Text } from '@mantine/core';
 import { api, dpop } from '../api/client';
@@ -10,6 +10,7 @@ import { CreateLinkModal } from '../components/CreateLinkModal';
 import { DisableConfirm } from '../components/DisableConfirm';
 import { LinkTable, type ShortLink } from '../components/LinkTable';
 import { ProblemAlert } from '../components/ProblemAlert';
+import { queryClient } from '../query';
 
 const PAGE_SIZE = 20;
 const SORTS = ['createdAt,desc', 'createdAt,asc', 'shortCode,asc'] as const;
@@ -17,33 +18,12 @@ type Sort = (typeof SORTS)[number];
 
 type LinksSearch = { page: number; sort: Sort };
 
-export const Route = createFileRoute('/links')({
-    validateSearch: (search: Record<string, unknown>): LinksSearch => {
-        const page = Number(search.page);
-        return {
-            // A page that is not a number, or is negative, is the first one. A page past the end is corrected by the screen.
-            page: Number.isInteger(page) && page >= 0 ? page : 0,
-            sort: SORTS.includes(search.sort as Sort) ? (search.sort as Sort) : 'createdAt,desc',
-        };
-    },
-    beforeLoad: async () => {
-        if (!(await restoreSession())) {
-            throw redirect({ to: '/' });
-        }
-    },
-    component: LinksPage,
-});
-
 /** A failed read, with the message to show. */
 class ReadError extends Error {}
 
-function LinksPage() {
-    const { page, sort } = Route.useSearch();
-    const navigate = Route.useNavigate();
-    const [creating, setCreating] = useState(false);
-    const [disabling, setDisabling] = useState<ShortLink | null>(null);
-
-    const links = useQuery({
+/** One page of the person's links, in the query cache: the screen and the route's loader read the same entry. */
+const linksQuery = (page: number, sort: Sort) =>
+    queryOptions({
         queryKey: ['links', page, sort],
         queryFn: async () => {
             const { data, error, response } = await api.GET('/api/short-links', {
@@ -62,13 +42,42 @@ function LinksPage() {
         },
     });
 
-    // A page past the end, after links were disabled or removed, shows the last page instead of an empty table.
-    const lastPage = Math.max(0, (links.data?.totalPages ?? 1) - 1);
-    useEffect(() => {
-        if (links.data && page > lastPage) {
-            void navigate({ search: { page: lastPage, sort } });
+export const Route = createFileRoute('/links')({
+    validateSearch: (search: Record<string, unknown>): LinksSearch => {
+        const page = Number(search.page);
+        return {
+            // A page that is not a number, or is negative, is the first one.
+            page: Number.isInteger(page) && page >= 0 ? page : 0,
+            sort: SORTS.includes(search.sort as Sort) ? (search.sort as Sort) : 'createdAt,desc',
+        };
+    },
+    loaderDeps: ({ search }) => ({ page: search.page, sort: search.sort }),
+    beforeLoad: async () => {
+        if (!(await restoreSession())) {
+            throw redirect({ to: '/' });
         }
-    }, [links.data, page, lastPage, sort, navigate]);
+    },
+    // A page past the end, after links were removed, goes to the last page. The loader decides it from the cached page, so
+    // the screen never renders an empty table for a page that does not exist. A read that fails is shown by the screen.
+    loader: async ({ deps }) => {
+        const data = await queryClient
+            .query(linksQuery(deps.page, deps.sort))
+            .catch(() => undefined);
+        const lastPage = Math.max(0, (data?.totalPages ?? 1) - 1);
+        if (data && deps.page > lastPage) {
+            throw redirect({ to: '/links', search: { page: lastPage, sort: deps.sort } });
+        }
+    },
+    component: LinksPage,
+});
+
+function LinksPage() {
+    const { page, sort } = Route.useSearch();
+    const navigate = Route.useNavigate();
+    const [creating, setCreating] = useState(false);
+    const [disabling, setDisabling] = useState<ShortLink | null>(null);
+
+    const links = useQuery(linksQuery(page, sort));
 
     const failure =
         links.error instanceof ReadError

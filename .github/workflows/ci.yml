@@ -51,6 +51,17 @@ jobs:
         with:
           name: coverage
           path: build/reports/kover
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ui/.node-version
+      - name: The UI: formatting, lint and types, the build, and the unit tests with their coverage (lcov, for SonarCloud)
+        working-directory: ui
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn check
+          yarn build
+          yarn vitest --coverage
       - name: Send the analysis and the coverage to SonarCloud
         if: success() && env.SONAR_TOKEN != ''  # a pull request from a fork has no secrets
         run: ./gradlew sonar -x test

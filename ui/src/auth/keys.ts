@@ -26,7 +26,7 @@ function openDatabase(): Promise<IDBDatabase> {
         const request = indexedDB.open(DB_NAME, 1);
         request.onupgradeneeded = () => request.result.createObjectStore(STORE);
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
     });
     return database;
 }
@@ -39,7 +39,7 @@ async function run<T>(
     return new Promise((resolve, reject) => {
         const request = action(db.transaction(STORE, mode).objectStore(STORE));
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
     });
 }
 

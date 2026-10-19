@@ -6,7 +6,7 @@ import type { paths } from './schema';
  * The typed client of the API. Its types come from `docs/openapi.yaml` (`yarn gen:api`), so a change to the contract that the
  * UI does not follow fails the type check. Every request goes through `authorizedFetch`, which signs it.
  */
-export const api = createClient<paths>({ baseUrl: window.location.origin, fetch: authorizedFetch });
+export const api = createClient<paths>({ fetch: authorizedFetch });
 
 /**
  * The `DPoP` header the contract requires on every operation. `authorizedFetch` writes the real proof, for the request it

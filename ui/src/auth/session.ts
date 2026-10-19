@@ -289,7 +289,8 @@ export async function authorizedFetch(request: Request): Promise<Response> {
     const headers = new Headers(request.headers);
     headers.delete('Authorization');
     headers.delete('DPoP');
-    const url = new URL(request.url);
+    // Relative to the page: the API client asks for its paths from the page's own origin, and only the browser has one.
+    const url = new URL(request.url, window.location.href);
     const send = async (force: boolean) => {
         const session = await usableSession(force);
         return oauth.protectedResourceRequest(
