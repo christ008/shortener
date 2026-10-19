@@ -53,11 +53,20 @@ export function CreateLinkModal({ opened, onClose }: { opened: boolean; onClose:
                 return;
             }
             await queryClient.invalidateQueries({ queryKey: ['links'] });
-            notifications.show({
-                title: 'Link created',
-                message: data?.shortUrl ?? 'Your new link is ready.',
-                color: 'green',
-            });
+            // A 200 on a chosen code means the code already pointed to this target: nothing was created, and that is not an error.
+            if (response.status === 200) {
+                notifications.show({
+                    title: 'Already yours',
+                    message: data?.shortUrl ?? 'That code already points to this target.',
+                    color: 'blue',
+                });
+            } else {
+                notifications.show({
+                    title: 'Link created',
+                    message: data?.shortUrl ?? 'Your new link is ready.',
+                    color: 'green',
+                });
+            }
             form.reset();
             setProblem(null);
             onClose();
