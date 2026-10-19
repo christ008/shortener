@@ -226,7 +226,7 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "@PUBLIC_URL@/app/*"
+        "@PUBLIC_URL@/app/auth/callback"
       ],
       "webOrigins": [
         "@PUBLIC_URL@"
@@ -235,7 +235,7 @@
         "pkce.code.challenge.method": "S256",
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true",
-        "post.logout.redirect.uris": "@PUBLIC_URL@/app/*"
+        "post.logout.redirect.uris": "@PUBLIC_URL@/app/"
       },
       "defaultClientScopes": [
         "shortlinks:create",

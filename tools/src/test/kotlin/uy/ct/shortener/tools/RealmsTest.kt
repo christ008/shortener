@@ -43,7 +43,7 @@ class RealmsTest {
         assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
         val clients = parse(realm).clients()
         assertThat(clients.keys).containsExactly("demo-client", "admin-client", "shortener-ui")
-        assertThat(clients.getValue("shortener-ui")["redirectUris"]).isEqualTo(listOf("https://shortener.example.com/app/*"))
+        assertThat(clients.getValue("shortener-ui")["redirectUris"]).isEqualTo(listOf("https://shortener.example.com/app/auth/callback"))
         assertThat(clients.getValue("demo-client").attributes()["jwks.string"]).isEqualTo("""{"keys":[${Files.readString(demo)}]}""")
         assertThat(clients.getValue("admin-client").attributes()["jwks.string"]).isEqualTo("""{"keys":[${Files.readString(admin)}]}""")
         assertThat(Files.readString(realm)).doesNotContain("@JWKS", "@PASSWORD").doesNotContain("\"d\"")
@@ -82,6 +82,9 @@ class RealmsTest {
         assertThat(ui.attributes()["dpop.bound.access.tokens"]).isEqualTo("true")
         assertThat(ui["defaultClientScopes"]).isEqualTo(listOf("shortlinks:create", "shortlinks:claim", "shortlinks:read", "shortlinks:delete"))
         assertThat(ui["webOrigins"]).isEqualTo(listOf("https://shortener.example.com"))
+        assertThat(ui.attributes()["post.logout.redirect.uris"]).isEqualTo("https://shortener.example.com/app/")
+        // A stable address needs no wildcard: the callback is the one page the code is sent back to.
+        assertThat(ui["redirectUris"].toString()).doesNotContain("*")
     }
 
     @Test
