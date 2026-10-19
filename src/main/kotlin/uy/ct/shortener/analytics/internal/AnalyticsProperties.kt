@@ -11,6 +11,8 @@ import java.time.Duration
  * - [maxEntries]: the most distinct (link, hour, class) counts an instance holds. Past it new ones are dropped and counted as dropped.
  * - [batchSize]: the most counts written by one statement.
  * - [referrers]: how many referrer hosts an instance counts for a link in a day, and for how many (link, day) pairs it remembers them.
+ * - [retention]: whether and how often an instance applies the retention of the counts. It runs even when counting is off: what was
+ *   counted still has to go.
  */
 @ConfigurationProperties("shortener.analytics")
 data class AnalyticsProperties(
@@ -19,6 +21,7 @@ data class AnalyticsProperties(
     val maxEntries: Int = 50_000,
     val batchSize: Int = 500,
     val referrers: Referrers = Referrers(),
+    val retention: Retention = Retention(),
 ) {
 
     /**
@@ -32,6 +35,25 @@ data class AnalyticsProperties(
         init {
             require(perLinkAndDay > 0) { "an instance must admit at least one referrer host per link and day, was $perLinkAndDay" }
             require(tracked > 0) { "an instance must remember the hosts of at least one link and day, was $tracked" }
+        }
+    }
+
+    /**
+     * `shortener.analytics.retention.*`, see [AnalyticsRetention]. The periods themselves, 90 days of hours and 730 of days, are the
+     * database's (`analytics_retention`, ADR 0043), not settings.
+     *
+     * - [enabled]: when false the instance never applies it. Another instance, or a call by hand, still can.
+     * - [initialDelay]: how long after the start the first run waits, 1 minute.
+     * - [interval]: the time between the end of one run and the start of the next, 24 hours.
+     */
+    data class Retention(
+        val enabled: Boolean = true,
+        val initialDelay: Duration = Duration.ofMinutes(1),
+        val interval: Duration = Duration.ofHours(24),
+    ) {
+        init {
+            require(!initialDelay.isNegative) { "the analytics retention's first delay cannot be negative, was $initialDelay" }
+            require(!interval.isNegative && !interval.isZero) { "the analytics retention interval must be positive, was $interval" }
         }
     }
 

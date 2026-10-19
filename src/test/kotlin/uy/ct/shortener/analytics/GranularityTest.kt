@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /**
  * What differs between an hour and a day as a bucket of clicks: where a moment's bucket starts, where the next one does, how wide
@@ -57,5 +58,17 @@ class GranularityTest {
             assertThat(failure.statusCode.value()).isEqualTo(400)
             assertThat(failure.body.detail).contains("'hour'", "'day'")
         }
+    }
+
+    @Test
+    fun `hours are kept for 90 days, counted from the start of today in UTC, and days for ever`() {
+        val now = Instant.parse("2026-10-14T23:59:59Z")
+        val hours = assertIs<Kept.For>(Granularity.Hour.kept)
+
+        assertThat(hours.period).isEqualTo(Duration.ofDays(90))
+        assertThat(hours.since(now)).isEqualTo(Instant.parse("2026-07-16T00:00:00Z"))
+        assertThat(hours.otherwise).contains("by day")
+        assertThat(hours.period).isGreaterThanOrEqualTo(Granularity.Hour.maxSpan)
+        assertThat(Granularity.Day.kept).isEqualTo(Kept.Forever)
     }
 }

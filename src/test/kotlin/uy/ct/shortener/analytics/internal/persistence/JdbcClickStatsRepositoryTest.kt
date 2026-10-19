@@ -125,11 +125,11 @@ class JdbcClickStatsRepositoryTest {
         val rows = repository.breakdown(ShortCode("stats-a"), days("2026-10-12T00:00:00Z", "2026-10-14T00:00:00Z"))
 
         assertThat(rows).containsExactlyInAnyOrder(
-            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 7),
-            BreakdownRow.FromReferrer(Referrer.Direct, 2),
-            BreakdownRow.FromReferrer(Referrer.Other, 1),
-            BreakdownRow.InLanguage(Language.Code("es"), 5),
-            BreakdownRow.InLanguage(Language.Unknown, 1),
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 7, at("2026-10-12T00:00:00Z"), at("2026-10-14T00:00:00Z")),
+            BreakdownRow.FromReferrer(Referrer.Direct, 2, at("2026-10-12T00:00:00Z"), at("2026-10-13T00:00:00Z")),
+            BreakdownRow.FromReferrer(Referrer.Other, 1, at("2026-10-13T00:00:00Z"), at("2026-10-14T00:00:00Z")),
+            BreakdownRow.InLanguage(Language.Code("es"), 5, at("2026-10-12T00:00:00Z"), at("2026-10-13T00:00:00Z")),
+            BreakdownRow.InLanguage(Language.Unknown, 1, at("2026-10-13T00:00:00Z"), at("2026-10-14T00:00:00Z")),
         )
     }
 
@@ -138,10 +138,58 @@ class JdbcClickStatsRepositoryTest {
         val rows = repository.breakdown(ShortCode("stats-a"), days("2026-10-13T00:00:00Z", "2026-10-14T00:00:00Z"))
 
         assertThat(rows).containsExactlyInAnyOrder(
-            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 3),
-            BreakdownRow.FromReferrer(Referrer.Other, 1),
-            BreakdownRow.InLanguage(Language.Unknown, 1),
+            BreakdownRow.FromReferrer(Referrer.Host("t.co"), 3, at("2026-10-13T00:00:00Z"), at("2026-10-14T00:00:00Z")),
+            BreakdownRow.FromReferrer(Referrer.Other, 1, at("2026-10-13T00:00:00Z"), at("2026-10-14T00:00:00Z")),
+            BreakdownRow.InLanguage(Language.Unknown, 1, at("2026-10-13T00:00:00Z"), at("2026-10-14T00:00:00Z")),
         )
         assertThat(repository.breakdown(ShortCode("never-seen"), days("2026-10-12T00:00:00Z", "2026-10-13T00:00:00Z"))).isEmpty()
+    }
+
+    @Test
+    fun `a window of days adds the days that retention folded to the ones still in hours`() {
+        jdbc.update("insert into link_click_daily_device (short_code, day, device_class, clicks) values ('stats-a', date '2026-10-11', 'desktop', 9), ('stats-a', date '2026-10-11', 'bot', 1)")
+
+        val rows = repository.read(ShortCode("stats-a"), days("2026-10-11T00:00:00Z", "2026-10-13T00:00:00Z"))
+
+        assertThat(rows).containsExactlyInAnyOrder(
+            ClickRow(at("2026-10-11T00:00:00Z"), DeviceClass.DESKTOP, 9),
+            ClickRow(at("2026-10-11T00:00:00Z"), DeviceClass.BOT, 1),
+            ClickRow(at("2026-10-12T00:00:00Z"), DeviceClass.DESKTOP, 8),
+            ClickRow(at("2026-10-12T00:00:00Z"), DeviceClass.BOT, 2),
+            ClickRow(at("2026-10-12T00:00:00Z"), DeviceClass.MOBILE, 4),
+        )
+    }
+
+    @Test
+    fun `a window of hours never reads the folded days`() {
+        jdbc.update("insert into link_click_daily_device (short_code, day, device_class, clicks) values ('stats-a', date '2026-10-12', 'desktop', 50)")
+
+        val rows = repository.read(ShortCode("stats-a"), hours("2026-10-12T00:00:00Z", "2026-10-12T12:00:00Z"))
+
+        assertThat(rows.sumOf { it.clicks }).isEqualTo(14L)
+    }
+
+    @Test
+    fun `a window of days reads the months kept by the month, one day at a time`() {
+        jdbc.update(
+            "insert into link_click_monthly_device (short_code, month, device_class, clicks) " +
+                "values ('stats-a', date '2024-02-01', 'desktop', array_fill(0::bigint, array[2]) || 7::bigint || array_fill(0::bigint, array[25]) || 2::bigint || array_fill(0::bigint, array[2]))",
+        )
+
+        val rows = repository.read(ShortCode("stats-a"), days("2024-02-01T00:00:00Z", "2024-03-01T00:00:00Z"))
+
+        assertThat(rows).containsExactlyInAnyOrder(
+            ClickRow(at("2024-02-03T00:00:00Z"), DeviceClass.DESKTOP, 7),
+            ClickRow(at("2024-02-29T00:00:00Z"), DeviceClass.DESKTOP, 2),
+        )
+    }
+
+    @Test
+    fun `a breakdown that reaches a month kept by the month counts it whole, and says so`() {
+        jdbc.update("insert into link_click_monthly (short_code, month, dimension, value, clicks) values ('stats-a', date '2024-02-01', 'referrer', 't.co', 9)")
+
+        val rows = repository.breakdown(ShortCode("stats-a"), days("2024-02-10T00:00:00Z", "2024-02-12T00:00:00Z"))
+
+        assertThat(rows).containsExactly(BreakdownRow.FromReferrer(Referrer.Host("t.co"), 9, at("2024-02-01T00:00:00Z"), at("2024-03-01T00:00:00Z")))
     }
 }

@@ -84,7 +84,7 @@ You finish with the service running on your machine, one call made and the tests
 
 What the `dev` profile changes: debug logs for this application, health details, every trace sampled, and rate limits high
 enough not to get in the way ([the profiles](REFERENCE.md#the-profiles)). What development does not exercise: `bootRun` connects as the
-superuser `myuser`, so the three database roles and everything that follows from them are not in play until the
+superuser `myuser`, so the database roles and everything that follows from them are not in play until the
 [rehearsal](#rehearse-production-on-one-machine).
 
 ## Rehearse production on one machine
@@ -270,7 +270,7 @@ does `DpopCalls` in `tools/src/main/kotlin`, which `Smoke` uses.
 | choose the code | `PUT /api/short-links/my-promo` with `{"targetUrl": "..."}`, which needs the `claim` scope |
 | list your links | `GET /api/short-links?page=0&size=20&sort=createdAt,desc` |
 | read one | `GET /api/short-links/<code>` |
-| count its clicks | `GET /api/short-links/<code>/stats?granularity=day`, or `hour`, with `from` and `to` as ISO-8601 instants. Approximate, and bots are counted apart. `breakdown` has the top 20 referrer hosts and the languages, per UTC day |
+| count its clicks | `GET /api/short-links/<code>/stats?granularity=day`, or `hour`, with `from` and `to` as ISO-8601 instants. Approximate, and bots are counted apart. `breakdown` has the top 20 referrer hosts and the languages, per UTC day Days are UTC days, kept for ever; hours are kept for 90 days, and an older window of hours is `400` |
 | disable one | `PATCH /api/short-links/<code>` with `{"disabled": true}` |
 | list every client's | `GET /api/short-links` as `admin-client`, or `?createdBy=<client>` |
 

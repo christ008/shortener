@@ -25,6 +25,22 @@ $$;
 
 grant pg_monitor to shortener_exporter;
 
+-- The owner of analytics_retention() (migration V9, ADR 0043). It cannot log in, and holds only what that function needs, which V9
+-- grants next to the tables: nothing on short_link, and no delete on the monthly counts. The migrator is a member so that the
+-- migration can hand the function to it. A database whose V9 ran before this role existed keeps the function with the migrator.
+do
+$$
+begin
+    if not exists (select 1 from pg_roles where rolname = 'shortener_retention') then
+        create role shortener_retention nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+    end if;
+end
+$$;
+grant shortener_retention to shortener_migrator;
+-- create on public is what a new owner of a function must hold. The role cannot log in, and the only code that runs as it is that
+-- function, which builds no statement from text.
+grant usage, create on schema public to shortener_retention;
+
 -- Only these roles may connect, and nobody may create objects in public except the migrator.
 do
 $$

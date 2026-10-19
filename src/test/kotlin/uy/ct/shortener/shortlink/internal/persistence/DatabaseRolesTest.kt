@@ -70,7 +70,9 @@ class DatabaseRolesTest {
         DriverManager.getConnection(urlOf(database), role, passwords.getValue(role)).use(block)
 
     private fun flywayAs(role: String) =
-        Flyway.configure().dataSource(urlOf(database), role, passwords.getValue(role)).locations("classpath:db/migration").load()
+        Flyway.configure().dataSource(urlOf(database), role, passwords.getValue(role)).locations("classpath:db/migration")
+            .configuration(mapOf("flyway.postgresql.transactional.lock" to "false"))
+            .load()
 
     @BeforeAll
     fun provision() {
@@ -112,6 +114,9 @@ class DatabaseRolesTest {
             entry("short_link", "shortener_migrator"),
             entry("link_click_hourly", "shortener_migrator"),
             entry("link_click_daily", "shortener_migrator"),
+            entry("link_click_daily_device", "shortener_migrator"),
+            entry("link_click_monthly_device", "shortener_migrator"),
+            entry("link_click_monthly", "shortener_migrator"),
             entry("flyway_schema_history", "shortener_migrator"),
         )
     }
@@ -170,6 +175,75 @@ class DatabaseRolesTest {
         asRole("shortener_app") { connection ->
             val daily = connection.createStatement().executeQuery("select sum(clicks) from link_click_daily where short_code = 'store-role'")
             assertThat(daily.use { it.next(); it.getLong(1) }).isEqualTo(8L)
+        }
+    }
+
+    @Test
+    fun `lets the application role fold and delete old counts only by running the retention function, with its fixed rules`() {
+        asAdmin { connection ->
+            connection.createStatement().execute(
+                "insert into link_click_hourly (short_code, hour, device_class, clicks) " +
+                    "values ('retained', ((now() at time zone 'UTC')::date - 100)::timestamp at time zone 'UTC', 'desktop', 4), " +
+                    "('retained', now(), 'desktop', 1)",
+            )
+        }
+
+        asRole("shortener_app") { connection ->
+            val step = connection.createStatement().executeQuery("select busy, hours_folded, days_folded from analytics_retention()")
+            assertThat(step.use { it.next(); it.getBoolean(1) to it.getLong(2) }).isEqualTo(false to 1L)
+            val folded = connection.createStatement().executeQuery("select sum(clicks) from link_click_daily_device where short_code = 'retained'")
+            assertThat(folded.use { it.next(); it.getLong(1) }).isEqualTo(4L)
+            val left = connection.createStatement().executeQuery("select count(*) from link_click_hourly where short_code = 'retained'")
+            assertThat(left.use { it.next(); it.getLong(1) }).isEqualTo(1L)
+            val day = connection.createStatement().executeQuery("select sum(clicks) from link_click_day where short_code = 'retained'")
+            assertThat(day.use { it.next(); it.getLong(1) }).isEqualTo(5L)
+        }
+    }
+
+    @Test
+    fun `gives the retention function to a role that cannot log in, cannot touch the links and cannot delete a monthly count`() {
+        val owner = asAdmin { connection ->
+            connection.createStatement().executeQuery("select pg_get_userbyid(proowner) from pg_proc where proname = 'analytics_retention'")
+                .use { it.next(); it.getString(1) }
+        }
+        assertThat(owner).isEqualTo("shortener_retention")
+
+        asAdmin { connection ->
+            connection.autoCommit = false
+            connection.createStatement().execute("set local role shortener_retention")
+            listOf(
+                "select * from short_link",
+                "delete from link_click_monthly_device",
+                "delete from link_click_monthly",
+                "truncate link_click_hourly",
+                "drop table link_click_daily",
+            ).forEach { statement ->
+                connection.createStatement().execute("savepoint attempt")
+                assertRefused(connection, statement)
+                connection.createStatement().execute("rollback to savepoint attempt")
+            }
+            connection.rollback()
+        }
+        val failure = assertFailsWith<SQLException> { DriverManager.getConnection(urlOf(database), "shortener_retention", "anything") }
+        assertThat(failure.sqlState).describedAs(failure.message).isIn("28000", "28P01")
+    }
+
+    @Test
+    fun `refuses the application role to write the folded days itself, or to change the retention function`() {
+        asRole("shortener_app") { connection ->
+            listOf(
+                "insert into link_click_daily_device (short_code, day, device_class, clicks) values ('x', current_date, 'desktop', 1)",
+                "insert into link_click_monthly (short_code, month, dimension, value, clicks) values ('x', date '2024-01-01', 'referrer', 'x', 1)",
+                "update link_click_monthly_device set clicks = array_fill(0::bigint, array[31])",
+                "delete from link_click_monthly",
+                "update link_click_daily_device set clicks = 0",
+                "delete from link_click_daily_device",
+                "truncate link_click_daily_device",
+                "create or replace function analytics_retention(out busy boolean, out hours_folded bigint, out days_folded bigint) " +
+                    "language sql as 'select false, 0::bigint, 0::bigint'",
+                "alter function analytics_retention() security invoker",
+                "drop function analytics_retention()",
+            ).forEach { assertRefused(connection, it) }
         }
     }
 
@@ -242,6 +316,10 @@ class DatabaseRolesTest {
             assertRefused(connection, "select * from short_link")
             assertRefused(connection, "select * from link_click_hourly")
             assertRefused(connection, "select * from link_click_daily")
+            assertRefused(connection, "select * from link_click_daily_device")
+            assertRefused(connection, "select * from link_click_monthly_device")
+            assertRefused(connection, "select * from link_click_day")
+            assertRefused(connection, "select * from analytics_retention()")
         }
     }
 

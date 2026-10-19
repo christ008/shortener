@@ -40,6 +40,10 @@ spring:
         tcpKeepAlive: true
   flyway:
     clean-disabled: true
+    # A session lock, not a transactional one: CREATE INDEX CONCURRENTLY waits for every open transaction in the database, and
+    # Flyway's own, holding the lock, never ends while it waits (MigrationConventionsTest).
+    postgresql:
+      transactional-lock: false
 
 server:
   shutdown: graceful
