@@ -297,6 +297,7 @@ sonar {
             "sonar.coverage.exclusions",
             listOf(
                 "tools/src/main/**", "ui/src/api/schema.ts", "ui/src/routeTree.gen.ts", "ui/scripts/**", "ui/test-utils/**", "ui/*.mjs",
+                "ui/src/**/*.test.ts", "ui/src/**/*.test.tsx",
             ).joinToString(","),
         )
         property(
