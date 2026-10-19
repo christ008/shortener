@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "types": ["node", "vite/client", "vitest/globals"],
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@test-utils": ["./test-utils"]
+    }
+  },
+  "include": ["src", "test-utils"]
+}

@@ -286,10 +286,20 @@ sonar {
             "sonar.exclusions",
             listOf(
                 "**/build/**", "**/.gradle/**", "**/.kotlin/**", "**/.idea/**", "**/.junie/**", "perf/results/**", "perf/data/**",
-                "src/test/**", "tools/src/test/**",
+                "src/test/**", "tools/src/test/**", "ui/node_modules/**", "ui/dist/**", "ui/coverage/**",
             ).joinToString(","),
         )
-        property("sonar.coverage.exclusions", "tools/src/main/**")
+        // The app's front end is measured by vitest, which writes lcov (ui/vitest.config.mjs). Its generated files, its build
+        // and test tooling are not code the app wrote, so they are out of the coverage: a file missing from the report counts as
+        // uncovered.
+        property("sonar.javascript.lcov.reportPaths", "ui/coverage/lcov-sonar.info")
+        property(
+            "sonar.coverage.exclusions",
+            listOf(
+                "tools/src/main/**", "ui/src/api/schema.ts", "ui/src/routeTree.gen.ts", "ui/scripts/**", "ui/test-utils/**", "ui/*.mjs",
+                "ui/src/**/*.test.ts", "ui/src/**/*.test.tsx",
+            ).joinToString(","),
+        )
         property(
             "sonar.coverage.jacoco.xmlReportPaths",
             listOf(layout.buildDirectory.file("reports/kover/report.xml").get().asFile.path, dpopClientXml.get().asFile.path).joinToString(","),
