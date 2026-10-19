@@ -58,10 +58,11 @@ jobs:
         working-directory: ui
         run: |
           corepack enable
-          yarn install --immutable
+          yarn install --immutable --mode=skip-build
           yarn check
           yarn build
           yarn vitest --coverage
+          node scripts/lcov-for-sonar.mjs
       - name: Send the analysis and the coverage to SonarCloud
         if: success() && env.SONAR_TOKEN != ''  # a pull request from a fork has no secrets
         run: ./gradlew sonar -x test

@@ -292,7 +292,7 @@ sonar {
         // The app's front end is measured by vitest, which writes lcov (ui/vitest.config.mjs). Its generated files, its build
         // and test tooling are not code the app wrote, so they are out of the coverage: a file missing from the report counts as
         // uncovered.
-        property("sonar.javascript.lcov.reportPaths", "ui/coverage/lcov.info")
+        property("sonar.javascript.lcov.reportPaths", "ui/coverage/lcov-sonar.info")
         property(
             "sonar.coverage.exclusions",
             listOf(
