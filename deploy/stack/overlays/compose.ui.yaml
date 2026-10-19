@@ -1,0 +1,61 @@
+# The app's pages behind the edge, for a stack with the UI. Add it with a second file:
+#   UI=1 deploy/stack/deploy.sh <version>
+#   docker compose --env-file .env -f deploy/stack/compose.prod.yaml -f deploy/stack/overlays/compose.ui.yaml up -d
+#
+# - Image: built from ui/ (ui/Dockerfile) with the stack's public address, which is also the issuer's: `docker build
+#   --build-arg VITE_ISSUER=${PUBLIC_URL}/realms/shortener -t shortener-ui:VERSION ui`. UI_IMAGE and UI_VERSION name it. On more than
+#   one node, push it to a registry (UI_IMAGE).
+# - Realm: the production realm has the UI's client, which takes ${PUBLIC_URL}/app/* as its redirect (`./gradlew productionRealm`,
+#   which needs PUBLIC_URL).
+# - Edge: forwards /app only (deploy/edge/ui.conf). The short links and the API are the edge's other routes, as before.
+# - Networks: `ui-front` with the edge and the UI, and nothing else. The UI has no route out and no route to the application.
+# - Policy: the UI's responses carry a policy with a nonce per response and strict-dynamic, written by the UI itself (ui/nginx).
+#   The edge does not change it: there is nothing for it to add.
+services:
+  ui:
+    image: '${UI_IMAGE:-shortener-ui}:${UI_VERSION:-local}'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    user: '101:101'
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    volumes:
+      # nginx writes its caches and its pid here, and nothing else.
+      - {type: tmpfs, target: /tmp, tmpfs: {size: 16777216, mode: 1023}}
+      - {type: tmpfs, target: /var/cache/nginx, tmpfs: {size: 33554432, mode: 1023}}
+      - {type: tmpfs, target: /var/run, tmpfs: {size: 1048576, mode: 1023}}
+    networks:
+      ui-front: {}
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 20s
+    deploy:
+      replicas: 1
+      resources:
+        limits: {cpus: '0.5', memory: '64M'}
+      restart_policy: {condition: any, delay: 5s}
+      update_config: {order: stop-first, failure_action: rollback}
+
+  edge:
+    configs:
+      - {source: edge-ui, target: /etc/nginx/locations/ui.conf}
+    networks:
+      ui-front: {}
+
+networks:
+  # The edge to the UI, and nothing else. Encrypted between nodes, with no route out.
+  ui-front:
+    internal: true
+    driver_opts:
+      encrypted: 'true'
+
+configs:
+  # The name carries a hash of the file (set by deploy/stack/deploy.sh).
+  edge-ui:
+    name: 'shortener-edge-ui-${EDGE_UI_CONF_HASH:-local}'
+    file: ../edge/ui.conf

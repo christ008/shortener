@@ -18,6 +18,9 @@ class RealmsTest {
     @TempDir
     lateinit var directory: Path
 
+    /** The public address of the stack, which production needs. */
+    private val PUBLIC = mapOf("PUBLIC_URL" to "https://shortener.example.com")
+
     private fun publicKeyFile(clientId: String): Path {
         val key = ECKeyGenerator(Curve.P_256).keyID("$clientId-key-1").generate()
         return directory.resolve("$clientId.public.json").also { Files.writeString(it, key.toPublicJWK().toJSONString()) }
@@ -35,11 +38,12 @@ class RealmsTest {
         val admin = publicKeyFile("admin-client")
         val realm = directory.resolve("realm.json")
 
-        val result = run(Realms, "production", demo.toString(), admin.toString(), realm.toString())
+        val result = run(Realms, "production", demo.toString(), admin.toString(), realm.toString(), environment = PUBLIC)
 
         assertThat(result.status).describedAs(result.stderr).isEqualTo(0)
         val clients = parse(realm).clients()
-        assertThat(clients.keys).containsExactly("demo-client", "admin-client")
+        assertThat(clients.keys).containsExactly("demo-client", "admin-client", "shortener-ui")
+        assertThat(clients.getValue("shortener-ui")["redirectUris"]).isEqualTo(listOf("https://shortener.example.com/app/*"))
         assertThat(clients.getValue("demo-client").attributes()["jwks.string"]).isEqualTo("""{"keys":[${Files.readString(demo)}]}""")
         assertThat(clients.getValue("admin-client").attributes()["jwks.string"]).isEqualTo("""{"keys":[${Files.readString(admin)}]}""")
         assertThat(Files.readString(realm)).doesNotContain("@JWKS", "@PASSWORD").doesNotContain("\"d\"")
@@ -48,14 +52,14 @@ class RealmsTest {
     @Test
     fun `the production realm is for a public instance, with TLS, no users, no password flows and no stray clients`() {
         val realm = directory.resolve("realm.json")
-        run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString())
+        run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString(), environment = PUBLIC)
 
         val parsed = parse(realm)
         assertThat(parsed["sslRequired"]).isEqualTo("external")
         assertThat(parsed["bruteForceProtected"]).isEqualTo(true)
         assertThat(parsed["registrationAllowed"]).isEqualTo(false)
         assertThat(parsed).doesNotContainKey("users")
-        parsed.clients().values.forEach {
+        parsed.clients().values.filter { it["clientId"] != "shortener-ui" }.forEach {
             assertThat(it["directAccessGrantsEnabled"]).describedAs("${it["clientId"]} password grant").isEqualTo(false)
             assertThat(it["standardFlowEnabled"]).describedAs("${it["clientId"]} browser flow").isEqualTo(false)
             assertThat(it["clientAuthenticatorType"]).isEqualTo("client-jwt")
@@ -63,6 +67,35 @@ class RealmsTest {
         assertThat(parsed.clients().getValue("demo-client")["defaultClientScopes"])
             .isEqualTo(listOf("shortlinks:create", "shortlinks:read", "shortlinks:delete", "shortener-owner"))
         assertThat(parsed.clients().getValue("admin-client")["defaultClientScopes"]).isEqualTo(listOf("shortlinks:admin", "shortener-owner"))
+    }
+
+    @Test
+    fun `the UI client is a public one that signs in with PKCE and binds its tokens, and it is the only one with a browser flow`() {
+        val realm = directory.resolve("realm.json")
+        run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString(), environment = PUBLIC)
+
+        val ui = parse(realm).clients().getValue("shortener-ui")
+        assertThat(ui["publicClient"]).describedAs("a browser holds no secret").isEqualTo(true)
+        assertThat(ui["standardFlowEnabled"]).isEqualTo(true)
+        assertThat(ui["directAccessGrantsEnabled"]).isEqualTo(false)
+        assertThat(ui.attributes()["pkce.code.challenge.method"]).isEqualTo("S256")
+        assertThat(ui.attributes()["dpop.bound.access.tokens"]).isEqualTo("true")
+        assertThat(ui["defaultClientScopes"]).isEqualTo(listOf("shortlinks:create", "shortlinks:claim", "shortlinks:read", "shortlinks:delete"))
+        assertThat(ui["webOrigins"]).isEqualTo(listOf("https://shortener.example.com"))
+    }
+
+    @Test
+    fun `production needs its public address over https, and writes nothing without it`() {
+        val realm = directory.resolve("realm.json")
+        val keys = arrayOf(publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString())
+
+        val missing = run(Realms, "production", *keys)
+        assertThat(missing.status).isNotEqualTo(0)
+        assertThat(missing.stderr).contains("PUBLIC_URL")
+
+        val plain = run(Realms, "production", *keys, environment = mapOf("PUBLIC_URL" to "http://shortener.example.com"))
+        assertThat(plain.status).isNotEqualTo(0)
+        assertThat(realm).doesNotExist()
     }
 
     private fun Map<String, Any?>.registrationPolicies(subType: String) =
@@ -91,7 +124,7 @@ class RealmsTest {
     @Test
     fun `a client that registers itself gets create, read and delete, owns what it makes and cannot choose what it is given`() {
         val realm = directory.resolve("realm.json")
-        run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString())
+        run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString(), environment = PUBLIC)
         val parsed = parse(realm)
 
         val scopes = parsed.list("clientScopes").byText("name")
@@ -121,7 +154,7 @@ class RealmsTest {
         val private = directory.resolve("private.json").also { Files.writeString(it, ECKeyGenerator(Curve.P_256).generate().toJSONString()) }
         val realm = directory.resolve("realm.json")
 
-        val result = run(Realms, "production", private.toString(), publicKeyFile("admin-client").toString(), realm.toString())
+        val result = run(Realms, "production", private.toString(), publicKeyFile("admin-client").toString(), realm.toString(), environment = PUBLIC)
 
         assertThat(result.status).isEqualTo(1)
         assertThat(result.stderr).contains("holds a private key")
@@ -187,7 +220,7 @@ class RealmsTest {
     @Test
     fun `the realm file is readable by the container that imports it`() {
         val realm = directory.resolve("realm.json")
-        run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString())
+        run(Realms, "production", publicKeyFile("demo-client").toString(), publicKeyFile("admin-client").toString(), realm.toString(), environment = PUBLIC)
 
         assertThat(Files.getPosixFilePermissions(realm).map { it.name }).containsExactlyInAnyOrder("OWNER_READ", "OWNER_WRITE", "GROUP_READ", "OTHERS_READ")
     }

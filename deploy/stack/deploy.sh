@@ -8,7 +8,8 @@
 #
 # Settings, all optional:
 #   COMPOSE_FILES   files to deploy, default "deploy/stack/compose.prod.yaml". The overlays in deploy/stack/overlays/ are added with
-#                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml) and
+#                   OBSERVABILITY=1 (compose.observability.yaml), KEYCLOAK=1 (compose.keycloak.yaml), UI=1 (compose.ui.yaml: the
+#                   app under /app, built from ui/) and
 #                   POSTGRES_HA=1 (compose.postgres-ha.yaml) and ACME=1 (compose.acme.yaml, for deploy/stack/certificate.sh)
 #                   and CONSOLE=1 (compose.console.yaml: Keycloak's console through an SSH tunnel, needs KEYCLOAK=1)
 #                   and PKI_CA=1 (compose.pki-ca.yaml: the stack's own CA) and PKI=1 (compose.pki-db.yaml and compose.pki.yaml: mutual TLS between the services, with that CA,
@@ -67,6 +68,7 @@ fi
 files=${COMPOSE_FILES:-deploy/stack/compose.prod.yaml}
 [ -z "${OBSERVABILITY:-}" ] || files="$files deploy/stack/overlays/compose.observability.yaml"
 [ -z "${KEYCLOAK:-}" ] || files="$files deploy/stack/overlays/compose.keycloak.yaml"
+[ -z "${UI:-}" ] || files="$files deploy/stack/overlays/compose.ui.yaml"
 [ -z "${POSTGRES_HA:-}" ] || files="$files deploy/stack/overlays/compose.postgres-ha.yaml"
 [ -z "${ACME:-}" ] || files="$files deploy/stack/overlays/compose.acme.yaml"
 [ -z "${CONSOLE:-}" ] || files="$files deploy/stack/overlays/compose.console.yaml"
@@ -88,6 +90,10 @@ if [ -n "${KEYCLOAK:-}" ]; then
   KEYCLOAK_REALM_HASH=$(hash12 deploy/keycloak/shortener-realm.production.json)
   EDGE_KEYCLOAK_CONF_HASH=$(hash12 deploy/edge/keycloak.conf)
   export KEYCLOAK_REALM_HASH EDGE_KEYCLOAK_CONF_HASH
+fi
+if [ -n "${UI:-}" ]; then
+  EDGE_UI_CONF_HASH=$(hash12 deploy/edge/ui.conf)
+  export EDGE_UI_CONF_HASH
 fi
 # The certificate secrets are named after their contents, so renewing one replaces it.
 TLS_HASH=$(hash12 "${SECRETS_DIR:-secrets}/tls_cert" "${SECRETS_DIR:-secrets}/tls_key" 2>/dev/null)

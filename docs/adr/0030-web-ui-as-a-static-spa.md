@@ -1,6 +1,6 @@
 # 0030. The web UI is a static single-page app that signs requests with a browser key
 
-- Status: **Proposed**, 2026-10-06. Nothing is built. The reasons are those [UI.md](../UI.md) gave for its choices until they were moved here
+- Status: **Accepted**, 2026-10-18. Serving from nginx is the decision (see below); the UI is built in its own change. The reasons are those [UI.md](../UI.md) gave for its choices until they were moved here
 - Evidence: [UI.md](../UI.md), [0006](0006-require-dpop-bound-tokens.md), [0007](0007-owner-claim-and-ownership-rule.md), [0031](0031-human-administrators-need-a-second-factor.md), `perf/k6/mixed.js`
 
 ## Problem
@@ -31,6 +31,15 @@ not all belong to the UI's client ([0007](0007-owner-claim-and-ownership-rule.md
 - Keycloak issuing DPoP-bound tokens to a public client through the browser flow is assumed, not verified.
 - An administrator who is a person needs a second factor before the UI offers any admin view ([0031](0031-human-administrators-need-a-second-factor.md)).
 - TanStack Start was a release candidate when this was written.
+
+## Decision
+
+The static files are served by an unprivileged nginx container behind the edge, under `/app`. They are not served by the
+application.
+
+A spike served the built shell from Spring under `/app`, with its own filter chain and CSP, and it worked. It was rejected
+because it ties the UI's release to the JAR of the API, puts the static files on the JVM, and gives the UI's CSP to the
+API's chain. The policy is the same problem either way: a nonce per response, which the server that sends the pages must set (`sub_filter`, with `strict-dynamic`), because the app creates scripts at run time that no build can list.
 
 ## Decide when
 

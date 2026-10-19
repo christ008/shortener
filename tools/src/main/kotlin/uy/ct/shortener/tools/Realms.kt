@@ -28,6 +28,7 @@ object Realms : Tool(
     private const val PRODUCTION_TEMPLATE = "deploy/keycloak/shortener-realm.production.template.json"
 
     private const val PRODUCTION_OUTPUT = "deploy/keycloak/shortener-realm.production.json"
+    private const val PUBLIC_URL_PLACEHOLDER = "@PUBLIC_URL@"
 
     override fun run(arguments: List<String>, context: Context) {
         if (arguments.isEmpty()) throw Usage("a command is needed")
@@ -44,8 +45,21 @@ object Realms : Tool(
             "demo-client" to publicKey(context.path(arguments[1]), context),
             "admin-client" to publicKey(context.path(arguments[2]), context),
         )
-        val realm = RealmTemplate.fill(context.read(context.path(PRODUCTION_TEMPLATE)), jwks, emptyMap())
+        val template = context.read(context.path(PRODUCTION_TEMPLATE)).replace(PUBLIC_URL_PLACEHOLDER, publicUrl(context))
+        val realm = RealmTemplate.fill(template, jwks, emptyMap())
         write(realm, context.path(arguments.getOrNull(3) ?: PRODUCTION_OUTPUT), context)
+    }
+
+    /**
+     * The public address of the stack, which the UI's client accepts as its redirect and web origin. It is the address the edge
+     * serves, so it is required, and it is https: the browser sends the code and the tokens over it.
+     */
+    private fun publicUrl(context: Context): String {
+        val url = context.environment["PUBLIC_URL"]?.trimEnd('/')
+        if (url.isNullOrBlank() || !url.startsWith("https://")) {
+            throw Usage("production needs PUBLIC_URL, the address of the stack over https, such as https://shortener.example.com")
+        }
+        return url
     }
 
     private fun render(arguments: List<String>, context: Context) {

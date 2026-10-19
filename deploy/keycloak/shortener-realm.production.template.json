@@ -214,6 +214,53 @@
         "dpop.bound.access.tokens": "true",
         "access.token.header.type.rfc9068": "true"
       }
+    },
+    {
+      "clientId": "shortener-ui",
+      "name": "The web UI, a public client that signs users in with code and PKCE and holds DPoP-bound tokens. Its address is the stack's public address",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "@PUBLIC_URL@/app/*"
+      ],
+      "webOrigins": [
+        "@PUBLIC_URL@"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "dpop.bound.access.tokens": "true",
+        "access.token.header.type.rfc9068": "true",
+        "post.logout.redirect.uris": "@PUBLIC_URL@/app/*"
+      },
+      "defaultClientScopes": [
+        "shortlinks:create",
+        "shortlinks:claim",
+        "shortlinks:read",
+        "shortlinks:delete"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "owner",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "id",
+            "claim.name": "owner",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "revokeRefreshToken": true,
