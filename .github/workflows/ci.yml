@@ -51,7 +51,7 @@ jobs:
         with:
           name: coverage
           path: build/reports/kover
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: ui/.node-version
       - name: "The UI: formatting, lint and types, the build, and the unit tests with their coverage (lcov, for SonarCloud)"
