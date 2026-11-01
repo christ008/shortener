@@ -20,9 +20,9 @@ repositories {
 extra["nimbusVersion"] = "10.10"
 
 dependencies {
-    implementation(platform("org.springframework.boot:spring-boot-dependencies:4.2.0-M2"))
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:4.2.0-RC1"))
     implementation("tools.jackson.core:jackson-databind")
-    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.2.0-M2"))
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.2.0-RC1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.assertj:assertj-core")
